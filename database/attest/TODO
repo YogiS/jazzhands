@@ -1,0 +1,69 @@
+ - numerous XXX's
+ - approval vs approved case, consider syncing
+ - recertify chain reject needs to go back to jira-hr
+   this will create a loop, which is likely fine EXCEPT...
+   	it should ALWAYS go to a new step, and not to an existing one.
+	not sure if this should be inferred or approve should say "do it"
+
+	This may not be practical because of the current implementation
+	but if items are approved individually and not all are done, then
+	it can attach something to a new step.
+
+	the issue is when the approval_process_chain_id is the same, which
+	it would be for a new jira-hr and a new recertify unless they are
+	completed.  This should not happen with jira-hr, but could happen
+	with a partial recertify.
+- EXCEPTION error codes
+
+- triggers
+
+- remove all debugging RAISE NOTICE, even those that are commented out
+
+- is it ok to approve without approve_account_id ?  If so, jira handler needs
+  to handle the case of unassigned users.o
+- UX changes:
+	row Chris
+		[correct |incorrect] Chris -> move it to the right!
+
+		dealing with how people read
+
+	default everything to correcct?
+
+	one button per person.  if I click
+		incorrect, then get into details of what is/is not correct
+		if correct, leave blank, if not 
+
+	more prominent submit button (green button) [ once per page ]
+
+	leading page?
+
+	maybe sliding  thing for the future to force reading?
+
+	
+		secondary button grey
+- reports
+
+email itself: why its important
+	should only take five minutes (really easy)
+
+	placeholder text in correction box [DONE]
+		start with full drop down, type and it fixes it
+
+		https://harvesthq.github.io/chosen/
+
+		grouping things (parentage?)
+
+
+	http://styleguide.devnxs.net/ <-
+	http://styleguide.devnxs.net/examples/notifications/banners/
+		colors - blue/yellow/red/
+
+	close to deadline banner? [ DONE ]
+
+	success page should show what happened, SLAs, etc.
+
+LATER:
+	- photos of reports?
+	- overdue on single sign on?
+	- last modified date? tooltip? (tiny text with light grey?)
+	- sort on last modified?
