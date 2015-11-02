@@ -203,20 +203,26 @@ INSERT INTO val_person_contact_loc_type (Person_Contact_Location_Type)
 INSERT INTO val_person_contact_loc_type (Person_Contact_Location_Type)
 	VALUES ('office');
 
-insert into VAL_APP_KEY (APP_KEY, DESCRIPTION) values
-	('DBType', 'Database Type');
-insert into VAL_APP_KEY (APP_KEY, DESCRIPTION) values
-	('Method', 'Method for Authentication');
-insert into VAL_APP_KEY (APP_KEY, DESCRIPTION) values
-	('Password', 'Password or equivalent');
-insert into VAL_APP_KEY (APP_KEY, DESCRIPTION) values
-	('ServiceName', 
-	'Service Name used for certain methods (DB methods, notably)');
-insert into VAL_APP_KEY (APP_KEY, DESCRIPTION) values
-	('Username', 'Username or equivalent');
+INSERT INTO val_appaal_group_name (appaal_group_name, description) VALUES
+	('database', 'keys related to databases');
 
-INSERT INTO VAL_APP_KEY_VALUES (APP_KEY, APP_VALUE)
-	VALUES ('Method', 'password');
+insert into VAL_APP_KEY (APP_KEY, appaal_group_name, DESCRIPTION) values
+	('DBType', 'database', 'Database Type');
+insert into VAL_APP_KEY (APP_KEY, appaal_group_name, DESCRIPTION) values
+	('Method', 'database', 'Method for Authentication');
+insert into VAL_APP_KEY (APP_KEY, appaal_group_name, DESCRIPTION) values
+	('Password', 'database', 'Password or equivalent');
+insert into VAL_APP_KEY (APP_KEY, appaal_group_name, DESCRIPTION) values
+	('ServiceName',  'database',
+	'Service Name used for certain methods (DB methods, notably)');
+insert into VAL_APP_KEY (APP_KEY, appaal_group_name, DESCRIPTION) values
+	('Username', 'database', 'Username or equivalent');
+
+INSERT INTO VAL_APP_KEY_VALUES (APP_KEY, appaal_group_name, APP_VALUE)
+	VALUES ('Method', 'database', 'password');
+
+INSERT INTO VAL_APP_KEY_VALUES (APP_KEY, appaal_group_name, APP_VALUE)
+	VALUES ('Method', 'database', 'kerberos');
 
 --INSERT INTO VAL_User_Location_Type (System_User_Location_Type)
 --	VALUES ('office');
