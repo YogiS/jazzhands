@@ -203,8 +203,15 @@ INSERT INTO val_person_contact_loc_type (Person_Contact_Location_Type)
 INSERT INTO val_person_contact_loc_type (Person_Contact_Location_Type)
 	VALUES ('office');
 
+--INSERT INTO VAL_User_Location_Type (System_User_Location_Type)
+--	VALUES ('office');
+--INSERT INTO VAL_User_Location_Type (System_User_Location_Type)
+--	VALUES ('home');
+
+-- Database AppAuthAL methods
+
 INSERT INTO val_appaal_group_name (appaal_group_name, description) VALUES
-	('database', 'keys related to databases');
+	('database', 'keys related to database connections');
 
 insert into VAL_APP_KEY (APP_KEY, appaal_group_name, DESCRIPTION) values
 	('DBType', 'database', 'Database Type');
@@ -222,27 +229,15 @@ INSERT INTO VAL_APP_KEY_VALUES (APP_KEY, appaal_group_name, APP_VALUE)
 	VALUES ('Method', 'database', 'password');
 
 INSERT INTO VAL_APP_KEY_VALUES (APP_KEY, appaal_group_name, APP_VALUE)
-	VALUES ('Method', 'database', 'kerberos');
-
---INSERT INTO VAL_User_Location_Type (System_User_Location_Type)
---	VALUES ('office');
---INSERT INTO VAL_User_Location_Type (System_User_Location_Type)
---	VALUES ('home');
-
-INSERT INTO VAL_APP_KEY_VALUES (APP_KEY, APP_VALUE)
-	VALUES ('DBType', 'ftp');
-INSERT INTO VAL_APP_KEY_VALUES (APP_KEY, APP_VALUE)
-	VALUES ('DBType', 'ldap');
-INSERT INTO VAL_APP_KEY_VALUES (APP_KEY, APP_VALUE)
-	VALUES ('DBType', 'mysql');
-INSERT INTO VAL_APP_KEY_VALUES (APP_KEY, APP_VALUE)
-	VALUES ('DBType', 'oracle');
-INSERT INTO VAL_APP_KEY_VALUES (APP_KEY, APP_VALUE)
-	VALUES ('DBType', 'postgres');
-INSERT INTO VAL_APP_KEY_VALUES (APP_KEY, APP_VALUE)
-	VALUES ('DBType', 'sqlrelay');
-INSERT INTO VAL_APP_KEY_VALUES (APP_KEY, APP_VALUE)
-	VALUES ('DBType', 'tds');
+	VALUES ('DBType', 'database', 'mysql');
+INSERT INTO VAL_APP_KEY_VALUES (APP_KEY, appaal_group_name, APP_VALUE)
+	VALUES ('DBType', 'database', 'oracle');
+INSERT INTO VAL_APP_KEY_VALUES (APP_KEY, appaal_group_name, APP_VALUE)
+	VALUES ('DBType', 'database', 'postgres');
+INSERT INTO VAL_APP_KEY_VALUES (APP_KEY, appaal_group_name, APP_VALUE)
+	VALUES ('DBType', 'database', 'sqlrelay');
+INSERT INTO VAL_APP_KEY_VALUES (APP_KEY, appaal_group_name, APP_VALUE)
+	VALUES ('DBType', 'database', 'tds');
 
 INSERT INTO VAL_Device_Collection_Type (Device_Collection_Type)
 	VALUES ('mclass');
@@ -254,6 +249,35 @@ INSERT INTO VAL_Device_Collection_Type (Device_Collection_Type)
 	VALUES ('applicense');
 INSERT INTO VAL_Device_Collection_Type (Device_Collection_Type)
 	VALUES ('undefined');
+
+-- LDAP AppAuthAL
+
+INSERT INTO val_appaal_group_name (appaal_group_name, description) VALUES
+	('ldap', 'keys related to ldap connections');
+
+insert into VAL_APP_KEY (APP_KEY, appaal_group_name, DESCRIPTION) values
+	('ServerName', 'ldap', 'Server to Connect to');
+
+insert into VAL_APP_KEY (APP_KEY, appaal_group_name, DESCRIPTION) values
+	('Username', 'ldap', 'Username to connect as');
+insert into VAL_APP_KEY (APP_KEY, appaal_group_name, DESCRIPTION) values
+	('Password', 'ldap', 'Password to connect with');
+insert into VAL_APP_KEY (APP_KEY, appaal_group_name, DESCRIPTION) values
+	('Domain', 'ldap', 'Domain to connect as');
+
+-- LDAP AppAuthAL
+
+INSERT INTO val_appaal_group_name (appaal_group_name, description) VALUES
+	('web', 'keys related to http(s) connections');
+
+insert into VAL_APP_KEY (APP_KEY, appaal_group_name, DESCRIPTION) values
+	('URL', 'web', 'URL to connect to');
+insert into VAL_APP_KEY (APP_KEY, appaal_group_name, DESCRIPTION) values
+	('Username', 'web', 'Username to connect as');
+insert into VAL_APP_KEY (APP_KEY, appaal_group_name, DESCRIPTION) values
+	('Password', 'web', 'Password to connect with');
+
+--- password types
 
 INSERT INTO VAL_Password_Type (PASSWORD_TYPE)
 	VALUES ('star');
