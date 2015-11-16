@@ -2,7 +2,7 @@
 %define prefix	/var/www/stab
 %define release 0
 Name:   	jazzhands-stab
-Version:        0.64.8
+Version:        0.64.12
 Release:        0%{?dist}
 Summary:        JazzHands STAB Web Front End
 Group:  	System Environment/Libraries
@@ -185,6 +185,8 @@ rm -rf %{buildroot}
 %{_mandir}/man3/*
 
 %changelog
+* Mon Nov 16 2015 Todd Kover <kovert@omniscient.com> 0.64.12
+- put an approvals link on the main stab page
 * Tue Nov  9 2015 Todd Kover <kovert@omniscient.com> 0.64.8
 - fix bug with chosen and multiple tabs on outstanding approval page
 * Wed Oct  7 2015 Todd Kover <kovert@omniscient.com> 0.64.7
