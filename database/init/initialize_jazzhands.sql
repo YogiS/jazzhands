@@ -457,8 +457,6 @@ insert into val_property_data_type (PROPERTY_DATA_TYPE) values ('string');
 insert into val_property_data_type (PROPERTY_DATA_TYPE) values ('list');
 insert into val_property_data_type (PROPERTY_DATA_TYPE) values ('timestamp');
 insert into val_property_data_type (PROPERTY_DATA_TYPE) values ('company_id');
-insert into val_property_data_type (PROPERTY_DATA_TYPE)
-	values ('dns_domain_id');
 insert into val_property_data_type (PROPERTY_DATA_TYPE) 
 	values ('device_collection_id');
 insert into val_property_data_type (PROPERTY_DATA_TYPE) 

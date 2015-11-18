@@ -211,14 +211,6 @@ BEGIN
 				ERRCODE = 'invalid_parameter_value';
 		END IF;
 	END IF;
-	IF NEW.Property_Value_DNS_Domain_Id IS NOT NULL THEN
-		IF v_prop.Property_Data_Type = 'dns_domain_id' THEN
-			tally := tally + 1;
-		ELSE
-			RAISE 'Property value may not be DNS_Domain_Id' USING
-				ERRCODE = 'invalid_parameter_value';
-		END IF;
-	END IF;
 	IF NEW.Property_Value_Person_Id IS NOT NULL THEN
 		IF v_prop.Property_Data_Type = 'person_id' THEN
 			tally := tally + 1;

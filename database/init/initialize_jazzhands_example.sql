@@ -82,8 +82,6 @@ insert into property (
 	from account_realm where account_realm_name = 'Omniscient')
 );
 
-SELECT * FROM property where property_name = '_stab_root';
-
 insert into property (
 	property_name, property_type, property_value
 ) VALUES  (
