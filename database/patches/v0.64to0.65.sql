@@ -4,6 +4,8 @@ Invoked:
 	--suffix=v64
 	--col-default=appaal_group_name:'database'
 	--scan-tables
+	--first=layer2_network
+	--first=layer3_network
 	v_property
 	approval_utils.v_approval_matrix
 */
@@ -483,10 +485,10 @@ BEGIN
 				(account_collection_Id = NEW.account_collection_Id)) AND
 			((netblock_collection_Id IS NULL AND NEW.netblock_collection_Id IS NULL) OR
 				(netblock_collection_Id = NEW.netblock_collection_Id)) AND
-			((layer2_network_id IS NULL AND NEW.layer2_network_id IS NULL) OR
-				(layer2_network_id = NEW.layer2_network_id)) AND
-			((layer3_network_id IS NULL AND NEW.layer3_network_id IS NULL) OR
-				(layer3_network_id = NEW.layer3_network_id)) AND
+			((layer2_network_collection_id IS NULL AND NEW.layer2_network_collection_id IS NULL) OR
+				(layer2_network_collection_id = NEW.layer2_network_collection_id)) AND
+			((layer3_network_collection_id IS NULL AND NEW.layer3_network_collection_id IS NULL) OR
+				(layer3_network_collection_id = NEW.layer3_network_collection_id)) AND
 			((person_id IS NULL AND NEW.Person_id IS NULL) OR
 				(Person_Id = NEW.person_id)) AND
 			((property_collection_id IS NULL AND NEW.property_collection_id IS NULL) OR
@@ -534,10 +536,10 @@ BEGIN
 				(Account_Realm_id = NEW.Account_Realm_id)) AND
 			((account_collection_Id IS NULL AND NEW.account_collection_Id IS NULL) OR
 				(account_collection_Id = NEW.account_collection_Id)) AND
-			((layer2_network_id IS NULL AND NEW.layer2_network_id IS NULL) OR
-				(layer2_network_id = NEW.layer2_network_id)) AND
-			((layer3_network_id IS NULL AND NEW.layer3_network_id IS NULL) OR
-				(layer3_network_id = NEW.layer3_network_id)) AND
+			((layer2_network_collection_id IS NULL AND NEW.layer2_network_collection_id IS NULL) OR
+				(layer2_network_collection_id = NEW.layer2_network_collection_id)) AND
+			((layer3_network_collection_id IS NULL AND NEW.layer3_network_collection_id IS NULL) OR
+				(layer3_network_collection_id = NEW.layer3_network_collection_id)) AND
 			((netblock_collection_Id IS NULL AND NEW.netblock_collection_Id IS NULL) OR
 				(netblock_collection_Id = NEW.netblock_collection_Id)) AND
 			((property_collection_Id IS NULL AND NEW.property_collection_Id IS NULL) OR
@@ -880,26 +882,26 @@ BEGIN
 			END IF;
 	END IF;
 
-	IF v_prop.Permit_layer2_network_id = 'REQUIRED' THEN
-			IF NEW.layer2_network_id IS NULL THEN
-				RAISE 'layer2_network_id is required.'
+	IF v_prop.permit_layer2_network_coll_id = 'REQUIRED' THEN
+			IF NEW.layer2_network_collection_id IS NULL THEN
+				RAISE 'layer2_network_collection_id is required.'
 					USING ERRCODE = 'invalid_parameter_value';
 			END IF;
-	ELSIF v_prop.Permit_layer2_network_id = 'PROHIBITED' THEN
-			IF NEW.layer2_network_id IS NOT NULL THEN
-				RAISE 'layer2_network_id is prohibited.'
+	ELSIF v_prop.permit_layer2_network_coll_id = 'PROHIBITED' THEN
+			IF NEW.layer2_network_collection_id IS NOT NULL THEN
+				RAISE 'layer2_network_collection_id is prohibited.'
 					USING ERRCODE = 'invalid_parameter_value';
 			END IF;
 	END IF;
 
-	IF v_prop.Permit_layer3_network_id = 'REQUIRED' THEN
-			IF NEW.layer3_network_id IS NULL THEN
-				RAISE 'layer3_network_id is required.'
+	IF v_prop.permit_layer3_network_coll_id = 'REQUIRED' THEN
+			IF NEW.layer3_network_collection_id IS NULL THEN
+				RAISE 'layer3_network_collection_id is required.'
 					USING ERRCODE = 'invalid_parameter_value';
 			END IF;
-	ELSIF v_prop.Permit_layer3_network_id = 'PROHIBITED' THEN
-			IF NEW.layer3_network_id IS NOT NULL THEN
-				RAISE 'layer3_network_id is prohibited.'
+	ELSIF v_prop.permit_layer3_network_coll_id = 'PROHIBITED' THEN
+			IF NEW.layer3_network_collection_id IS NOT NULL THEN
+				RAISE 'layer3_network_collection_id is prohibited.'
 					USING ERRCODE = 'invalid_parameter_value';
 			END IF;
 	END IF;
@@ -1294,6 +1296,222 @@ AS $function$
 ;
 
 -- New function
+CREATE OR REPLACE FUNCTION jazzhands.perform_audit_l2_network_coll_l2_network()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+	    DECLARE
+		appuser VARCHAR;
+	    BEGIN
+		BEGIN
+		    appuser := session_user
+			|| '/' || current_setting('jazzhands.appuser');
+		EXCEPTION WHEN OTHERS THEN
+		    appuser := session_user;
+		END;
+
+    		appuser = substr(appuser, 1, 255);
+
+		IF TG_OP = 'DELETE' THEN
+		    INSERT INTO audit.l2_network_coll_l2_network
+		    VALUES ( OLD.*, 'DEL', now(), appuser );
+		    RETURN OLD;
+		ELSIF TG_OP = 'UPDATE' THEN
+		    INSERT INTO audit.l2_network_coll_l2_network
+		    VALUES ( NEW.*, 'UPD', now(), appuser );
+		    RETURN NEW;
+		ELSIF TG_OP = 'INSERT' THEN
+		    INSERT INTO audit.l2_network_coll_l2_network
+		    VALUES ( NEW.*, 'INS', now(), appuser );
+		    RETURN NEW;
+		END IF;
+		RETURN NULL;
+	    END;
+	$function$
+;
+
+-- New function
+CREATE OR REPLACE FUNCTION jazzhands.perform_audit_l3_network_coll_l3_network()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+	    DECLARE
+		appuser VARCHAR;
+	    BEGIN
+		BEGIN
+		    appuser := session_user
+			|| '/' || current_setting('jazzhands.appuser');
+		EXCEPTION WHEN OTHERS THEN
+		    appuser := session_user;
+		END;
+
+    		appuser = substr(appuser, 1, 255);
+
+		IF TG_OP = 'DELETE' THEN
+		    INSERT INTO audit.l3_network_coll_l3_network
+		    VALUES ( OLD.*, 'DEL', now(), appuser );
+		    RETURN OLD;
+		ELSIF TG_OP = 'UPDATE' THEN
+		    INSERT INTO audit.l3_network_coll_l3_network
+		    VALUES ( NEW.*, 'UPD', now(), appuser );
+		    RETURN NEW;
+		ELSIF TG_OP = 'INSERT' THEN
+		    INSERT INTO audit.l3_network_coll_l3_network
+		    VALUES ( NEW.*, 'INS', now(), appuser );
+		    RETURN NEW;
+		END IF;
+		RETURN NULL;
+	    END;
+	$function$
+;
+
+-- New function
+CREATE OR REPLACE FUNCTION jazzhands.perform_audit_layer2_network_collection()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+	    DECLARE
+		appuser VARCHAR;
+	    BEGIN
+		BEGIN
+		    appuser := session_user
+			|| '/' || current_setting('jazzhands.appuser');
+		EXCEPTION WHEN OTHERS THEN
+		    appuser := session_user;
+		END;
+
+    		appuser = substr(appuser, 1, 255);
+
+		IF TG_OP = 'DELETE' THEN
+		    INSERT INTO audit.layer2_network_collection
+		    VALUES ( OLD.*, 'DEL', now(), appuser );
+		    RETURN OLD;
+		ELSIF TG_OP = 'UPDATE' THEN
+		    INSERT INTO audit.layer2_network_collection
+		    VALUES ( NEW.*, 'UPD', now(), appuser );
+		    RETURN NEW;
+		ELSIF TG_OP = 'INSERT' THEN
+		    INSERT INTO audit.layer2_network_collection
+		    VALUES ( NEW.*, 'INS', now(), appuser );
+		    RETURN NEW;
+		END IF;
+		RETURN NULL;
+	    END;
+	$function$
+;
+
+-- New function
+CREATE OR REPLACE FUNCTION jazzhands.perform_audit_layer2_network_collection_hier()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+	    DECLARE
+		appuser VARCHAR;
+	    BEGIN
+		BEGIN
+		    appuser := session_user
+			|| '/' || current_setting('jazzhands.appuser');
+		EXCEPTION WHEN OTHERS THEN
+		    appuser := session_user;
+		END;
+
+    		appuser = substr(appuser, 1, 255);
+
+		IF TG_OP = 'DELETE' THEN
+		    INSERT INTO audit.layer2_network_collection_hier
+		    VALUES ( OLD.*, 'DEL', now(), appuser );
+		    RETURN OLD;
+		ELSIF TG_OP = 'UPDATE' THEN
+		    INSERT INTO audit.layer2_network_collection_hier
+		    VALUES ( NEW.*, 'UPD', now(), appuser );
+		    RETURN NEW;
+		ELSIF TG_OP = 'INSERT' THEN
+		    INSERT INTO audit.layer2_network_collection_hier
+		    VALUES ( NEW.*, 'INS', now(), appuser );
+		    RETURN NEW;
+		END IF;
+		RETURN NULL;
+	    END;
+	$function$
+;
+
+-- New function
+CREATE OR REPLACE FUNCTION jazzhands.perform_audit_layer3_network_collection()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+	    DECLARE
+		appuser VARCHAR;
+	    BEGIN
+		BEGIN
+		    appuser := session_user
+			|| '/' || current_setting('jazzhands.appuser');
+		EXCEPTION WHEN OTHERS THEN
+		    appuser := session_user;
+		END;
+
+    		appuser = substr(appuser, 1, 255);
+
+		IF TG_OP = 'DELETE' THEN
+		    INSERT INTO audit.layer3_network_collection
+		    VALUES ( OLD.*, 'DEL', now(), appuser );
+		    RETURN OLD;
+		ELSIF TG_OP = 'UPDATE' THEN
+		    INSERT INTO audit.layer3_network_collection
+		    VALUES ( NEW.*, 'UPD', now(), appuser );
+		    RETURN NEW;
+		ELSIF TG_OP = 'INSERT' THEN
+		    INSERT INTO audit.layer3_network_collection
+		    VALUES ( NEW.*, 'INS', now(), appuser );
+		    RETURN NEW;
+		END IF;
+		RETURN NULL;
+	    END;
+	$function$
+;
+
+-- New function
+CREATE OR REPLACE FUNCTION jazzhands.perform_audit_layer3_network_collection_hier()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+	    DECLARE
+		appuser VARCHAR;
+	    BEGIN
+		BEGIN
+		    appuser := session_user
+			|| '/' || current_setting('jazzhands.appuser');
+		EXCEPTION WHEN OTHERS THEN
+		    appuser := session_user;
+		END;
+
+    		appuser = substr(appuser, 1, 255);
+
+		IF TG_OP = 'DELETE' THEN
+		    INSERT INTO audit.layer3_network_collection_hier
+		    VALUES ( OLD.*, 'DEL', now(), appuser );
+		    RETURN OLD;
+		ELSIF TG_OP = 'UPDATE' THEN
+		    INSERT INTO audit.layer3_network_collection_hier
+		    VALUES ( NEW.*, 'UPD', now(), appuser );
+		    RETURN NEW;
+		ELSIF TG_OP = 'INSERT' THEN
+		    INSERT INTO audit.layer3_network_collection_hier
+		    VALUES ( NEW.*, 'INS', now(), appuser );
+		    RETURN NEW;
+		END IF;
+		RETURN NULL;
+	    END;
+	$function$
+;
+
+-- New function
 CREATE OR REPLACE FUNCTION jazzhands.perform_audit_person_company_attr()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -1429,6 +1647,78 @@ AS $function$
 		    RETURN NEW;
 		ELSIF TG_OP = 'INSERT' THEN
 		    INSERT INTO audit.val_dns_domain_collection_type
+		    VALUES ( NEW.*, 'INS', now(), appuser );
+		    RETURN NEW;
+		END IF;
+		RETURN NULL;
+	    END;
+	$function$
+;
+
+-- New function
+CREATE OR REPLACE FUNCTION jazzhands.perform_audit_val_layer2_network_coll_type()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+	    DECLARE
+		appuser VARCHAR;
+	    BEGIN
+		BEGIN
+		    appuser := session_user
+			|| '/' || current_setting('jazzhands.appuser');
+		EXCEPTION WHEN OTHERS THEN
+		    appuser := session_user;
+		END;
+
+    		appuser = substr(appuser, 1, 255);
+
+		IF TG_OP = 'DELETE' THEN
+		    INSERT INTO audit.val_layer2_network_coll_type
+		    VALUES ( OLD.*, 'DEL', now(), appuser );
+		    RETURN OLD;
+		ELSIF TG_OP = 'UPDATE' THEN
+		    INSERT INTO audit.val_layer2_network_coll_type
+		    VALUES ( NEW.*, 'UPD', now(), appuser );
+		    RETURN NEW;
+		ELSIF TG_OP = 'INSERT' THEN
+		    INSERT INTO audit.val_layer2_network_coll_type
+		    VALUES ( NEW.*, 'INS', now(), appuser );
+		    RETURN NEW;
+		END IF;
+		RETURN NULL;
+	    END;
+	$function$
+;
+
+-- New function
+CREATE OR REPLACE FUNCTION jazzhands.perform_audit_val_layer3_network_coll_type()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+	    DECLARE
+		appuser VARCHAR;
+	    BEGIN
+		BEGIN
+		    appuser := session_user
+			|| '/' || current_setting('jazzhands.appuser');
+		EXCEPTION WHEN OTHERS THEN
+		    appuser := session_user;
+		END;
+
+    		appuser = substr(appuser, 1, 255);
+
+		IF TG_OP = 'DELETE' THEN
+		    INSERT INTO audit.val_layer3_network_coll_type
+		    VALUES ( OLD.*, 'DEL', now(), appuser );
+		    RETURN OLD;
+		ELSIF TG_OP = 'UPDATE' THEN
+		    INSERT INTO audit.val_layer3_network_coll_type
+		    VALUES ( NEW.*, 'UPD', now(), appuser );
+		    RETURN NEW;
+		ELSIF TG_OP = 'INSERT' THEN
+		    INSERT INTO audit.val_layer3_network_coll_type
 		    VALUES ( NEW.*, 'INS', now(), appuser );
 		    RETURN NEW;
 		END IF;
@@ -2766,10 +3056,383 @@ $function$
 
 -- Creating new sequences....
 CREATE SEQUENCE dns_domain_collection_dns_domain_collection_id_seq;
+CREATE SEQUENCE layer2_network_collection_layer2_network_collection_id_seq;
+CREATE SEQUENCE layer3_network_collection_layer3_network_collection_id_seq;
 
 
 --------------------------------------------------------------------
--- DEALING WITH TABLE val_app_key [1090405]
+-- DEALING WITH TABLE layer2_network [1146023]
+-- Save grants for later reapplication
+SELECT schema_support.save_grants_for_replay('jazzhands', 'layer2_network', 'layer2_network');
+
+-- FOREIGN KEYS FROM
+ALTER TABLE device_layer2_network DROP CONSTRAINT IF EXISTS fk_device_l2_net_l2netid;
+ALTER TABLE layer2_connection_l2_network DROP CONSTRAINT IF EXISTS fk_l2c_l2n_l2netid;
+ALTER TABLE layer2_connection_l2_network DROP CONSTRAINT IF EXISTS fk_l2cl2n_l2net_id_encap_typ;
+ALTER TABLE layer3_network DROP CONSTRAINT IF EXISTS fk_l3net_l2net;
+ALTER TABLE property DROP CONSTRAINT IF EXISTS fk_prop_l2netid;
+
+-- FOREIGN KEYS TO
+ALTER TABLE jazzhands.layer2_network DROP CONSTRAINT IF EXISTS fk_l2_net_encap_domain;
+ALTER TABLE jazzhands.layer2_network DROP CONSTRAINT IF EXISTS fk_l2_net_encap_range_id;
+
+-- EXTRA-SCHEMA constraints
+SELECT schema_support.save_constraint_for_replay('jazzhands', 'layer2_network');
+
+-- PRIMARY and ALTERNATE KEYS
+ALTER TABLE jazzhands.layer2_network DROP CONSTRAINT IF EXISTS ak_l2_net_l2net_encap_typ;
+ALTER TABLE jazzhands.layer2_network DROP CONSTRAINT IF EXISTS ak_l2net_encap_name;
+ALTER TABLE jazzhands.layer2_network DROP CONSTRAINT IF EXISTS ak_l2net_encap_tag;
+ALTER TABLE jazzhands.layer2_network DROP CONSTRAINT IF EXISTS pk_layer2_network;
+-- INDEXES
+DROP INDEX IF EXISTS "jazzhands"."xif_l2_net_encap_domain";
+DROP INDEX IF EXISTS "jazzhands"."xif_l2_net_encap_range_id";
+-- CHECK CONSTRAINTS, etc
+-- TRIGGERS, etc
+DROP TRIGGER IF EXISTS trig_userlog_layer2_network ON jazzhands.layer2_network;
+DROP TRIGGER IF EXISTS trigger_audit_layer2_network ON jazzhands.layer2_network;
+SELECT schema_support.save_dependant_objects_for_replay('jazzhands', 'layer2_network');
+---- BEGIN audit.layer2_network TEARDOWN
+-- Save grants for later reapplication
+SELECT schema_support.save_grants_for_replay('audit', 'layer2_network', 'audit.layer2_network');
+
+-- FOREIGN KEYS FROM
+
+-- FOREIGN KEYS TO
+
+-- EXTRA-SCHEMA constraints
+SELECT schema_support.save_constraint_for_replay('audit', 'layer2_network');
+
+-- PRIMARY and ALTERNATE KEYS
+-- INDEXES
+DROP INDEX IF EXISTS "audit"."layer2_network_aud#timestamp_idx";
+-- CHECK CONSTRAINTS, etc
+-- TRIGGERS, etc
+SELECT schema_support.save_dependant_objects_for_replay('audit', 'layer2_network');
+---- DONE audit.layer2_network TEARDOWN
+
+
+ALTER TABLE layer2_network RENAME TO layer2_network_v64;
+ALTER TABLE audit.layer2_network RENAME TO layer2_network_v64;
+
+CREATE TABLE layer2_network
+(
+	layer2_network_id	integer NOT NULL,
+	encapsulation_name	varchar(32)  NULL,
+	encapsulation_domain	varchar(50)  NULL,
+	encapsulation_type	varchar(50)  NULL,
+	encapsulation_tag	integer  NULL,
+	description	varchar(255)  NULL,
+	encapsulation_range_id	integer  NULL,
+	data_ins_user	varchar(255)  NULL,
+	data_ins_date	timestamp with time zone  NULL,
+	data_upd_user	varchar(255)  NULL,
+	data_upd_date	timestamp with time zone  NULL
+);
+SELECT schema_support.build_audit_table('audit', 'jazzhands', 'layer2_network', false);
+ALTER TABLE layer2_network
+	ALTER layer2_network_id
+	SET DEFAULT nextval('layer2_network_layer2_network_id_seq'::regclass);
+INSERT INTO layer2_network (
+	layer2_network_id,
+	encapsulation_name,
+	encapsulation_domain,
+	encapsulation_type,
+	encapsulation_tag,
+	description,
+	encapsulation_range_id,
+	data_ins_user,
+	data_ins_date,
+	data_upd_user,
+	data_upd_date
+) SELECT
+	layer2_network_id,
+	encapsulation_name,
+	encapsulation_domain,
+	encapsulation_type,
+	encapsulation_tag,
+	description,
+	encapsulation_range_id,
+	data_ins_user,
+	data_ins_date,
+	data_upd_user,
+	data_upd_date
+FROM layer2_network_v64;
+
+INSERT INTO audit.layer2_network (
+	layer2_network_id,
+	encapsulation_name,
+	encapsulation_domain,
+	encapsulation_type,
+	encapsulation_tag,
+	description,
+	encapsulation_range_id,
+	data_ins_user,
+	data_ins_date,
+	data_upd_user,
+	data_upd_date,
+	"aud#action",
+	"aud#timestamp",
+	"aud#user",
+	"aud#seq"
+) SELECT
+	layer2_network_id,
+	encapsulation_name,
+	encapsulation_domain,
+	encapsulation_type,
+	encapsulation_tag,
+	description,
+	encapsulation_range_id,
+	data_ins_user,
+	data_ins_date,
+	data_upd_user,
+	data_upd_date,
+	"aud#action",
+	"aud#timestamp",
+	"aud#user",
+	"aud#seq"
+FROM audit.layer2_network_v64;
+
+ALTER TABLE layer2_network
+	ALTER layer2_network_id
+	SET DEFAULT nextval('layer2_network_layer2_network_id_seq'::regclass);
+
+-- PRIMARY AND ALTERNATE KEYS
+ALTER TABLE layer2_network ADD CONSTRAINT ak_l2_net_l2net_encap_typ UNIQUE (layer2_network_id, encapsulation_type);
+ALTER TABLE layer2_network ADD CONSTRAINT ak_l2net_encap_name UNIQUE (encapsulation_domain, encapsulation_type, encapsulation_name);
+ALTER TABLE layer2_network ADD CONSTRAINT ak_l2net_encap_tag UNIQUE (encapsulation_type, encapsulation_domain, encapsulation_tag);
+ALTER TABLE layer2_network ADD CONSTRAINT pk_layer2_network PRIMARY KEY (layer2_network_id);
+
+-- Table/Column Comments
+COMMENT ON COLUMN layer2_network.encapsulation_range_id IS 'Administrative information about which range this is a part of';
+-- INDEXES
+CREATE INDEX xif_l2_net_encap_domain ON layer2_network USING btree (encapsulation_domain, encapsulation_type);
+CREATE INDEX xif_l2_net_encap_range_id ON layer2_network USING btree (encapsulation_range_id);
+
+-- CHECK CONSTRAINTS
+
+-- FOREIGN KEYS FROM
+-- consider FK layer2_network and device_layer2_network
+ALTER TABLE device_layer2_network
+	ADD CONSTRAINT fk_device_l2_net_l2netid
+	FOREIGN KEY (layer2_network_id) REFERENCES layer2_network(layer2_network_id);
+-- consider FK layer2_network and layer2_connection_l2_network
+ALTER TABLE layer2_connection_l2_network
+	ADD CONSTRAINT fk_l2c_l2n_l2netid
+	FOREIGN KEY (layer2_network_id) REFERENCES layer2_network(layer2_network_id);
+-- consider FK layer2_network and layer2_connection_l2_network
+ALTER TABLE layer2_connection_l2_network
+	ADD CONSTRAINT fk_l2cl2n_l2net_id_encap_typ
+	FOREIGN KEY (layer2_network_id, encapsulation_type) REFERENCES layer2_network(layer2_network_id, encapsulation_type);
+-- consider FK layer2_network and l2_network_coll_l2_network
+-- Skipping this FK since table does not exist yet
+--ALTER TABLE l2_network_coll_l2_network
+--	ADD CONSTRAINT fk_l2netcl2net_l2netid
+--	FOREIGN KEY (layer2_network_id) REFERENCES layer2_network(layer2_network_id);
+
+-- consider FK layer2_network and layer3_network
+ALTER TABLE layer3_network
+	ADD CONSTRAINT fk_l3net_l2net
+	FOREIGN KEY (layer2_network_id) REFERENCES layer2_network(layer2_network_id);
+
+-- FOREIGN KEYS TO
+-- consider FK layer2_network and encapsulation_domain
+ALTER TABLE layer2_network
+	ADD CONSTRAINT fk_l2_net_encap_domain
+	FOREIGN KEY (encapsulation_domain, encapsulation_type) REFERENCES encapsulation_domain(encapsulation_domain, encapsulation_type);
+-- consider FK layer2_network and encapsulation_range
+ALTER TABLE layer2_network
+	ADD CONSTRAINT fk_l2_net_encap_range_id
+	FOREIGN KEY (encapsulation_range_id) REFERENCES encapsulation_range(encapsulation_range_id);
+
+-- TRIGGERS
+SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'layer2_network');
+SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'layer2_network');
+ALTER SEQUENCE layer2_network_layer2_network_id_seq
+	 OWNED BY layer2_network.layer2_network_id;
+DROP TABLE IF EXISTS layer2_network_v64;
+DROP TABLE IF EXISTS audit.layer2_network_v64;
+-- DONE DEALING WITH TABLE layer2_network [1173678]
+--------------------------------------------------------------------
+--------------------------------------------------------------------
+-- DEALING WITH TABLE layer3_network [1146042]
+-- Save grants for later reapplication
+SELECT schema_support.save_grants_for_replay('jazzhands', 'layer3_network', 'layer3_network');
+
+-- FOREIGN KEYS FROM
+ALTER TABLE property DROP CONSTRAINT IF EXISTS fk_prop_l3netid;
+
+-- FOREIGN KEYS TO
+ALTER TABLE jazzhands.layer3_network DROP CONSTRAINT IF EXISTS fk_l3_net_def_gate_nbid;
+ALTER TABLE jazzhands.layer3_network DROP CONSTRAINT IF EXISTS fk_l3net_l2net;
+ALTER TABLE jazzhands.layer3_network DROP CONSTRAINT IF EXISTS fk_l3net_rndv_pt_nblk_id;
+ALTER TABLE jazzhands.layer3_network DROP CONSTRAINT IF EXISTS fk_layer3_network_netblock_id;
+
+-- EXTRA-SCHEMA constraints
+SELECT schema_support.save_constraint_for_replay('jazzhands', 'layer3_network');
+
+-- PRIMARY and ALTERNATE KEYS
+ALTER TABLE jazzhands.layer3_network DROP CONSTRAINT IF EXISTS ak_layer3_network_netblock_id;
+ALTER TABLE jazzhands.layer3_network DROP CONSTRAINT IF EXISTS pk_layer3_network;
+-- INDEXES
+DROP INDEX IF EXISTS "jazzhands"."xif_l3_net_def_gate_nbid";
+DROP INDEX IF EXISTS "jazzhands"."xif_l3net_l2net";
+DROP INDEX IF EXISTS "jazzhands"."xif_l3net_rndv_pt_nblk_id";
+-- CHECK CONSTRAINTS, etc
+-- TRIGGERS, etc
+DROP TRIGGER IF EXISTS trig_userlog_layer3_network ON jazzhands.layer3_network;
+DROP TRIGGER IF EXISTS trigger_audit_layer3_network ON jazzhands.layer3_network;
+SELECT schema_support.save_dependant_objects_for_replay('jazzhands', 'layer3_network');
+---- BEGIN audit.layer3_network TEARDOWN
+-- Save grants for later reapplication
+SELECT schema_support.save_grants_for_replay('audit', 'layer3_network', 'audit.layer3_network');
+
+-- FOREIGN KEYS FROM
+
+-- FOREIGN KEYS TO
+
+-- EXTRA-SCHEMA constraints
+SELECT schema_support.save_constraint_for_replay('audit', 'layer3_network');
+
+-- PRIMARY and ALTERNATE KEYS
+-- INDEXES
+DROP INDEX IF EXISTS "audit"."layer3_network_aud#timestamp_idx";
+-- CHECK CONSTRAINTS, etc
+-- TRIGGERS, etc
+SELECT schema_support.save_dependant_objects_for_replay('audit', 'layer3_network');
+---- DONE audit.layer3_network TEARDOWN
+
+
+ALTER TABLE layer3_network RENAME TO layer3_network_v64;
+ALTER TABLE audit.layer3_network RENAME TO layer3_network_v64;
+
+CREATE TABLE layer3_network
+(
+	layer3_network_id	integer NOT NULL,
+	netblock_id	integer  NULL,
+	layer2_network_id	integer  NULL,
+	default_gateway_netblock_id	integer  NULL,
+	rendezvous_netblock_id	integer  NULL,
+	description	varchar(255)  NULL,
+	data_ins_user	varchar(255)  NULL,
+	data_ins_date	timestamp with time zone  NULL,
+	data_upd_user	varchar(255)  NULL,
+	data_upd_date	timestamp with time zone  NULL
+);
+SELECT schema_support.build_audit_table('audit', 'jazzhands', 'layer3_network', false);
+ALTER TABLE layer3_network
+	ALTER layer3_network_id
+	SET DEFAULT nextval('layer3_network_layer3_network_id_seq'::regclass);
+INSERT INTO layer3_network (
+	layer3_network_id,
+	netblock_id,
+	layer2_network_id,
+	default_gateway_netblock_id,
+	rendezvous_netblock_id,		-- new column (rendezvous_netblock_id)
+	description,
+	data_ins_user,
+	data_ins_date,
+	data_upd_user,
+	data_upd_date
+) SELECT
+	layer3_network_id,
+	netblock_id,
+	layer2_network_id,
+	default_gateway_netblock_id,
+	NULL,		-- new column (rendezvous_netblock_id)
+	description,
+	data_ins_user,
+	data_ins_date,
+	data_upd_user,
+	data_upd_date
+FROM layer3_network_v64;
+
+INSERT INTO audit.layer3_network (
+	layer3_network_id,
+	netblock_id,
+	layer2_network_id,
+	default_gateway_netblock_id,
+	rendezvous_netblock_id,		-- new column (rendezvous_netblock_id)
+	description,
+	data_ins_user,
+	data_ins_date,
+	data_upd_user,
+	data_upd_date,
+	"aud#action",
+	"aud#timestamp",
+	"aud#user",
+	"aud#seq"
+) SELECT
+	layer3_network_id,
+	netblock_id,
+	layer2_network_id,
+	default_gateway_netblock_id,
+	NULL,		-- new column (rendezvous_netblock_id)
+	description,
+	data_ins_user,
+	data_ins_date,
+	data_upd_user,
+	data_upd_date,
+	"aud#action",
+	"aud#timestamp",
+	"aud#user",
+	"aud#seq"
+FROM audit.layer3_network_v64;
+
+ALTER TABLE layer3_network
+	ALTER layer3_network_id
+	SET DEFAULT nextval('layer3_network_layer3_network_id_seq'::regclass);
+
+-- PRIMARY AND ALTERNATE KEYS
+ALTER TABLE layer3_network ADD CONSTRAINT ak_layer3_network_netblock_id UNIQUE (netblock_id);
+ALTER TABLE layer3_network ADD CONSTRAINT pk_layer3_network PRIMARY KEY (layer3_network_id);
+
+-- Table/Column Comments
+COMMENT ON COLUMN layer3_network.rendezvous_netblock_id IS 'Multicast Rendevous Point Address';
+-- INDEXES
+CREATE INDEX xif_l3_net_def_gate_nbid ON layer3_network USING btree (default_gateway_netblock_id);
+CREATE INDEX xif_l3net_l2net ON layer3_network USING btree (layer2_network_id);
+CREATE INDEX xif_l3net_rndv_pt_nblk_id ON layer3_network USING btree (rendezvous_netblock_id);
+
+-- CHECK CONSTRAINTS
+
+-- FOREIGN KEYS FROM
+-- consider FK layer3_network and l3_network_coll_l3_network
+-- Skipping this FK since table does not exist yet
+--ALTER TABLE l3_network_coll_l3_network
+--	ADD CONSTRAINT fk_l3netcol_l3_net_l3netid
+--	FOREIGN KEY (layer3_network_id) REFERENCES layer3_network(layer3_network_id);
+
+
+-- FOREIGN KEYS TO
+-- consider FK layer3_network and netblock
+ALTER TABLE layer3_network
+	ADD CONSTRAINT fk_l3_net_def_gate_nbid
+	FOREIGN KEY (default_gateway_netblock_id) REFERENCES netblock(netblock_id);
+-- consider FK layer3_network and layer2_network
+ALTER TABLE layer3_network
+	ADD CONSTRAINT fk_l3net_l2net
+	FOREIGN KEY (layer2_network_id) REFERENCES layer2_network(layer2_network_id);
+-- consider FK layer3_network and netblock
+ALTER TABLE layer3_network
+	ADD CONSTRAINT fk_l3net_rndv_pt_nblk_id
+	FOREIGN KEY (rendezvous_netblock_id) REFERENCES netblock(netblock_id);
+-- consider FK layer3_network and netblock
+ALTER TABLE layer3_network
+	ADD CONSTRAINT fk_layer3_network_netblock_id
+	FOREIGN KEY (netblock_id) REFERENCES netblock(netblock_id);
+
+-- TRIGGERS
+SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'layer3_network');
+SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'layer3_network');
+ALTER SEQUENCE layer3_network_layer3_network_id_seq
+	 OWNED BY layer3_network.layer3_network_id;
+DROP TABLE IF EXISTS layer3_network_v64;
+DROP TABLE IF EXISTS audit.layer3_network_v64;
+-- DONE DEALING WITH TABLE layer3_network [1173721]
+--------------------------------------------------------------------
+--------------------------------------------------------------------
+-- DEALING WITH TABLE val_app_key [1147008]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'val_app_key', 'val_app_key');
 
@@ -2896,7 +3559,7 @@ CREATE INDEX xif1val_app_key ON val_app_key USING btree (appaal_group_name);
 -- consider FK val_app_key and val_appaal_group_name
 -- Skipping this FK since table does not exist yet
 --ALTER TABLE val_app_key
---	ADD CONSTRAINT r_727
+--	ADD CONSTRAINT fk_val_app_key_group_name
 --	FOREIGN KEY (appaal_group_name) REFERENCES val_appaal_group_name(appaal_group_name);
 
 
@@ -2905,10 +3568,10 @@ SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_app_key');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_app_key');
 DROP TABLE IF EXISTS val_app_key_v64;
 DROP TABLE IF EXISTS audit.val_app_key_v64;
--- DONE DEALING WITH TABLE val_app_key [744850]
+-- DONE DEALING WITH TABLE val_app_key [1174727]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE val_app_key_values [1090413]
+-- DEALING WITH TABLE val_app_key_values [1147016]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'val_app_key_values', 'val_app_key_values');
 
@@ -3028,7 +3691,7 @@ SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_app_key_values');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_app_key_values');
 DROP TABLE IF EXISTS val_app_key_values_v64;
 DROP TABLE IF EXISTS audit.val_app_key_values_v64;
--- DONE DEALING WITH TABLE val_app_key_values [744859]
+-- DONE DEALING WITH TABLE val_app_key_values [1174736]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE val_appaal_group_name
@@ -3073,12 +3736,12 @@ ALTER TABLE val_appaal_group_name ADD CONSTRAINT pk_val_appaal_group_name PRIMAR
 -- consider FK val_appaal_group_name and appaal_instance_property
 -- Skipping this FK since column does not exist yet
 --ALTER TABLE appaal_instance_property
---	ADD CONSTRAINT r_725
+--	ADD CONSTRAINT fk_allgrpprop_val_name
 --	FOREIGN KEY (appaal_group_name) REFERENCES val_appaal_group_name(appaal_group_name);
 
 -- consider FK val_appaal_group_name and val_app_key
 ALTER TABLE val_app_key
-	ADD CONSTRAINT r_727
+	ADD CONSTRAINT fk_val_app_key_group_name
 	FOREIGN KEY (appaal_group_name) REFERENCES val_appaal_group_name(appaal_group_name);
 
 -- FOREIGN KEYS TO
@@ -3086,7 +3749,7 @@ ALTER TABLE val_app_key
 -- TRIGGERS
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_appaal_group_name');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_appaal_group_name');
--- DONE DEALING WITH TABLE val_appaal_group_name [744867]
+-- DONE DEALING WITH TABLE val_appaal_group_name [1174744]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE val_company_collection_type
@@ -3141,7 +3804,7 @@ ALTER TABLE val_company_collection_type ADD CONSTRAINT check_yes_no_845966153
 -- consider FK val_company_collection_type and val_property
 -- Skipping this FK since column does not exist yet
 --ALTER TABLE val_property
---	ADD CONSTRAINT r_753
+--	ADD CONSTRAINT fk_val_prop_comp_coll_type
 --	FOREIGN KEY (company_collection_type) REFERENCES val_company_collection_type(company_collection_type);
 
 
@@ -3150,7 +3813,7 @@ ALTER TABLE val_company_collection_type ADD CONSTRAINT check_yes_no_845966153
 -- TRIGGERS
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_company_collection_type');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_company_collection_type');
--- DONE DEALING WITH TABLE val_company_collection_type [744955]
+-- DONE DEALING WITH TABLE val_company_collection_type [1174832]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE val_dns_domain_collection_type
@@ -3192,7 +3855,7 @@ ALTER TABLE val_dns_domain_collection_type ADD CONSTRAINT check_yes_no_991893281
 -- consider FK val_dns_domain_collection_type and val_property
 -- Skipping this FK since column does not exist yet
 --ALTER TABLE val_property
---	ADD CONSTRAINT r_755
+--	ADD CONSTRAINT fk_val_property_dnsdomcolltype
 --	FOREIGN KEY (dns_domain_colection_type) REFERENCES val_dns_domain_collection_type(dns_domain_colection_type);
 
 
@@ -3201,7 +3864,123 @@ ALTER TABLE val_dns_domain_collection_type ADD CONSTRAINT check_yes_no_991893281
 -- TRIGGERS
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_dns_domain_collection_type');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_dns_domain_collection_type');
--- DONE DEALING WITH TABLE val_dns_domain_collection_type [745096]
+-- DONE DEALING WITH TABLE val_dns_domain_collection_type [1174973]
+--------------------------------------------------------------------
+--------------------------------------------------------------------
+-- DEALING WITH NEW TABLE val_layer2_network_coll_type
+CREATE TABLE val_layer2_network_coll_type
+(
+	layer2_network_collection_type	varchar(50) NOT NULL,
+	description	varchar(4000)  NULL,
+	max_num_members	integer  NULL,
+	max_num_collections	integer  NULL,
+	can_have_hierarchy	character(1) NOT NULL,
+	data_ins_user	varchar(255)  NULL,
+	data_ins_date	timestamp with time zone  NULL,
+	data_upd_user	varchar(255)  NULL,
+	data_upd_date	timestamp with time zone  NULL
+);
+SELECT schema_support.build_audit_table('audit', 'jazzhands', 'val_layer2_network_coll_type', true);
+--
+-- Copying initialization data
+--
+ALTER TABLE val_layer2_network_coll_type
+	ALTER can_have_hierarchy
+	SET DEFAULT 'Y'::bpchar;
+
+-- PRIMARY AND ALTERNATE KEYS
+ALTER TABLE val_layer2_network_coll_type ADD CONSTRAINT pk_val_layer2_network_coll_typ PRIMARY KEY (layer2_network_collection_type);
+
+-- Table/Column Comments
+COMMENT ON COLUMN val_layer2_network_coll_type.max_num_members IS 'Maximum INTEGER of members in a given collection of this type
+';
+COMMENT ON COLUMN val_layer2_network_coll_type.max_num_collections IS 'Maximum INTEGER of collections a given member can be a part of of this type.
+';
+COMMENT ON COLUMN val_layer2_network_coll_type.can_have_hierarchy IS 'Indicates if the collections can have other collections to make it hierarchical.';
+-- INDEXES
+
+-- CHECK CONSTRAINTS
+ALTER TABLE val_layer2_network_coll_type ADD CONSTRAINT check_yes_no_2053022263
+	CHECK (can_have_hierarchy = ANY (ARRAY['Y'::bpchar, 'N'::bpchar]));
+
+-- FOREIGN KEYS FROM
+-- consider FK val_layer2_network_coll_type and layer2_network_collection
+-- Skipping this FK since table does not exist yet
+--ALTER TABLE layer2_network_collection
+--	ADD CONSTRAINT fk_l2netcoll_type
+--	FOREIGN KEY (layer2_network_collection_type) REFERENCES val_layer2_network_coll_type(layer2_network_collection_type);
+
+-- consider FK val_layer2_network_coll_type and val_property
+-- Skipping this FK since column does not exist yet
+--ALTER TABLE val_property
+--	ADD CONSTRAINT fk_val_prop_l2netype
+--	FOREIGN KEY (layer2_network_collection_type) REFERENCES val_layer2_network_coll_type(layer2_network_collection_type);
+
+
+-- FOREIGN KEYS TO
+
+-- TRIGGERS
+SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_layer2_network_coll_type');
+SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_layer2_network_coll_type');
+-- DONE DEALING WITH TABLE val_layer2_network_coll_type [1175081]
+--------------------------------------------------------------------
+--------------------------------------------------------------------
+-- DEALING WITH NEW TABLE val_layer3_network_coll_type
+CREATE TABLE val_layer3_network_coll_type
+(
+	layer3_network_collection_type	varchar(50) NOT NULL,
+	description	varchar(4000)  NULL,
+	max_num_members	integer  NULL,
+	max_num_collections	integer  NULL,
+	can_have_hierarchy	character(1) NOT NULL,
+	data_ins_user	varchar(255)  NULL,
+	data_ins_date	timestamp with time zone  NULL,
+	data_upd_user	varchar(255)  NULL,
+	data_upd_date	timestamp with time zone  NULL
+);
+SELECT schema_support.build_audit_table('audit', 'jazzhands', 'val_layer3_network_coll_type', true);
+--
+-- Copying initialization data
+--
+ALTER TABLE val_layer3_network_coll_type
+	ALTER can_have_hierarchy
+	SET DEFAULT 'Y'::bpchar;
+
+-- PRIMARY AND ALTERNATE KEYS
+ALTER TABLE val_layer3_network_coll_type ADD CONSTRAINT pk_val_layer3_network_coll_typ PRIMARY KEY (layer3_network_collection_type);
+
+-- Table/Column Comments
+COMMENT ON COLUMN val_layer3_network_coll_type.max_num_members IS 'Maximum INTEGER of members in a given collection of this type
+';
+COMMENT ON COLUMN val_layer3_network_coll_type.max_num_collections IS 'Maximum INTEGER of collections a given member can be a part of of this type.
+';
+COMMENT ON COLUMN val_layer3_network_coll_type.can_have_hierarchy IS 'Indicates if the collections can have other collections to make it hierarchical.';
+-- INDEXES
+
+-- CHECK CONSTRAINTS
+ALTER TABLE val_layer3_network_coll_type ADD CONSTRAINT check_yes_no_l3nc_chh
+	CHECK (can_have_hierarchy = ANY (ARRAY['Y'::bpchar, 'N'::bpchar]));
+
+-- FOREIGN KEYS FROM
+-- consider FK val_layer3_network_coll_type and layer3_network_collection
+-- Skipping this FK since table does not exist yet
+--ALTER TABLE layer3_network_collection
+--	ADD CONSTRAINT fk_l3_netcol_netcol_type
+--	FOREIGN KEY (layer3_network_collection_type) REFERENCES val_layer3_network_coll_type(layer3_network_collection_type);
+
+-- consider FK val_layer3_network_coll_type and val_property
+-- Skipping this FK since column does not exist yet
+--ALTER TABLE val_property
+--	ADD CONSTRAINT fk_val_prop_l3netwok_type
+--	FOREIGN KEY (layer3_network_collection_type) REFERENCES val_layer3_network_coll_type(layer3_network_collection_type);
+
+
+-- FOREIGN KEYS TO
+
+-- TRIGGERS
+SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_layer3_network_coll_type');
+SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_layer3_network_coll_type');
+-- DONE DEALING WITH TABLE val_layer3_network_coll_type [1175091]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE val_logical_volume_type
@@ -3240,10 +4019,10 @@ ALTER TABLE val_logical_volume_type ADD CONSTRAINT pk_logical_volume_type PRIMAR
 -- TRIGGERS
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_logical_volume_type');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_logical_volume_type');
--- DONE DEALING WITH TABLE val_logical_volume_type [745229]
+-- DONE DEALING WITH TABLE val_logical_volume_type [1175126]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE val_netblock_collection_type [1090753]
+-- DEALING WITH TABLE val_netblock_collection_type [1147356]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'val_netblock_collection_type', 'val_netblock_collection_type');
 
@@ -3400,7 +4179,7 @@ ALTER TABLE val_property
 -- consider FK val_netblock_collection_type and val_property
 -- Skipping this FK since column does not exist yet
 --ALTER TABLE val_property
---	ADD CONSTRAINT r_756
+--	ADD CONSTRAINT fk_val_property_netblkcolltype
 --	FOREIGN KEY (netblock_collection_type) REFERENCES val_netblock_collection_type(netblock_collection_type);
 
 
@@ -3411,7 +4190,7 @@ SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_netblock_collectio
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_netblock_collection_type');
 DROP TABLE IF EXISTS val_netblock_collection_type_v64;
 DROP TABLE IF EXISTS audit.val_netblock_collection_type_v64;
--- DONE DEALING WITH TABLE val_netblock_collection_type [745237]
+-- DONE DEALING WITH TABLE val_netblock_collection_type [1175134]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE val_person_company_attr_dtype
@@ -3450,7 +4229,7 @@ ALTER TABLE val_person_company_attr_dtype ADD CONSTRAINT pk_val_pers_comp_attr_d
 -- TRIGGERS
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_person_company_attr_dtype');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_person_company_attr_dtype');
--- DONE DEALING WITH TABLE val_person_company_attr_dtype [745339]
+-- DONE DEALING WITH TABLE val_person_company_attr_dtype [1175236]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE val_person_company_attr_name
@@ -3488,7 +4267,7 @@ CREATE INDEX xifprescompattr_name_datatyp ON val_person_company_attr_name USING 
 -- consider FK val_person_company_attr_name and person_company_attr
 -- Skipping this FK since table does not exist yet
 --ALTER TABLE person_company_attr
---	ADD CONSTRAINT r_748
+--	ADD CONSTRAINT fk_person_comp_attr_val_name
 --	FOREIGN KEY (person_company_attr_name) REFERENCES val_person_company_attr_name(person_company_attr_name);
 
 
@@ -3501,7 +4280,7 @@ ALTER TABLE val_person_company_attr_name
 -- TRIGGERS
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_person_company_attr_name');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_person_company_attr_name');
--- DONE DEALING WITH TABLE val_person_company_attr_name [745347]
+-- DONE DEALING WITH TABLE val_person_company_attr_name [1175244]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE val_person_company_attr_value
@@ -3540,10 +4319,10 @@ ALTER TABLE val_person_company_attr_value
 -- TRIGGERS
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_person_company_attr_value');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_person_company_attr_value');
--- DONE DEALING WITH TABLE val_person_company_attr_value [745356]
+-- DONE DEALING WITH TABLE val_person_company_attr_value [1175253]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE val_property [1090939]
+-- DEALING WITH TABLE val_property [1147542]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'val_property', 'val_property');
 
@@ -3624,6 +4403,8 @@ CREATE TABLE val_property
 	company_collection_type	varchar(50)  NULL,
 	device_collection_type	varchar(50)  NULL,
 	dns_domain_colection_type	varchar(50)  NULL,
+	layer2_network_collection_type	varchar(50)  NULL,
+	layer3_network_collection_type	varchar(50)  NULL,
 	netblock_collection_type	varchar(50)  NULL,
 	property_collection_type	varchar(50)  NULL,
 	service_env_collection_type	varchar(50)  NULL,
@@ -3640,8 +4421,8 @@ CREATE TABLE val_property
 	permit_device_collection_id	character(10) NOT NULL,
 	permit_dns_domain_id	character(10) NOT NULL,
 	permit_dns_domain_coll_id	character(10) NOT NULL,
-	permit_layer2_network_id	character(10) NOT NULL,
-	permit_layer3_network_id	character(10) NOT NULL,
+	permit_layer2_network_coll_id	character(10) NOT NULL,
+	permit_layer3_network_coll_id	character(10) NOT NULL,
 	permit_netblock_collection_id	character(10) NOT NULL,
 	permit_operating_system_id	character(10) NOT NULL,
 	permit_os_snapshot_id	character(10) NOT NULL,
@@ -3684,10 +4465,10 @@ ALTER TABLE val_property
 	ALTER permit_dns_domain_coll_id
 	SET DEFAULT 'PROHIBITED'::bpchar;
 ALTER TABLE val_property
-	ALTER permit_layer2_network_id
+	ALTER permit_layer2_network_coll_id
 	SET DEFAULT 'PROHIBITED'::bpchar;
 ALTER TABLE val_property
-	ALTER permit_layer3_network_id
+	ALTER permit_layer3_network_coll_id
 	SET DEFAULT 'PROHIBITED'::bpchar;
 ALTER TABLE val_property
 	ALTER permit_netblock_collection_id
@@ -3721,6 +4502,8 @@ INSERT INTO val_property (
 	company_collection_type,		-- new column (company_collection_type)
 	device_collection_type,		-- new column (device_collection_type)
 	dns_domain_colection_type,		-- new column (dns_domain_colection_type)
+	layer2_network_collection_type,		-- new column (layer2_network_collection_type)
+	layer3_network_collection_type,		-- new column (layer3_network_collection_type)
 	netblock_collection_type,		-- new column (netblock_collection_type)
 	property_collection_type,		-- new column (property_collection_type)
 	service_env_collection_type,		-- new column (service_env_collection_type)
@@ -3737,8 +4520,8 @@ INSERT INTO val_property (
 	permit_device_collection_id,
 	permit_dns_domain_id,
 	permit_dns_domain_coll_id,		-- new column (permit_dns_domain_coll_id)
-	permit_layer2_network_id,
-	permit_layer3_network_id,
+	permit_layer2_network_coll_id,		-- new column (permit_layer2_network_coll_id)
+	permit_layer3_network_coll_id,		-- new column (permit_layer3_network_coll_id)
 	permit_netblock_collection_id,
 	permit_operating_system_id,
 	permit_os_snapshot_id,
@@ -3759,6 +4542,8 @@ INSERT INTO val_property (
 	NULL,		-- new column (company_collection_type)
 	NULL,		-- new column (device_collection_type)
 	NULL,		-- new column (dns_domain_colection_type)
+	NULL,		-- new column (layer2_network_collection_type)
+	NULL,		-- new column (layer3_network_collection_type)
 	NULL,		-- new column (netblock_collection_type)
 	NULL,		-- new column (property_collection_type)
 	NULL,		-- new column (service_env_collection_type)
@@ -3775,8 +4560,8 @@ INSERT INTO val_property (
 	permit_device_collection_id,
 	permit_dns_domain_id,
 	'PROHIBITED'::bpchar,		-- new column (permit_dns_domain_coll_id)
-	permit_layer2_network_id,
-	permit_layer3_network_id,
+	'PROHIBITED'::bpchar,		-- new column (permit_layer2_network_coll_id)
+	'PROHIBITED'::bpchar,		-- new column (permit_layer3_network_coll_id)
 	permit_netblock_collection_id,
 	permit_operating_system_id,
 	permit_os_snapshot_id,
@@ -3799,6 +4584,8 @@ INSERT INTO audit.val_property (
 	company_collection_type,		-- new column (company_collection_type)
 	device_collection_type,		-- new column (device_collection_type)
 	dns_domain_colection_type,		-- new column (dns_domain_colection_type)
+	layer2_network_collection_type,		-- new column (layer2_network_collection_type)
+	layer3_network_collection_type,		-- new column (layer3_network_collection_type)
 	netblock_collection_type,		-- new column (netblock_collection_type)
 	property_collection_type,		-- new column (property_collection_type)
 	service_env_collection_type,		-- new column (service_env_collection_type)
@@ -3815,8 +4602,8 @@ INSERT INTO audit.val_property (
 	permit_device_collection_id,
 	permit_dns_domain_id,
 	permit_dns_domain_coll_id,		-- new column (permit_dns_domain_coll_id)
-	permit_layer2_network_id,
-	permit_layer3_network_id,
+	permit_layer2_network_coll_id,		-- new column (permit_layer2_network_coll_id)
+	permit_layer3_network_coll_id,		-- new column (permit_layer3_network_coll_id)
 	permit_netblock_collection_id,
 	permit_operating_system_id,
 	permit_os_snapshot_id,
@@ -3841,6 +4628,8 @@ INSERT INTO audit.val_property (
 	NULL,		-- new column (company_collection_type)
 	NULL,		-- new column (device_collection_type)
 	NULL,		-- new column (dns_domain_colection_type)
+	NULL,		-- new column (layer2_network_collection_type)
+	NULL,		-- new column (layer3_network_collection_type)
 	NULL,		-- new column (netblock_collection_type)
 	NULL,		-- new column (property_collection_type)
 	NULL,		-- new column (service_env_collection_type)
@@ -3857,8 +4646,8 @@ INSERT INTO audit.val_property (
 	permit_device_collection_id,
 	permit_dns_domain_id,
 	NULL,		-- new column (permit_dns_domain_coll_id)
-	permit_layer2_network_id,
-	permit_layer3_network_id,
+	NULL,		-- new column (permit_layer2_network_coll_id)
+	NULL,		-- new column (permit_layer3_network_coll_id)
 	permit_netblock_collection_id,
 	permit_operating_system_id,
 	permit_os_snapshot_id,
@@ -3905,10 +4694,10 @@ ALTER TABLE val_property
 	ALTER permit_dns_domain_coll_id
 	SET DEFAULT 'PROHIBITED'::bpchar;
 ALTER TABLE val_property
-	ALTER permit_layer2_network_id
+	ALTER permit_layer2_network_coll_id
 	SET DEFAULT 'PROHIBITED'::bpchar;
 ALTER TABLE val_property
-	ALTER permit_layer3_network_id
+	ALTER permit_layer3_network_coll_id
 	SET DEFAULT 'PROHIBITED'::bpchar;
 ALTER TABLE val_property
 	ALTER permit_netblock_collection_id
@@ -3962,8 +4751,8 @@ COMMENT ON COLUMN val_property.permit_company_collection_id IS 'defines permissi
 COMMENT ON COLUMN val_property.permit_device_collection_id IS 'defines permissibility/requirement of device_collection_id on LHS of property';
 COMMENT ON COLUMN val_property.permit_dns_domain_id IS 'defines permissibility/requirement of dns_domain_id on LHS of property. *NOTE*  THIS COLUMN WILL BE REMOVED IN >0.65';
 COMMENT ON COLUMN val_property.permit_dns_domain_coll_id IS 'defines permissibility/requirement of dns_domain_collection_id on LHS of property';
-COMMENT ON COLUMN val_property.permit_layer2_network_id IS 'defines permissibility/requirement of layer2_network_id on LHS of property';
-COMMENT ON COLUMN val_property.permit_layer3_network_id IS 'defines permissibility/requirement of layer3_network_id on LHS of property';
+COMMENT ON COLUMN val_property.permit_layer2_network_coll_id IS 'defines permissibility/requirement of layer2_network_id on LHS of property';
+COMMENT ON COLUMN val_property.permit_layer3_network_coll_id IS 'defines permissibility/requirement of layer3_network_id on LHS of property';
 COMMENT ON COLUMN val_property.permit_netblock_collection_id IS 'defines permissibility/requirement of netblock_collection_id on LHS of property';
 COMMENT ON COLUMN val_property.permit_operating_system_id IS 'defines permissibility/requirement of operating_system_id on LHS of property';
 COMMENT ON COLUMN val_property.permit_os_snapshot_id IS 'defines permissibility/requirement of operating_system_snapshot_id on LHS of property';
@@ -3976,6 +4765,8 @@ COMMENT ON COLUMN val_property.permit_property_rank IS 'defines permissibility o
 CREATE INDEX xif10val_property ON val_property USING btree (netblock_collection_type);
 CREATE INDEX xif11val_property ON val_property USING btree (property_collection_type);
 CREATE INDEX xif12val_property ON val_property USING btree (service_env_collection_type);
+CREATE INDEX xif13val_property ON val_property USING btree (layer3_network_collection_type);
+CREATE INDEX xif14val_property ON val_property USING btree (layer2_network_collection_type);
 CREATE INDEX xif1val_property ON val_property USING btree (property_data_type);
 CREATE INDEX xif2val_property ON val_property USING btree (property_type);
 CREATE INDEX xif3val_property ON val_property USING btree (prop_val_acct_coll_type_rstrct);
@@ -3987,14 +4778,14 @@ CREATE INDEX xif8val_property ON val_property USING btree (device_collection_typ
 CREATE INDEX xif9val_property ON val_property USING btree (dns_domain_colection_type);
 
 -- CHECK CONSTRAINTS
-ALTER TABLE val_property ADD CONSTRAINT check_prp_prmt_1279736247
-	CHECK (permit_layer3_network_id = ANY (ARRAY['REQUIRED'::bpchar, 'PROHIBITED'::bpchar, 'ALLOWED'::bpchar]));
-ALTER TABLE val_property ADD CONSTRAINT check_prp_prmt_1279736503
-	CHECK (permit_layer2_network_id = ANY (ARRAY['REQUIRED'::bpchar, 'PROHIBITED'::bpchar, 'ALLOWED'::bpchar]));
 ALTER TABLE val_property ADD CONSTRAINT check_prp_prmt_1494616001
 	CHECK (permit_dns_domain_coll_id = ANY (ARRAY['REQUIRED'::bpchar, 'PROHIBITED'::bpchar, 'ALLOWED'::bpchar]));
 ALTER TABLE val_property ADD CONSTRAINT check_prp_prmt_1804972034
 	CHECK (permit_os_snapshot_id = ANY (ARRAY['REQUIRED'::bpchar, 'PROHIBITED'::bpchar, 'ALLOWED'::bpchar]));
+ALTER TABLE val_property ADD CONSTRAINT check_prp_prmt_185689986
+	CHECK (permit_layer2_network_coll_id = ANY (ARRAY['REQUIRED'::bpchar, 'PROHIBITED'::bpchar, 'ALLOWED'::bpchar]));
+ALTER TABLE val_property ADD CONSTRAINT check_prp_prmt_185755522
+	CHECK (permit_layer3_network_coll_id = ANY (ARRAY['REQUIRED'::bpchar, 'PROHIBITED'::bpchar, 'ALLOWED'::bpchar]));
 ALTER TABLE val_property ADD CONSTRAINT check_prp_prmt_2016888554
 	CHECK (permit_account_realm_id = ANY (ARRAY['REQUIRED'::bpchar, 'PROHIBITED'::bpchar, 'ALLOWED'::bpchar]));
 ALTER TABLE val_property ADD CONSTRAINT check_prp_prmt_2139007167
@@ -4041,14 +4832,46 @@ ALTER TABLE val_property_value
 	FOREIGN KEY (property_name, property_type) REFERENCES val_property(property_name, property_type);
 
 -- FOREIGN KEYS TO
+-- consider FK val_property and val_service_env_coll_type
+ALTER TABLE val_property
+	ADD CONSTRAINT fk_prop_svcemvcoll_type
+	FOREIGN KEY (service_env_collection_type) REFERENCES val_service_env_coll_type(service_env_collection_type);
 -- consider FK val_property and val_device_collection_type
 ALTER TABLE val_property
 	ADD CONSTRAINT fk_prop_val_devcol_typ_rstr_dc
 	FOREIGN KEY (prop_val_dev_coll_type_rstrct) REFERENCES val_device_collection_type(device_collection_type);
+-- consider FK val_property and val_device_collection_type
+ALTER TABLE val_property
+	ADD CONSTRAINT fk_prop_val_devcoll_id
+	FOREIGN KEY (device_collection_type) REFERENCES val_device_collection_type(device_collection_type);
+-- consider FK val_property and val_account_collection_type
+ALTER TABLE val_property
+	ADD CONSTRAINT fk_val_prop_acct_coll_type
+	FOREIGN KEY (account_collection_type) REFERENCES val_account_collection_type(account_collection_type);
+-- consider FK val_property and val_company_collection_type
+ALTER TABLE val_property
+	ADD CONSTRAINT fk_val_prop_comp_coll_type
+	FOREIGN KEY (company_collection_type) REFERENCES val_company_collection_type(company_collection_type);
+-- consider FK val_property and val_layer2_network_coll_type
+ALTER TABLE val_property
+	ADD CONSTRAINT fk_val_prop_l2netype
+	FOREIGN KEY (layer2_network_collection_type) REFERENCES val_layer2_network_coll_type(layer2_network_collection_type);
+-- consider FK val_property and val_layer3_network_coll_type
+ALTER TABLE val_property
+	ADD CONSTRAINT fk_val_prop_l3netwok_type
+	FOREIGN KEY (layer3_network_collection_type) REFERENCES val_layer3_network_coll_type(layer3_network_collection_type);
 -- consider FK val_property and val_netblock_collection_type
 ALTER TABLE val_property
 	ADD CONSTRAINT fk_val_prop_nblk_coll_type
 	FOREIGN KEY (prop_val_nblk_coll_type_rstrct) REFERENCES val_netblock_collection_type(netblock_collection_type);
+-- consider FK val_property and val_dns_domain_collection_type
+ALTER TABLE val_property
+	ADD CONSTRAINT fk_val_property_dnsdomcolltype
+	FOREIGN KEY (dns_domain_colection_type) REFERENCES val_dns_domain_collection_type(dns_domain_colection_type);
+-- consider FK val_property and val_netblock_collection_type
+ALTER TABLE val_property
+	ADD CONSTRAINT fk_val_property_netblkcolltype
+	FOREIGN KEY (netblock_collection_type) REFERENCES val_netblock_collection_type(netblock_collection_type);
 -- consider FK val_property and val_property_data_type
 ALTER TABLE val_property
 	ADD CONSTRAINT fk_valprop_propdttyp
@@ -4061,44 +4884,20 @@ ALTER TABLE val_property
 ALTER TABLE val_property
 	ADD CONSTRAINT fk_valprop_pv_actyp_rst
 	FOREIGN KEY (prop_val_acct_coll_type_rstrct) REFERENCES val_account_collection_type(account_collection_type);
--- consider FK val_property and val_account_collection_type
-ALTER TABLE val_property
-	ADD CONSTRAINT r_752
-	FOREIGN KEY (account_collection_type) REFERENCES val_account_collection_type(account_collection_type);
--- consider FK val_property and val_company_collection_type
-ALTER TABLE val_property
-	ADD CONSTRAINT r_753
-	FOREIGN KEY (company_collection_type) REFERENCES val_company_collection_type(company_collection_type);
--- consider FK val_property and val_device_collection_type
-ALTER TABLE val_property
-	ADD CONSTRAINT r_754
-	FOREIGN KEY (device_collection_type) REFERENCES val_device_collection_type(device_collection_type);
--- consider FK val_property and val_dns_domain_collection_type
-ALTER TABLE val_property
-	ADD CONSTRAINT r_755
-	FOREIGN KEY (dns_domain_colection_type) REFERENCES val_dns_domain_collection_type(dns_domain_colection_type);
--- consider FK val_property and val_netblock_collection_type
-ALTER TABLE val_property
-	ADD CONSTRAINT r_756
-	FOREIGN KEY (netblock_collection_type) REFERENCES val_netblock_collection_type(netblock_collection_type);
 -- consider FK val_property and val_property_collection_type
 ALTER TABLE val_property
-	ADD CONSTRAINT r_757
+	ADD CONSTRAINT fk_vla_property_val_propcollty
 	FOREIGN KEY (property_collection_type) REFERENCES val_property_collection_type(property_collection_type);
--- consider FK val_property and val_service_env_coll_type
-ALTER TABLE val_property
-	ADD CONSTRAINT r_758
-	FOREIGN KEY (service_env_collection_type) REFERENCES val_service_env_coll_type(service_env_collection_type);
 
 -- TRIGGERS
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_property');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_property');
 DROP TABLE IF EXISTS val_property_v64;
 DROP TABLE IF EXISTS audit.val_property_v64;
--- DONE DEALING WITH TABLE val_property [745451]
+-- DONE DEALING WITH TABLE val_property [1175348]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE val_raid_type [1091032]
+-- DEALING WITH TABLE val_raid_type [1147635]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'val_raid_type', 'val_raid_type');
 
@@ -4231,10 +5030,10 @@ SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_raid_type');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_raid_type');
 DROP TABLE IF EXISTS val_raid_type_v64;
 DROP TABLE IF EXISTS audit.val_raid_type_v64;
--- DONE DEALING WITH TABLE val_raid_type [745555]
+-- DONE DEALING WITH TABLE val_raid_type [1175454]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE val_slot_function [1091050]
+-- DEALING WITH TABLE val_slot_function [1147653]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'val_slot_function', 'val_slot_function');
 
@@ -4377,10 +5176,10 @@ SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_slot_function');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_slot_function');
 DROP TABLE IF EXISTS val_slot_function_v64;
 DROP TABLE IF EXISTS audit.val_slot_function_v64;
--- DONE DEALING WITH TABLE val_slot_function [745573]
+-- DONE DEALING WITH TABLE val_slot_function [1175472]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE account_token [1088640]
+-- DEALING WITH TABLE account_token [1145242]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'account_token', 'account_token');
 
@@ -4523,10 +5322,10 @@ ALTER SEQUENCE account_token_account_token_id_seq
 	 OWNED BY account_token.account_token_id;
 DROP TABLE IF EXISTS account_token_v64;
 DROP TABLE IF EXISTS audit.account_token_v64;
--- DONE DEALING WITH TABLE account_token [743004]
+-- DONE DEALING WITH TABLE account_token [1172808]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE appaal_instance_property [1088698]
+-- DEALING WITH TABLE appaal_instance_property [1145300]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'appaal_instance_property', 'appaal_instance_property');
 
@@ -4658,6 +5457,10 @@ CREATE INDEX xif4appaal_instance_property ON appaal_instance_property USING btre
 -- FOREIGN KEYS FROM
 
 -- FOREIGN KEYS TO
+-- consider FK appaal_instance_property and val_appaal_group_name
+ALTER TABLE appaal_instance_property
+	ADD CONSTRAINT fk_allgrpprop_val_name
+	FOREIGN KEY (appaal_group_name) REFERENCES val_appaal_group_name(appaal_group_name);
 -- consider FK appaal_instance_property and encryption_key
 ALTER TABLE appaal_instance_property
 	ADD CONSTRAINT fk_apalinstprp_enc_id_id
@@ -4670,20 +5473,16 @@ ALTER TABLE appaal_instance_property
 ALTER TABLE appaal_instance_property
 	ADD CONSTRAINT fk_appaalinstprop_ref_vappkey
 	FOREIGN KEY (appaal_group_name, app_key) REFERENCES val_app_key(appaal_group_name, app_key);
--- consider FK appaal_instance_property and val_appaal_group_name
-ALTER TABLE appaal_instance_property
-	ADD CONSTRAINT r_725
-	FOREIGN KEY (appaal_group_name) REFERENCES val_appaal_group_name(appaal_group_name);
 
 -- TRIGGERS
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'appaal_instance_property');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'appaal_instance_property');
 DROP TABLE IF EXISTS appaal_instance_property_v64;
 DROP TABLE IF EXISTS audit.appaal_instance_property_v64;
--- DONE DEALING WITH TABLE appaal_instance_property [743059]
+-- DONE DEALING WITH TABLE appaal_instance_property [1172863]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE approval_instance_item [1088722]
+-- DEALING WITH TABLE approval_instance_item [1145324]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'approval_instance_item', 'approval_instance_item');
 
@@ -4886,10 +5685,10 @@ ALTER SEQUENCE approval_instance_item_approval_instance_item_id_seq
 	 OWNED BY approval_instance_item.approval_instance_item_id;
 DROP TABLE IF EXISTS approval_instance_item_v64;
 DROP TABLE IF EXISTS audit.approval_instance_item_v64;
--- DONE DEALING WITH TABLE approval_instance_item [743086]
+-- DONE DEALING WITH TABLE approval_instance_item [1172890]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE approval_instance_step [1088749]
+-- DEALING WITH TABLE approval_instance_step [1145351]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'approval_instance_step', 'approval_instance_step');
 
@@ -5118,10 +5917,10 @@ ALTER SEQUENCE approval_instance_step_approval_instance_step_id_seq
 	 OWNED BY approval_instance_step.approval_instance_step_id;
 DROP TABLE IF EXISTS approval_instance_step_v64;
 DROP TABLE IF EXISTS audit.approval_instance_step_v64;
--- DONE DEALING WITH TABLE approval_instance_step [743113]
+-- DONE DEALING WITH TABLE approval_instance_step [1172917]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE approval_instance_step_notify [1088766]
+-- DEALING WITH TABLE approval_instance_step_notify [1145368]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'approval_instance_step_notify', 'approval_instance_step_notify');
 
@@ -5257,7 +6056,7 @@ ALTER TABLE approval_instance_step_notify
 	FOREIGN KEY (approval_notify_type) REFERENCES val_approval_notifty_type(approval_notify_type);
 -- consider FK approval_instance_step_notify and account
 ALTER TABLE approval_instance_step_notify
-	ADD CONSTRAINT r_728
+	ADD CONSTRAINT fk_appr_inst_step_notif_acct
 	FOREIGN KEY (account_id) REFERENCES account(account_id);
 
 -- TRIGGERS
@@ -5265,10 +6064,10 @@ SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'approval_instance_step
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'approval_instance_step_notify');
 DROP TABLE IF EXISTS approval_instance_step_notify_v64;
 DROP TABLE IF EXISTS audit.approval_instance_step_notify_v64;
--- DONE DEALING WITH TABLE approval_instance_step_notify [743129]
+-- DONE DEALING WITH TABLE approval_instance_step_notify [1172933]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE approval_process [1088778]
+-- DEALING WITH TABLE approval_process [1145380]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'approval_process', 'approval_process');
 
@@ -5476,10 +6275,10 @@ ALTER SEQUENCE approval_process_approval_process_id_seq
 	 OWNED BY approval_process.approval_process_id;
 DROP TABLE IF EXISTS approval_process_v64;
 DROP TABLE IF EXISTS audit.approval_process_v64;
--- DONE DEALING WITH TABLE approval_process [743142]
+-- DONE DEALING WITH TABLE approval_process [1172946]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE approval_process_chain [1088794]
+-- DEALING WITH TABLE approval_process_chain [1145396]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'approval_process_chain', 'approval_process_chain');
 
@@ -5706,7 +6505,7 @@ ALTER SEQUENCE approval_process_chain_approval_process_chain_id_seq
 	 OWNED BY approval_process_chain.approval_process_chain_id;
 DROP TABLE IF EXISTS approval_process_chain_v64;
 DROP TABLE IF EXISTS audit.approval_process_chain_v64;
--- DONE DEALING WITH TABLE approval_process_chain [743158]
+-- DONE DEALING WITH TABLE approval_process_chain [1172962]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE company_collection_company
@@ -5748,7 +6547,7 @@ ALTER TABLE company_collection_company
 -- TRIGGERS
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'company_collection_company');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'company_collection_company');
--- DONE DEALING WITH TABLE company_collection_company [743263]
+-- DONE DEALING WITH TABLE company_collection_company [1173067]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE company_collection_hier
@@ -5792,7 +6591,7 @@ CREATE INDEX xifcomp_coll_comp_coll_kid_id ON company_collection_hier USING btre
 -- TRIGGERS
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'company_collection_hier');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'company_collection_hier');
--- DONE DEALING WITH TABLE company_collection_hier [743273]
+-- DONE DEALING WITH TABLE company_collection_hier [1173077]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE company_colllection
@@ -5848,10 +6647,10 @@ ALTER TABLE company_colllection
 -- TRIGGERS
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'company_colllection');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'company_colllection');
--- DONE DEALING WITH TABLE company_colllection [743283]
+-- DONE DEALING WITH TABLE company_colllection [1173087]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE department [1089010]
+-- DEALING WITH TABLE department [1145612]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'department', 'department');
 
@@ -6034,7 +6833,7 @@ SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'department');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'department');
 DROP TABLE IF EXISTS department_v64;
 DROP TABLE IF EXISTS audit.department_v64;
--- DONE DEALING WITH TABLE department [743405]
+-- DONE DEALING WITH TABLE department [1173209]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE dns_domain_collection
@@ -6065,6 +6864,12 @@ CREATE INDEX xif1dns_domain_collection ON dns_domain_collection USING btree (dns
 -- CHECK CONSTRAINTS
 
 -- FOREIGN KEYS FROM
+-- consider FK dns_domain_collection and dns_domain_collection_dns_dom
+-- Skipping this FK since table does not exist yet
+--ALTER TABLE dns_domain_collection_dns_dom
+--	ADD CONSTRAINT fk_dns_dom_coll_dns_dom_dns_do
+--	FOREIGN KEY (dns_domain_collection_id) REFERENCES dns_domain_collection(dns_domain_collection_id);
+
 -- consider FK dns_domain_collection and dns_domain_collection_hier
 -- Skipping this FK since table does not exist yet
 --ALTER TABLE dns_domain_collection_hier
@@ -6083,12 +6888,6 @@ CREATE INDEX xif1dns_domain_collection ON dns_domain_collection USING btree (dns
 --	ADD CONSTRAINT fk_property_dns_dom_collect
 --	FOREIGN KEY (dns_domain_collection_id) REFERENCES dns_domain_collection(dns_domain_collection_id);
 
--- consider FK dns_domain_collection and dns_domain_collection_dns_dom
--- Skipping this FK since table does not exist yet
---ALTER TABLE dns_domain_collection_dns_dom
---	ADD CONSTRAINT r_736
---	FOREIGN KEY (dns_domain_collection_id) REFERENCES dns_domain_collection(dns_domain_collection_id);
-
 
 -- FOREIGN KEYS TO
 -- consider FK dns_domain_collection and val_dns_domain_collection_type
@@ -6101,7 +6900,7 @@ SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'dns_domain_collection'
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'dns_domain_collection');
 ALTER SEQUENCE dns_domain_collection_dns_domain_collection_id_seq
 	 OWNED BY dns_domain_collection.dns_domain_collection_id;
--- DONE DEALING WITH TABLE dns_domain_collection [743645]
+-- DONE DEALING WITH TABLE dns_domain_collection [1173449]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE dns_domain_collection_dns_dom
@@ -6129,19 +6928,19 @@ CREATE INDEX xif2dns_domain_collection_dns_ ON dns_domain_collection_dns_dom USI
 -- FOREIGN KEYS FROM
 
 -- FOREIGN KEYS TO
+-- consider FK dns_domain_collection_dns_dom and dns_domain_collection
+ALTER TABLE dns_domain_collection_dns_dom
+	ADD CONSTRAINT fk_dns_dom_coll_dns_dom_dns_do
+	FOREIGN KEY (dns_domain_collection_id) REFERENCES dns_domain_collection(dns_domain_collection_id);
 -- consider FK dns_domain_collection_dns_dom and dns_domain
 ALTER TABLE dns_domain_collection_dns_dom
 	ADD CONSTRAINT fk_dns_dom_coll_dns_domid
 	FOREIGN KEY (dns_domain_id) REFERENCES dns_domain(dns_domain_id);
--- consider FK dns_domain_collection_dns_dom and dns_domain_collection
-ALTER TABLE dns_domain_collection_dns_dom
-	ADD CONSTRAINT r_736
-	FOREIGN KEY (dns_domain_collection_id) REFERENCES dns_domain_collection(dns_domain_collection_id);
 
 -- TRIGGERS
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'dns_domain_collection_dns_dom');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'dns_domain_collection_dns_dom');
--- DONE DEALING WITH TABLE dns_domain_collection_dns_dom [743657]
+-- DONE DEALING WITH TABLE dns_domain_collection_dns_dom [1173461]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE dns_domain_collection_hier
@@ -6181,377 +6980,312 @@ ALTER TABLE dns_domain_collection_hier
 -- TRIGGERS
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'dns_domain_collection_hier');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'dns_domain_collection_hier');
--- DONE DEALING WITH TABLE dns_domain_collection_hier [743667]
+-- DONE DEALING WITH TABLE dns_domain_collection_hier [1173471]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE layer2_network [1089421]
--- Save grants for later reapplication
-SELECT schema_support.save_grants_for_replay('jazzhands', 'layer2_network', 'layer2_network');
-
--- FOREIGN KEYS FROM
-ALTER TABLE device_layer2_network DROP CONSTRAINT IF EXISTS fk_device_l2_net_l2netid;
-ALTER TABLE layer2_connection_l2_network DROP CONSTRAINT IF EXISTS fk_l2c_l2n_l2netid;
-ALTER TABLE layer2_connection_l2_network DROP CONSTRAINT IF EXISTS fk_l2cl2n_l2net_id_encap_typ;
-ALTER TABLE layer3_network DROP CONSTRAINT IF EXISTS fk_l3net_l2net;
-ALTER TABLE property DROP CONSTRAINT IF EXISTS fk_prop_l2netid;
-
--- FOREIGN KEYS TO
-ALTER TABLE jazzhands.layer2_network DROP CONSTRAINT IF EXISTS fk_l2_net_encap_domain;
-ALTER TABLE jazzhands.layer2_network DROP CONSTRAINT IF EXISTS fk_l2_net_encap_range_id;
-
--- EXTRA-SCHEMA constraints
-SELECT schema_support.save_constraint_for_replay('jazzhands', 'layer2_network');
-
--- PRIMARY and ALTERNATE KEYS
-ALTER TABLE jazzhands.layer2_network DROP CONSTRAINT IF EXISTS ak_l2_net_l2net_encap_typ;
-ALTER TABLE jazzhands.layer2_network DROP CONSTRAINT IF EXISTS ak_l2net_encap_name;
-ALTER TABLE jazzhands.layer2_network DROP CONSTRAINT IF EXISTS ak_l2net_encap_tag;
-ALTER TABLE jazzhands.layer2_network DROP CONSTRAINT IF EXISTS pk_layer2_network;
--- INDEXES
-DROP INDEX IF EXISTS "jazzhands"."xif_l2_net_encap_domain";
-DROP INDEX IF EXISTS "jazzhands"."xif_l2_net_encap_range_id";
--- CHECK CONSTRAINTS, etc
--- TRIGGERS, etc
-DROP TRIGGER IF EXISTS trig_userlog_layer2_network ON jazzhands.layer2_network;
-DROP TRIGGER IF EXISTS trigger_audit_layer2_network ON jazzhands.layer2_network;
-SELECT schema_support.save_dependant_objects_for_replay('jazzhands', 'layer2_network');
----- BEGIN audit.layer2_network TEARDOWN
--- Save grants for later reapplication
-SELECT schema_support.save_grants_for_replay('audit', 'layer2_network', 'audit.layer2_network');
-
--- FOREIGN KEYS FROM
-
--- FOREIGN KEYS TO
-
--- EXTRA-SCHEMA constraints
-SELECT schema_support.save_constraint_for_replay('audit', 'layer2_network');
-
--- PRIMARY and ALTERNATE KEYS
--- INDEXES
-DROP INDEX IF EXISTS "audit"."layer2_network_aud#timestamp_idx";
--- CHECK CONSTRAINTS, etc
--- TRIGGERS, etc
-SELECT schema_support.save_dependant_objects_for_replay('audit', 'layer2_network');
----- DONE audit.layer2_network TEARDOWN
-
-
-ALTER TABLE layer2_network RENAME TO layer2_network_v64;
-ALTER TABLE audit.layer2_network RENAME TO layer2_network_v64;
-
-CREATE TABLE layer2_network
+-- DEALING WITH NEW TABLE l2_network_coll_l2_network
+CREATE TABLE l2_network_coll_l2_network
 (
+	layer2_network_collection_id	integer NOT NULL,
 	layer2_network_id	integer NOT NULL,
-	encapsulation_name	varchar(32)  NULL,
-	encapsulation_domain	varchar(50)  NULL,
-	encapsulation_type	varchar(50)  NULL,
-	encapsulation_tag	integer  NULL,
-	description	varchar(255)  NULL,
-	encapsulation_range_id	integer  NULL,
+	layer2_network_id_rank	integer  NULL,
+	start_date	timestamp without time zone  NULL,
+	finish_date	timestamp without time zone  NULL,
 	data_ins_user	varchar(255)  NULL,
 	data_ins_date	timestamp with time zone  NULL,
 	data_upd_user	varchar(255)  NULL,
 	data_upd_date	timestamp with time zone  NULL
 );
-SELECT schema_support.build_audit_table('audit', 'jazzhands', 'layer2_network', false);
-ALTER TABLE layer2_network
-	ALTER layer2_network_id
-	SET DEFAULT nextval('layer2_network_layer2_network_id_seq'::regclass);
-INSERT INTO layer2_network (
-	layer2_network_id,
-	encapsulation_name,
-	encapsulation_domain,
-	encapsulation_type,
-	encapsulation_tag,
-	description,
-	encapsulation_range_id,
-	data_ins_user,
-	data_ins_date,
-	data_upd_user,
-	data_upd_date
-) SELECT
-	layer2_network_id,
-	encapsulation_name,
-	encapsulation_domain,
-	encapsulation_type,
-	encapsulation_tag,
-	description,
-	encapsulation_range_id,
-	data_ins_user,
-	data_ins_date,
-	data_upd_user,
-	data_upd_date
-FROM layer2_network_v64;
-
-INSERT INTO audit.layer2_network (
-	layer2_network_id,
-	encapsulation_name,
-	encapsulation_domain,
-	encapsulation_type,
-	encapsulation_tag,
-	description,
-	encapsulation_range_id,
-	data_ins_user,
-	data_ins_date,
-	data_upd_user,
-	data_upd_date,
-	"aud#action",
-	"aud#timestamp",
-	"aud#user",
-	"aud#seq"
-) SELECT
-	layer2_network_id,
-	encapsulation_name,
-	encapsulation_domain,
-	encapsulation_type,
-	encapsulation_tag,
-	description,
-	encapsulation_range_id,
-	data_ins_user,
-	data_ins_date,
-	data_upd_user,
-	data_upd_date,
-	"aud#action",
-	"aud#timestamp",
-	"aud#user",
-	"aud#seq"
-FROM audit.layer2_network_v64;
-
-ALTER TABLE layer2_network
-	ALTER layer2_network_id
-	SET DEFAULT nextval('layer2_network_layer2_network_id_seq'::regclass);
+SELECT schema_support.build_audit_table('audit', 'jazzhands', 'l2_network_coll_l2_network', true);
 
 -- PRIMARY AND ALTERNATE KEYS
-ALTER TABLE layer2_network ADD CONSTRAINT ak_l2_net_l2net_encap_typ UNIQUE (layer2_network_id, encapsulation_type);
-ALTER TABLE layer2_network ADD CONSTRAINT ak_l2net_encap_name UNIQUE (encapsulation_domain, encapsulation_type, encapsulation_name);
-ALTER TABLE layer2_network ADD CONSTRAINT ak_l2net_encap_tag UNIQUE (encapsulation_type, encapsulation_domain, encapsulation_tag);
-ALTER TABLE layer2_network ADD CONSTRAINT pk_layer2_network PRIMARY KEY (layer2_network_id);
+ALTER TABLE l2_network_coll_l2_network ADD CONSTRAINT pk_l2_network_coll_l2_network PRIMARY KEY (layer2_network_collection_id, layer2_network_id);
+ALTER TABLE l2_network_coll_l2_network ADD CONSTRAINT xak_l2netcol_l2netrank UNIQUE (layer2_network_collection_id, layer2_network_id_rank);
 
 -- Table/Column Comments
-COMMENT ON COLUMN layer2_network.encapsulation_range_id IS 'Administrative information about which range this is a part of';
 -- INDEXES
-CREATE INDEX xif_l2_net_encap_domain ON layer2_network USING btree (encapsulation_domain, encapsulation_type);
-CREATE INDEX xif_l2_net_encap_range_id ON layer2_network USING btree (encapsulation_range_id);
+CREATE INDEX xif_l2netcl2net_collid ON l2_network_coll_l2_network USING btree (layer2_network_collection_id);
+CREATE INDEX xif_l2netcl2net_l2netid ON l2_network_coll_l2_network USING btree (layer2_network_id);
 
 -- CHECK CONSTRAINTS
 
 -- FOREIGN KEYS FROM
--- consider FK layer2_network and device_layer2_network
-ALTER TABLE device_layer2_network
-	ADD CONSTRAINT fk_device_l2_net_l2netid
-	FOREIGN KEY (layer2_network_id) REFERENCES layer2_network(layer2_network_id);
--- consider FK layer2_network and layer2_connection_l2_network
-ALTER TABLE layer2_connection_l2_network
-	ADD CONSTRAINT fk_l2c_l2n_l2netid
-	FOREIGN KEY (layer2_network_id) REFERENCES layer2_network(layer2_network_id);
--- consider FK layer2_network and layer2_connection_l2_network
-ALTER TABLE layer2_connection_l2_network
-	ADD CONSTRAINT fk_l2cl2n_l2net_id_encap_typ
-	FOREIGN KEY (layer2_network_id, encapsulation_type) REFERENCES layer2_network(layer2_network_id, encapsulation_type);
--- consider FK layer2_network and layer3_network
-ALTER TABLE layer3_network
-	ADD CONSTRAINT fk_l3net_l2net
-	FOREIGN KEY (layer2_network_id) REFERENCES layer2_network(layer2_network_id);
--- consider FK layer2_network and property
-ALTER TABLE property
-	ADD CONSTRAINT fk_prop_l2netid
-	FOREIGN KEY (layer2_network_id) REFERENCES layer2_network(layer2_network_id);
 
 -- FOREIGN KEYS TO
--- consider FK layer2_network and encapsulation_domain
-ALTER TABLE layer2_network
-	ADD CONSTRAINT fk_l2_net_encap_domain
-	FOREIGN KEY (encapsulation_domain, encapsulation_type) REFERENCES encapsulation_domain(encapsulation_domain, encapsulation_type);
--- consider FK layer2_network and encapsulation_range
-ALTER TABLE layer2_network
-	ADD CONSTRAINT fk_l2_net_encap_range_id
-	FOREIGN KEY (encapsulation_range_id) REFERENCES encapsulation_range(encapsulation_range_id);
+-- consider FK l2_network_coll_l2_network and layer2_network_collection
+-- Skipping this FK since table does not exist yet
+--ALTER TABLE l2_network_coll_l2_network
+--	ADD CONSTRAINT fk_l2netcl2net_collid
+--	FOREIGN KEY (layer2_network_collection_id) REFERENCES layer2_network_collection(layer2_network_collection_id);
+
+-- consider FK l2_network_coll_l2_network and layer2_network
+ALTER TABLE l2_network_coll_l2_network
+	ADD CONSTRAINT fk_l2netcl2net_l2netid
+	FOREIGN KEY (layer2_network_id) REFERENCES layer2_network(layer2_network_id);
 
 -- TRIGGERS
-SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'layer2_network');
-SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'layer2_network');
-ALTER SEQUENCE layer2_network_layer2_network_id_seq
-	 OWNED BY layer2_network.layer2_network_id;
-DROP TABLE IF EXISTS layer2_network_v64;
-DROP TABLE IF EXISTS audit.layer2_network_v64;
--- DONE DEALING WITH TABLE layer2_network [743850]
+SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'l2_network_coll_l2_network');
+SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'l2_network_coll_l2_network');
+-- DONE DEALING WITH TABLE l2_network_coll_l2_network [1173630]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE layer3_network [1089440]
--- Save grants for later reapplication
-SELECT schema_support.save_grants_for_replay('jazzhands', 'layer3_network', 'layer3_network');
-
--- FOREIGN KEYS FROM
-ALTER TABLE property DROP CONSTRAINT IF EXISTS fk_prop_l3netid;
-
--- FOREIGN KEYS TO
-ALTER TABLE jazzhands.layer3_network DROP CONSTRAINT IF EXISTS fk_l3_net_def_gate_nbid;
-ALTER TABLE jazzhands.layer3_network DROP CONSTRAINT IF EXISTS fk_l3net_l2net;
-ALTER TABLE jazzhands.layer3_network DROP CONSTRAINT IF EXISTS fk_l3net_rndv_pt_nblk_id;
-ALTER TABLE jazzhands.layer3_network DROP CONSTRAINT IF EXISTS fk_layer3_network_netblock_id;
-
--- EXTRA-SCHEMA constraints
-SELECT schema_support.save_constraint_for_replay('jazzhands', 'layer3_network');
-
--- PRIMARY and ALTERNATE KEYS
-ALTER TABLE jazzhands.layer3_network DROP CONSTRAINT IF EXISTS ak_layer3_network_netblock_id;
-ALTER TABLE jazzhands.layer3_network DROP CONSTRAINT IF EXISTS pk_layer3_network;
--- INDEXES
-DROP INDEX IF EXISTS "jazzhands"."xif_l3_net_def_gate_nbid";
-DROP INDEX IF EXISTS "jazzhands"."xif_l3net_l2net";
-DROP INDEX IF EXISTS "jazzhands"."xif_l3net_rndv_pt_nblk_id";
--- CHECK CONSTRAINTS, etc
--- TRIGGERS, etc
-DROP TRIGGER IF EXISTS trig_userlog_layer3_network ON jazzhands.layer3_network;
-DROP TRIGGER IF EXISTS trigger_audit_layer3_network ON jazzhands.layer3_network;
-SELECT schema_support.save_dependant_objects_for_replay('jazzhands', 'layer3_network');
----- BEGIN audit.layer3_network TEARDOWN
--- Save grants for later reapplication
-SELECT schema_support.save_grants_for_replay('audit', 'layer3_network', 'audit.layer3_network');
-
--- FOREIGN KEYS FROM
-
--- FOREIGN KEYS TO
-
--- EXTRA-SCHEMA constraints
-SELECT schema_support.save_constraint_for_replay('audit', 'layer3_network');
-
--- PRIMARY and ALTERNATE KEYS
--- INDEXES
-DROP INDEX IF EXISTS "audit"."layer3_network_aud#timestamp_idx";
--- CHECK CONSTRAINTS, etc
--- TRIGGERS, etc
-SELECT schema_support.save_dependant_objects_for_replay('audit', 'layer3_network');
----- DONE audit.layer3_network TEARDOWN
-
-
-ALTER TABLE layer3_network RENAME TO layer3_network_v64;
-ALTER TABLE audit.layer3_network RENAME TO layer3_network_v64;
-
-CREATE TABLE layer3_network
+-- DEALING WITH NEW TABLE l3_network_coll_l3_network
+CREATE TABLE l3_network_coll_l3_network
 (
+	layer3_network_collection_id	integer NOT NULL,
 	layer3_network_id	integer NOT NULL,
-	netblock_id	integer  NULL,
-	layer2_network_id	integer  NULL,
-	default_gateway_netblock_id	integer  NULL,
-	rendezvous_netblock_id	integer  NULL,
-	description	varchar(255)  NULL,
+	layer3_network_id_rank	integer  NULL,
+	start_date	timestamp without time zone  NULL,
+	finish_date	timestamp without time zone  NULL,
 	data_ins_user	varchar(255)  NULL,
 	data_ins_date	timestamp with time zone  NULL,
 	data_upd_user	varchar(255)  NULL,
 	data_upd_date	timestamp with time zone  NULL
 );
-SELECT schema_support.build_audit_table('audit', 'jazzhands', 'layer3_network', false);
-ALTER TABLE layer3_network
-	ALTER layer3_network_id
-	SET DEFAULT nextval('layer3_network_layer3_network_id_seq'::regclass);
-INSERT INTO layer3_network (
-	layer3_network_id,
-	netblock_id,
-	layer2_network_id,
-	default_gateway_netblock_id,
-	rendezvous_netblock_id,		-- new column (rendezvous_netblock_id)
-	description,
-	data_ins_user,
-	data_ins_date,
-	data_upd_user,
-	data_upd_date
-) SELECT
-	layer3_network_id,
-	netblock_id,
-	layer2_network_id,
-	default_gateway_netblock_id,
-	NULL,		-- new column (rendezvous_netblock_id)
-	description,
-	data_ins_user,
-	data_ins_date,
-	data_upd_user,
-	data_upd_date
-FROM layer3_network_v64;
-
-INSERT INTO audit.layer3_network (
-	layer3_network_id,
-	netblock_id,
-	layer2_network_id,
-	default_gateway_netblock_id,
-	rendezvous_netblock_id,		-- new column (rendezvous_netblock_id)
-	description,
-	data_ins_user,
-	data_ins_date,
-	data_upd_user,
-	data_upd_date,
-	"aud#action",
-	"aud#timestamp",
-	"aud#user",
-	"aud#seq"
-) SELECT
-	layer3_network_id,
-	netblock_id,
-	layer2_network_id,
-	default_gateway_netblock_id,
-	NULL,		-- new column (rendezvous_netblock_id)
-	description,
-	data_ins_user,
-	data_ins_date,
-	data_upd_user,
-	data_upd_date,
-	"aud#action",
-	"aud#timestamp",
-	"aud#user",
-	"aud#seq"
-FROM audit.layer3_network_v64;
-
-ALTER TABLE layer3_network
-	ALTER layer3_network_id
-	SET DEFAULT nextval('layer3_network_layer3_network_id_seq'::regclass);
+SELECT schema_support.build_audit_table('audit', 'jazzhands', 'l3_network_coll_l3_network', true);
 
 -- PRIMARY AND ALTERNATE KEYS
-ALTER TABLE layer3_network ADD CONSTRAINT ak_layer3_network_netblock_id UNIQUE (netblock_id);
-ALTER TABLE layer3_network ADD CONSTRAINT pk_layer3_network PRIMARY KEY (layer3_network_id);
+ALTER TABLE l3_network_coll_l3_network ADD CONSTRAINT ak_l3netcol_l3netrank UNIQUE (layer3_network_collection_id, layer3_network_id_rank);
+ALTER TABLE l3_network_coll_l3_network ADD CONSTRAINT pk_l3_network_coll_l3_network PRIMARY KEY (layer3_network_collection_id, layer3_network_id);
 
 -- Table/Column Comments
-COMMENT ON COLUMN layer3_network.rendezvous_netblock_id IS 'Multicast Rendevous Point Address';
 -- INDEXES
-CREATE INDEX xif_l3_net_def_gate_nbid ON layer3_network USING btree (default_gateway_netblock_id);
-CREATE INDEX xif_l3net_l2net ON layer3_network USING btree (layer2_network_id);
-CREATE INDEX xif_l3net_rndv_pt_nblk_id ON layer3_network USING btree (rendezvous_netblock_id);
+CREATE INDEX xif_l3netcol_l3_net_l3netcolid ON l3_network_coll_l3_network USING btree (layer3_network_collection_id);
+CREATE INDEX xif_l3netcol_l3_net_l3netid ON l3_network_coll_l3_network USING btree (layer3_network_id);
 
 -- CHECK CONSTRAINTS
 
 -- FOREIGN KEYS FROM
--- consider FK layer3_network and property
-ALTER TABLE property
-	ADD CONSTRAINT fk_prop_l3netid
+
+-- FOREIGN KEYS TO
+-- consider FK l3_network_coll_l3_network and layer3_network_collection
+-- Skipping this FK since table does not exist yet
+--ALTER TABLE l3_network_coll_l3_network
+--	ADD CONSTRAINT fk_l3netcol_l3_net_l3netcolid
+--	FOREIGN KEY (layer3_network_collection_id) REFERENCES layer3_network_collection(layer3_network_collection_id);
+
+-- consider FK l3_network_coll_l3_network and layer3_network
+ALTER TABLE l3_network_coll_l3_network
+	ADD CONSTRAINT fk_l3netcol_l3_net_l3netid
 	FOREIGN KEY (layer3_network_id) REFERENCES layer3_network(layer3_network_id);
 
+-- TRIGGERS
+SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'l3_network_coll_l3_network');
+SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'l3_network_coll_l3_network');
+-- DONE DEALING WITH TABLE l3_network_coll_l3_network [1173642]
+--------------------------------------------------------------------
+--------------------------------------------------------------------
+-- DEALING WITH NEW TABLE layer2_network_collection
+CREATE TABLE layer2_network_collection
+(
+	layer2_network_collection_id	integer NOT NULL,
+	layer2_network_collection_name	varchar(255) NOT NULL,
+	layer2_network_collection_type	varchar(50)  NULL,
+	description	varchar(255)  NULL,
+	data_ins_user	varchar(255)  NULL,
+	data_ins_date	timestamp with time zone  NULL,
+	data_upd_user	varchar(255)  NULL,
+	data_upd_date	timestamp with time zone  NULL
+);
+SELECT schema_support.build_audit_table('audit', 'jazzhands', 'layer2_network_collection', true);
+ALTER TABLE layer2_network_collection
+	ALTER layer2_network_collection_id
+	SET DEFAULT nextval('layer2_network_collection_layer2_network_collection_id_seq'::regclass);
+
+-- PRIMARY AND ALTERNATE KEYS
+ALTER TABLE layer2_network_collection ADD CONSTRAINT ak_l2network_coll_name_type UNIQUE (layer2_network_collection_name, layer2_network_collection_type);
+ALTER TABLE layer2_network_collection ADD CONSTRAINT pk_layer2_network_collection PRIMARY KEY (layer2_network_collection_id);
+
+-- Table/Column Comments
+-- INDEXES
+CREATE INDEX xif_l2netcoll_type ON layer2_network_collection USING btree (layer2_network_collection_type);
+
+-- CHECK CONSTRAINTS
+
+-- FOREIGN KEYS FROM
+-- consider FK layer2_network_collection and layer2_network_collection_hier
+-- Skipping this FK since table does not exist yet
+--ALTER TABLE layer2_network_collection_hier
+--	ADD CONSTRAINT fk_l2net_collhier_chldl2net
+--	FOREIGN KEY (child_l2_network_coll_id) REFERENCES layer2_network_collection(layer2_network_collection_id);
+
+-- consider FK layer2_network_collection and layer2_network_collection_hier
+-- Skipping this FK since table does not exist yet
+--ALTER TABLE layer2_network_collection_hier
+--	ADD CONSTRAINT fk_l2net_collhier_l2net
+--	FOREIGN KEY (layer2_network_collection_id) REFERENCES layer2_network_collection(layer2_network_collection_id);
+
+-- consider FK layer2_network_collection and l2_network_coll_l2_network
+ALTER TABLE l2_network_coll_l2_network
+	ADD CONSTRAINT fk_l2netcl2net_collid
+	FOREIGN KEY (layer2_network_collection_id) REFERENCES layer2_network_collection(layer2_network_collection_id);
+-- consider FK layer2_network_collection and property
+-- Skipping this FK since column does not exist yet
+--ALTER TABLE property
+--	ADD CONSTRAINT fk_prop_l2_netcollid
+--	FOREIGN KEY (layer2_network_collection_id) REFERENCES layer2_network_collection(layer2_network_collection_id);
+
+
 -- FOREIGN KEYS TO
--- consider FK layer3_network and netblock
-ALTER TABLE layer3_network
-	ADD CONSTRAINT fk_l3_net_def_gate_nbid
-	FOREIGN KEY (default_gateway_netblock_id) REFERENCES netblock(netblock_id);
--- consider FK layer3_network and layer2_network
-ALTER TABLE layer3_network
-	ADD CONSTRAINT fk_l3net_l2net
-	FOREIGN KEY (layer2_network_id) REFERENCES layer2_network(layer2_network_id);
--- consider FK layer3_network and netblock
-ALTER TABLE layer3_network
-	ADD CONSTRAINT fk_l3net_rndv_pt_nblk_id
-	FOREIGN KEY (rendezvous_netblock_id) REFERENCES netblock(netblock_id);
--- consider FK layer3_network and netblock
-ALTER TABLE layer3_network
-	ADD CONSTRAINT fk_layer3_network_netblock_id
-	FOREIGN KEY (netblock_id) REFERENCES netblock(netblock_id);
+-- consider FK layer2_network_collection and val_layer2_network_coll_type
+ALTER TABLE layer2_network_collection
+	ADD CONSTRAINT fk_l2netcoll_type
+	FOREIGN KEY (layer2_network_collection_type) REFERENCES val_layer2_network_coll_type(layer2_network_collection_type);
 
 -- TRIGGERS
-SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'layer3_network');
-SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'layer3_network');
-ALTER SEQUENCE layer3_network_layer3_network_id_seq
-	 OWNED BY layer3_network.layer3_network_id;
-DROP TABLE IF EXISTS layer3_network_v64;
-DROP TABLE IF EXISTS audit.layer3_network_v64;
--- DONE DEALING WITH TABLE layer3_network [743869]
+SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'layer2_network_collection');
+SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'layer2_network_collection');
+ALTER SEQUENCE layer2_network_collection_layer2_network_collection_id_seq
+	 OWNED BY layer2_network_collection.layer2_network_collection_id;
+-- DONE DEALING WITH TABLE layer2_network_collection [1173697]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE logical_port [1089456]
+-- DEALING WITH NEW TABLE layer2_network_collection_hier
+CREATE TABLE layer2_network_collection_hier
+(
+	layer2_network_collection_id	integer NOT NULL,
+	child_l2_network_coll_id	integer NOT NULL,
+	data_ins_user	varchar(255)  NULL,
+	data_ins_date	timestamp with time zone  NULL,
+	data_upd_user	varchar(255)  NULL,
+	data_upd_date	timestamp with time zone  NULL
+);
+SELECT schema_support.build_audit_table('audit', 'jazzhands', 'layer2_network_collection_hier', true);
+
+-- PRIMARY AND ALTERNATE KEYS
+ALTER TABLE layer2_network_collection_hier ADD CONSTRAINT pk_layer2_network_collection_h PRIMARY KEY (layer2_network_collection_id, child_l2_network_coll_id);
+
+-- Table/Column Comments
+-- INDEXES
+CREATE INDEX xif_l2net_collhier_chldl2net ON layer2_network_collection_hier USING btree (child_l2_network_coll_id);
+CREATE INDEX xif_l2net_collhier_l2net ON layer2_network_collection_hier USING btree (layer2_network_collection_id);
+
+-- CHECK CONSTRAINTS
+
+-- FOREIGN KEYS FROM
+
+-- FOREIGN KEYS TO
+-- consider FK layer2_network_collection_hier and layer2_network_collection
+ALTER TABLE layer2_network_collection_hier
+	ADD CONSTRAINT fk_l2net_collhier_chldl2net
+	FOREIGN KEY (child_l2_network_coll_id) REFERENCES layer2_network_collection(layer2_network_collection_id);
+-- consider FK layer2_network_collection_hier and layer2_network_collection
+ALTER TABLE layer2_network_collection_hier
+	ADD CONSTRAINT fk_l2net_collhier_l2net
+	FOREIGN KEY (layer2_network_collection_id) REFERENCES layer2_network_collection(layer2_network_collection_id);
+
+-- TRIGGERS
+SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'layer2_network_collection_hier');
+SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'layer2_network_collection_hier');
+-- DONE DEALING WITH TABLE layer2_network_collection_hier [1173709]
+--------------------------------------------------------------------
+--------------------------------------------------------------------
+-- DEALING WITH NEW TABLE layer3_network_collection
+CREATE TABLE layer3_network_collection
+(
+	layer3_network_collection_id	integer NOT NULL,
+	layer3_network_collection_name	varchar(255) NOT NULL,
+	layer3_network_collection_type	varchar(50)  NULL,
+	description	varchar(255)  NULL,
+	data_ins_user	varchar(255)  NULL,
+	data_ins_date	timestamp with time zone  NULL,
+	data_upd_user	varchar(255)  NULL,
+	data_upd_date	timestamp with time zone  NULL
+);
+SELECT schema_support.build_audit_table('audit', 'jazzhands', 'layer3_network_collection', true);
+ALTER TABLE layer3_network_collection
+	ALTER layer3_network_collection_id
+	SET DEFAULT nextval('layer3_network_collection_layer3_network_collection_id_seq'::regclass);
+
+-- PRIMARY AND ALTERNATE KEYS
+ALTER TABLE layer3_network_collection ADD CONSTRAINT ak_l3netcoll_name_type UNIQUE (layer3_network_collection_name, layer3_network_collection_type);
+ALTER TABLE layer3_network_collection ADD CONSTRAINT pk_layer3_network_collection PRIMARY KEY (layer3_network_collection_id);
+
+-- Table/Column Comments
+-- INDEXES
+CREATE INDEX xif_l3_netcol_netcol_type ON layer3_network_collection USING btree (layer3_network_collection_type);
+
+-- CHECK CONSTRAINTS
+
+-- FOREIGN KEYS FROM
+-- consider FK layer3_network_collection and l3_network_coll_l3_network
+ALTER TABLE l3_network_coll_l3_network
+	ADD CONSTRAINT fk_l3netcol_l3_net_l3netcolid
+	FOREIGN KEY (layer3_network_collection_id) REFERENCES layer3_network_collection(layer3_network_collection_id);
+-- consider FK layer3_network_collection and layer3_network_collection_hier
+-- Skipping this FK since table does not exist yet
+--ALTER TABLE layer3_network_collection_hier
+--	ADD CONSTRAINT fk_l3nethier_chld_l3netid
+--	FOREIGN KEY (child_l3_network_coll_id) REFERENCES layer3_network_collection(layer3_network_collection_id);
+
+-- consider FK layer3_network_collection and layer3_network_collection_hier
+-- Skipping this FK since table does not exist yet
+--ALTER TABLE layer3_network_collection_hier
+--	ADD CONSTRAINT fk_l3nethierl3netid
+--	FOREIGN KEY (layer3_network_collection_id) REFERENCES layer3_network_collection(layer3_network_collection_id);
+
+-- consider FK layer3_network_collection and property
+-- Skipping this FK since column does not exist yet
+--ALTER TABLE property
+--	ADD CONSTRAINT fk_prop_l3_netcoll_id
+--	FOREIGN KEY (layer3_network_collection_id) REFERENCES layer3_network_collection(layer3_network_collection_id);
+
+
+-- FOREIGN KEYS TO
+-- consider FK layer3_network_collection and val_layer3_network_coll_type
+ALTER TABLE layer3_network_collection
+	ADD CONSTRAINT fk_l3_netcol_netcol_type
+	FOREIGN KEY (layer3_network_collection_type) REFERENCES val_layer3_network_coll_type(layer3_network_collection_type);
+
+-- TRIGGERS
+SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'layer3_network_collection');
+SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'layer3_network_collection');
+ALTER SEQUENCE layer3_network_collection_layer3_network_collection_id_seq
+	 OWNED BY layer3_network_collection.layer3_network_collection_id;
+-- DONE DEALING WITH TABLE layer3_network_collection [1173737]
+--------------------------------------------------------------------
+--------------------------------------------------------------------
+-- DEALING WITH NEW TABLE layer3_network_collection_hier
+CREATE TABLE layer3_network_collection_hier
+(
+	layer3_network_collection_id	integer NOT NULL,
+	child_l3_network_coll_id	integer NOT NULL,
+	data_ins_user	varchar(255)  NULL,
+	data_ins_date	timestamp with time zone  NULL,
+	data_upd_user	varchar(255)  NULL,
+	data_upd_date	timestamp with time zone  NULL
+);
+SELECT schema_support.build_audit_table('audit', 'jazzhands', 'layer3_network_collection_hier', true);
+
+-- PRIMARY AND ALTERNATE KEYS
+ALTER TABLE layer3_network_collection_hier ADD CONSTRAINT pk_layer3_network_collection_h PRIMARY KEY (layer3_network_collection_id, child_l3_network_coll_id);
+
+-- Table/Column Comments
+-- INDEXES
+CREATE INDEX xif_l3nethier_chld_l3netid ON layer3_network_collection_hier USING btree (child_l3_network_coll_id);
+CREATE INDEX xif_l3nethierl3netid ON layer3_network_collection_hier USING btree (layer3_network_collection_id);
+
+-- CHECK CONSTRAINTS
+
+-- FOREIGN KEYS FROM
+
+-- FOREIGN KEYS TO
+-- consider FK layer3_network_collection_hier and layer3_network_collection
+ALTER TABLE layer3_network_collection_hier
+	ADD CONSTRAINT fk_l3nethier_chld_l3netid
+	FOREIGN KEY (child_l3_network_coll_id) REFERENCES layer3_network_collection(layer3_network_collection_id);
+-- consider FK layer3_network_collection_hier and layer3_network_collection
+ALTER TABLE layer3_network_collection_hier
+	ADD CONSTRAINT fk_l3nethierl3netid
+	FOREIGN KEY (layer3_network_collection_id) REFERENCES layer3_network_collection(layer3_network_collection_id);
+
+-- TRIGGERS
+SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'layer3_network_collection_hier');
+SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'layer3_network_collection_hier');
+-- DONE DEALING WITH TABLE layer3_network_collection_hier [1173749]
+--------------------------------------------------------------------
+--------------------------------------------------------------------
+-- DEALING WITH TABLE logical_port [1146058]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'logical_port', 'logical_port');
 
@@ -6718,10 +7452,10 @@ ALTER SEQUENCE logical_port_logical_port_id_seq
 	 OWNED BY logical_port.logical_port_id;
 DROP TABLE IF EXISTS logical_port_v64;
 DROP TABLE IF EXISTS audit.logical_port_v64;
--- DONE DEALING WITH TABLE logical_port [743885]
+-- DONE DEALING WITH TABLE logical_port [1173761]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE logical_volume [1089479]
+-- DEALING WITH TABLE logical_volume [1146082]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'logical_volume', 'logical_volume');
 
@@ -6916,10 +7650,10 @@ ALTER SEQUENCE logical_volume_logical_volume_id_seq
 	 OWNED BY logical_volume.logical_volume_id;
 DROP TABLE IF EXISTS logical_volume_v64;
 DROP TABLE IF EXISTS audit.logical_volume_v64;
--- DONE DEALING WITH TABLE logical_volume [743908]
+-- DONE DEALING WITH TABLE logical_volume [1173784]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE logical_volume_property [1089499]
+-- DEALING WITH TABLE logical_volume_property [1146102]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'logical_volume_property', 'logical_volume_property');
 
@@ -7069,7 +7803,7 @@ ALTER SEQUENCE logical_volume_property_logical_volume_property_id_seq
 	 OWNED BY logical_volume_property.logical_volume_property_id;
 DROP TABLE IF EXISTS logical_volume_property_v64;
 DROP TABLE IF EXISTS audit.logical_volume_property_v64;
--- DONE DEALING WITH TABLE logical_volume_property [743929]
+-- DONE DEALING WITH TABLE logical_volume_property [1173805]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE person_company_attr
@@ -7105,24 +7839,24 @@ CREATE INDEX xif3person_company_attr ON person_company_attr USING btree (person_
 -- FOREIGN KEYS TO
 -- consider FK person_company_attr and person_company
 ALTER TABLE person_company_attr
-	ADD CONSTRAINT r_746
+	ADD CONSTRAINT fk_pers_comp_attr_person_comp_
 	FOREIGN KEY (company_id, person_id) REFERENCES person_company(company_id, person_id);
 -- consider FK person_company_attr and person
 ALTER TABLE person_company_attr
-	ADD CONSTRAINT r_747
+	ADD CONSTRAINT fk_person_comp_att_pers_person
 	FOREIGN KEY (attribute_value_person_id) REFERENCES person(person_id);
 -- consider FK person_company_attr and val_person_company_attr_name
 ALTER TABLE person_company_attr
-	ADD CONSTRAINT r_748
+	ADD CONSTRAINT fk_person_comp_attr_val_name
 	FOREIGN KEY (person_company_attr_name) REFERENCES val_person_company_attr_name(person_company_attr_name);
 
 -- TRIGGERS
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'person_company_attr');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'person_company_attr');
--- DONE DEALING WITH TABLE person_company_attr [744205]
+-- DONE DEALING WITH TABLE person_company_attr [1174082]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE property [1089929]
+-- DEALING WITH TABLE property [1146532]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'property', 'property');
 
@@ -7227,9 +7961,9 @@ CREATE TABLE property
 	device_collection_id	integer  NULL,
 	dns_domain_collection_id	integer  NULL,
 	dns_domain_id	integer  NULL,
+	layer2_network_collection_id	integer  NULL,
+	layer3_network_collection_id	integer  NULL,
 	netblock_collection_id	integer  NULL,
-	layer2_network_id	integer  NULL,
-	layer3_network_id	integer  NULL,
 	operating_system_id	integer  NULL,
 	operating_system_snapshot_id	integer  NULL,
 	person_id	integer  NULL,
@@ -7274,9 +8008,9 @@ INSERT INTO property (
 	device_collection_id,
 	dns_domain_collection_id,		-- new column (dns_domain_collection_id)
 	dns_domain_id,
+	layer2_network_collection_id,		-- new column (layer2_network_collection_id)
+	layer3_network_collection_id,		-- new column (layer3_network_collection_id)
 	netblock_collection_id,
-	layer2_network_id,
-	layer3_network_id,
 	operating_system_id,
 	operating_system_snapshot_id,
 	person_id,
@@ -7313,9 +8047,9 @@ INSERT INTO property (
 	device_collection_id,
 	NULL,		-- new column (dns_domain_collection_id)
 	dns_domain_id,
+	NULL,		-- new column (layer2_network_collection_id)
+	NULL,		-- new column (layer3_network_collection_id)
 	netblock_collection_id,
-	layer2_network_id,
-	layer3_network_id,
 	operating_system_id,
 	operating_system_snapshot_id,
 	person_id,
@@ -7354,9 +8088,9 @@ INSERT INTO audit.property (
 	device_collection_id,
 	dns_domain_collection_id,		-- new column (dns_domain_collection_id)
 	dns_domain_id,
+	layer2_network_collection_id,		-- new column (layer2_network_collection_id)
+	layer3_network_collection_id,		-- new column (layer3_network_collection_id)
 	netblock_collection_id,
-	layer2_network_id,
-	layer3_network_id,
 	operating_system_id,
 	operating_system_snapshot_id,
 	person_id,
@@ -7397,9 +8131,9 @@ INSERT INTO audit.property (
 	device_collection_id,
 	NULL,		-- new column (dns_domain_collection_id)
 	dns_domain_id,
+	NULL,		-- new column (layer2_network_collection_id)
+	NULL,		-- new column (layer3_network_collection_id)
 	netblock_collection_id,
-	layer2_network_id,
-	layer3_network_id,
 	operating_system_id,
 	operating_system_snapshot_id,
 	person_id,
@@ -7453,8 +8187,6 @@ COMMENT ON COLUMN property.device_collection_id IS 'LHS settable based on val_pr
 COMMENT ON COLUMN property.dns_domain_collection_id IS 'LHS settable based on val_property  THIS COLUMN IS DEPRECATED AND WILL BE REMOVED >= 0.66';
 COMMENT ON COLUMN property.dns_domain_id IS 'LHS settable based on val_property.   THIS COLUMN IS BEING DEPRECATED IN FAVOR OF DNS_DOMAIN_COLLECTION_ID IN >= 0.66';
 COMMENT ON COLUMN property.netblock_collection_id IS 'LHS settable based on val_property';
-COMMENT ON COLUMN property.layer2_network_id IS 'LHS settable based on val_property';
-COMMENT ON COLUMN property.layer3_network_id IS 'LHS settable based on val_property';
 COMMENT ON COLUMN property.operating_system_id IS 'LHS settable based on val_property';
 COMMENT ON COLUMN property.operating_system_snapshot_id IS 'LHS settable based on val_property';
 COMMENT ON COLUMN property.person_id IS 'LHS settable based on val_property';
@@ -7478,9 +8210,9 @@ COMMENT ON COLUMN property.start_date IS 'date/time that the assignment takes ef
 COMMENT ON COLUMN property.finish_date IS 'date/time that the assignment ceases taking effect or NULL.  .  The view v_property filters this out.';
 COMMENT ON COLUMN property.is_enabled IS 'indiciates if the property is temporarily disabled or not.  The view v_property filters this out.';
 -- INDEXES
+CREATE INDEX xif30property ON property USING btree (layer2_network_collection_id);
+CREATE INDEX xif31property ON property USING btree (layer3_network_collection_id);
 CREATE INDEX xif_prop_compcoll_id ON property USING btree (company_collection_id);
-CREATE INDEX xif_prop_l2netid ON property USING btree (layer2_network_id);
-CREATE INDEX xif_prop_l3netid ON property USING btree (layer3_network_id);
 CREATE INDEX xif_prop_os_snapshot ON property USING btree (operating_system_snapshot_id);
 CREATE INDEX xif_prop_pv_devcolid ON property USING btree (property_value_device_coll_id);
 CREATE INDEX xif_prop_svc_env_coll_id ON property USING btree (service_env_collection_id);
@@ -7516,14 +8248,14 @@ ALTER TABLE property ADD CONSTRAINT ckc_prop_isenbld
 ALTER TABLE property
 	ADD CONSTRAINT fk_prop_compcoll_id
 	FOREIGN KEY (company_collection_id) REFERENCES company_colllection(company_collection_id);
--- consider FK property and layer2_network
+-- consider FK property and layer2_network_collection
 ALTER TABLE property
-	ADD CONSTRAINT fk_prop_l2netid
-	FOREIGN KEY (layer2_network_id) REFERENCES layer2_network(layer2_network_id);
--- consider FK property and layer3_network
+	ADD CONSTRAINT fk_prop_l2_netcollid
+	FOREIGN KEY (layer2_network_collection_id) REFERENCES layer2_network_collection(layer2_network_collection_id);
+-- consider FK property and layer3_network_collection
 ALTER TABLE property
-	ADD CONSTRAINT fk_prop_l3netid
-	FOREIGN KEY (layer3_network_id) REFERENCES layer3_network(layer3_network_id);
+	ADD CONSTRAINT fk_prop_l3_netcoll_id
+	FOREIGN KEY (layer3_network_collection_id) REFERENCES layer3_network_collection(layer3_network_collection_id);
 -- consider FK property and operating_system_snapshot
 ALTER TABLE property
 	ADD CONSTRAINT fk_prop_os_snapshot
@@ -7627,10 +8359,10 @@ ALTER SEQUENCE property_property_id_seq
 	 OWNED BY property.property_id;
 DROP TABLE IF EXISTS property_v64;
 DROP TABLE IF EXISTS audit.property_v64;
--- DONE DEALING WITH TABLE property [744372]
+-- DONE DEALING WITH TABLE property [1174249]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE slot [1090101]
+-- DEALING WITH TABLE slot [1146704]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'slot', 'slot');
 
@@ -7900,10 +8632,10 @@ ALTER SEQUENCE slot_slot_id_seq
 	 OWNED BY slot.slot_id;
 DROP TABLE IF EXISTS slot_v64;
 DROP TABLE IF EXISTS audit.slot_v64;
--- DONE DEALING WITH TABLE slot [744545]
+-- DONE DEALING WITH TABLE slot [1174422]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE token [1090308]
+-- DEALING WITH TABLE token [1146911]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'token', 'token');
 
@@ -8131,10 +8863,10 @@ ALTER SEQUENCE token_token_id_seq
 	 OWNED BY token.token_id;
 DROP TABLE IF EXISTS token_v64;
 DROP TABLE IF EXISTS audit.token_v64;
--- DONE DEALING WITH TABLE token [744752]
+-- DONE DEALING WITH TABLE token [1174629]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE volume_group [1091258]
+-- DEALING WITH TABLE volume_group [1147861]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'volume_group', 'volume_group');
 
@@ -8306,6 +9038,10 @@ ALTER TABLE volume_group_physicalish_vol
 	FOREIGN KEY (volume_group_id, device_id) REFERENCES volume_group(volume_group_id, device_id) DEFERRABLE;
 
 -- FOREIGN KEYS TO
+-- consider FK volume_group and component
+ALTER TABLE volume_group
+	ADD CONSTRAINT fk_vol_group_compon_id
+	FOREIGN KEY (component_id) REFERENCES component(component_id);
 -- consider FK volume_group and device
 ALTER TABLE volume_group
 	ADD CONSTRAINT fk_volgrp_devid
@@ -8318,10 +9054,6 @@ ALTER TABLE volume_group
 ALTER TABLE volume_group
 	ADD CONSTRAINT fk_volgrp_volgrp_type
 	FOREIGN KEY (volume_group_type) REFERENCES val_volume_group_type(volume_group_type) DEFERRABLE;
--- consider FK volume_group and component
-ALTER TABLE volume_group
-	ADD CONSTRAINT r_745
-	FOREIGN KEY (component_id) REFERENCES component(component_id);
 
 -- TRIGGERS
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'volume_group');
@@ -8330,10 +9062,10 @@ ALTER SEQUENCE volume_group_volume_group_id_seq
 	 OWNED BY volume_group.volume_group_id;
 DROP TABLE IF EXISTS volume_group_v64;
 DROP TABLE IF EXISTS audit.volume_group_v64;
--- DONE DEALING WITH TABLE volume_group [745783]
+-- DONE DEALING WITH TABLE volume_group [1175682]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE volume_group_physicalish_vol [1091276]
+-- DEALING WITH TABLE volume_group_physicalish_vol [1147879]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'volume_group_physicalish_vol', 'volume_group_physicalish_vol');
 
@@ -8506,10 +9238,10 @@ SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'volume_group_physicali
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'volume_group_physicalish_vol');
 DROP TABLE IF EXISTS volume_group_physicalish_vol_v64;
 DROP TABLE IF EXISTS audit.volume_group_physicalish_vol_v64;
--- DONE DEALING WITH TABLE volume_group_physicalish_vol [745802]
+-- DONE DEALING WITH TABLE volume_group_physicalish_vol [1175701]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE x509_certificate [1091305]
+-- DEALING WITH TABLE x509_certificate [1147908]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'x509_certificate', 'x509_certificate');
 
@@ -8774,10 +9506,10 @@ ALTER SEQUENCE x509_certificate_x509_cert_id_seq
 	 OWNED BY x509_certificate.x509_cert_id;
 DROP TABLE IF EXISTS x509_certificate_v64;
 DROP TABLE IF EXISTS audit.x509_certificate_v64;
--- DONE DEALING WITH TABLE x509_certificate [745831]
+-- DONE DEALING WITH TABLE x509_certificate [1175730]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE v_property [1096845]
+-- DEALING WITH TABLE v_property [1153448]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'v_property', 'v_property');
 SELECT schema_support.save_dependant_objects_for_replay('jazzhands', 'v_property');
@@ -8792,9 +9524,9 @@ CREATE VIEW jazzhands.v_property AS
     property.device_collection_id,
     property.dns_domain_collection_id,
     property.dns_domain_id,
+    property.layer2_network_collection_id,
+    property.layer3_network_collection_id,
     property.netblock_collection_id,
-    property.layer2_network_id,
-    property.layer3_network_id,
     property.operating_system_id,
     property.operating_system_snapshot_id,
     property.person_id,
@@ -8825,10 +9557,10 @@ CREATE VIEW jazzhands.v_property AS
   WHERE property.is_enabled = 'Y'::bpchar AND (property.start_date IS NULL AND property.finish_date IS NULL OR property.start_date IS NULL AND now() <= property.finish_date OR property.start_date <= now() AND property.finish_date IS NULL OR property.start_date <= now() AND now() <= property.finish_date);
 
 delete from __recreate where type = 'view' and object = 'v_property';
--- DONE DEALING WITH TABLE v_property [751703]
+-- DONE DEALING WITH TABLE v_property [1181774]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE v_acct_coll_prop_expanded [1096943]
+-- DEALING WITH TABLE v_acct_coll_prop_expanded [1153546]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'v_acct_coll_prop_expanded', 'v_acct_coll_prop_expanded');
 SELECT schema_support.save_dependant_objects_for_replay('jazzhands', 'v_acct_coll_prop_expanded');
@@ -8874,7 +9606,7 @@ CREATE VIEW jazzhands.v_acct_coll_prop_expanded AS
      JOIN val_property USING (property_name, property_type);
 
 delete from __recreate where type = 'view' and object = 'v_acct_coll_prop_expanded';
--- DONE DEALING WITH TABLE v_acct_coll_prop_expanded [751801]
+-- DONE DEALING WITH TABLE v_acct_coll_prop_expanded [1181872]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE v_approval_instance_step_expanded
@@ -8922,10 +9654,10 @@ CREATE VIEW jazzhands.v_approval_instance_step_expanded AS
    FROM q;
 
 delete from __recreate where type = 'view' and object = 'v_approval_instance_step_expanded';
--- DONE DEALING WITH TABLE v_approval_instance_step_expanded [751942]
+-- DONE DEALING WITH TABLE v_approval_instance_step_expanded [1182013]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE v_property [1096845]
+-- DEALING WITH TABLE v_property [1153448]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'v_property', 'v_property');
 SELECT schema_support.save_dependant_objects_for_replay('jazzhands', 'v_property');
@@ -8940,9 +9672,9 @@ CREATE VIEW jazzhands.v_property AS
     property.device_collection_id,
     property.dns_domain_collection_id,
     property.dns_domain_id,
+    property.layer2_network_collection_id,
+    property.layer3_network_collection_id,
     property.netblock_collection_id,
-    property.layer2_network_id,
-    property.layer3_network_id,
     property.operating_system_id,
     property.operating_system_snapshot_id,
     property.person_id,
@@ -8973,10 +9705,10 @@ CREATE VIEW jazzhands.v_property AS
   WHERE property.is_enabled = 'Y'::bpchar AND (property.start_date IS NULL AND property.finish_date IS NULL OR property.start_date IS NULL AND now() <= property.finish_date OR property.start_date <= now() AND property.finish_date IS NULL OR property.start_date <= now() AND now() <= property.finish_date);
 
 delete from __recreate where type = 'view' and object = 'v_property';
--- DONE DEALING WITH TABLE v_property [751703]
+-- DONE DEALING WITH TABLE v_property [1181774]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE v_token [1096865]
+-- DEALING WITH TABLE v_token [1153468]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'v_token', 'v_token');
 SELECT schema_support.save_dependant_objects_for_replay('jazzhands', 'v_token');
@@ -9004,10 +9736,10 @@ CREATE VIEW jazzhands.v_token AS
      LEFT JOIN account_token ta USING (token_id);
 
 delete from __recreate where type = 'view' and object = 'v_token';
--- DONE DEALING WITH TABLE v_token [751723]
+-- DONE DEALING WITH TABLE v_token [1181794]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE v_approval_matrix [1097059]
+-- DEALING WITH TABLE v_approval_matrix [1153662]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'v_approval_matrix', 'v_approval_matrix');
 SELECT schema_support.save_dependant_objects_for_replay('approval_utils', 'v_approval_matrix');
@@ -9051,10 +9783,10 @@ CREATE VIEW approval_utils.v_approval_matrix AS
   WHERE ap.approval_process_name::text = 'ReportingAttest'::text AND ap.approval_process_type::text = 'attestation'::text;
 
 delete from __recreate where type = 'view' and object = 'v_approval_matrix';
--- DONE DEALING WITH TABLE v_approval_matrix [751917]
+-- DONE DEALING WITH TABLE v_approval_matrix [1181988]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE v_account_collection_approval_process [1097079]
+-- DEALING WITH TABLE v_account_collection_approval_process [1153682]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'v_account_collection_approval_process', 'v_account_collection_approval_process');
 SELECT schema_support.save_dependant_objects_for_replay('approval_utils', 'v_account_collection_approval_process');
@@ -9219,7 +9951,7 @@ CREATE VIEW approval_utils.v_account_collection_approval_process AS
   ORDER BY combo.manager_login, combo.account_id, combo.approval_label;
 
 delete from __recreate where type = 'view' and object = 'v_account_collection_approval_process';
--- DONE DEALING WITH TABLE v_account_collection_approval_process [751937]
+-- DONE DEALING WITH TABLE v_account_collection_approval_process [1182008]
 --------------------------------------------------------------------
 -- Changed function
 SELECT schema_support.save_grants_for_replay('jazzhands', 'account_automated_reporting_ac');
@@ -9690,10 +10422,10 @@ BEGIN
 				(account_collection_Id = NEW.account_collection_Id)) AND
 			((netblock_collection_Id IS NULL AND NEW.netblock_collection_Id IS NULL) OR
 				(netblock_collection_Id = NEW.netblock_collection_Id)) AND
-			((layer2_network_id IS NULL AND NEW.layer2_network_id IS NULL) OR
-				(layer2_network_id = NEW.layer2_network_id)) AND
-			((layer3_network_id IS NULL AND NEW.layer3_network_id IS NULL) OR
-				(layer3_network_id = NEW.layer3_network_id)) AND
+			((layer2_network_collection_id IS NULL AND NEW.layer2_network_collection_id IS NULL) OR
+				(layer2_network_collection_id = NEW.layer2_network_collection_id)) AND
+			((layer3_network_collection_id IS NULL AND NEW.layer3_network_collection_id IS NULL) OR
+				(layer3_network_collection_id = NEW.layer3_network_collection_id)) AND
 			((person_id IS NULL AND NEW.Person_id IS NULL) OR
 				(Person_Id = NEW.person_id)) AND
 			((property_collection_id IS NULL AND NEW.property_collection_id IS NULL) OR
@@ -9741,10 +10473,10 @@ BEGIN
 				(Account_Realm_id = NEW.Account_Realm_id)) AND
 			((account_collection_Id IS NULL AND NEW.account_collection_Id IS NULL) OR
 				(account_collection_Id = NEW.account_collection_Id)) AND
-			((layer2_network_id IS NULL AND NEW.layer2_network_id IS NULL) OR
-				(layer2_network_id = NEW.layer2_network_id)) AND
-			((layer3_network_id IS NULL AND NEW.layer3_network_id IS NULL) OR
-				(layer3_network_id = NEW.layer3_network_id)) AND
+			((layer2_network_collection_id IS NULL AND NEW.layer2_network_collection_id IS NULL) OR
+				(layer2_network_collection_id = NEW.layer2_network_collection_id)) AND
+			((layer3_network_collection_id IS NULL AND NEW.layer3_network_collection_id IS NULL) OR
+				(layer3_network_collection_id = NEW.layer3_network_collection_id)) AND
 			((netblock_collection_Id IS NULL AND NEW.netblock_collection_Id IS NULL) OR
 				(netblock_collection_Id = NEW.netblock_collection_Id)) AND
 			((property_collection_Id IS NULL AND NEW.property_collection_Id IS NULL) OR
@@ -10087,26 +10819,26 @@ BEGIN
 			END IF;
 	END IF;
 
-	IF v_prop.Permit_layer2_network_id = 'REQUIRED' THEN
-			IF NEW.layer2_network_id IS NULL THEN
-				RAISE 'layer2_network_id is required.'
+	IF v_prop.permit_layer2_network_coll_id = 'REQUIRED' THEN
+			IF NEW.layer2_network_collection_id IS NULL THEN
+				RAISE 'layer2_network_collection_id is required.'
 					USING ERRCODE = 'invalid_parameter_value';
 			END IF;
-	ELSIF v_prop.Permit_layer2_network_id = 'PROHIBITED' THEN
-			IF NEW.layer2_network_id IS NOT NULL THEN
-				RAISE 'layer2_network_id is prohibited.'
+	ELSIF v_prop.permit_layer2_network_coll_id = 'PROHIBITED' THEN
+			IF NEW.layer2_network_collection_id IS NOT NULL THEN
+				RAISE 'layer2_network_collection_id is prohibited.'
 					USING ERRCODE = 'invalid_parameter_value';
 			END IF;
 	END IF;
 
-	IF v_prop.Permit_layer3_network_id = 'REQUIRED' THEN
-			IF NEW.layer3_network_id IS NULL THEN
-				RAISE 'layer3_network_id is required.'
+	IF v_prop.permit_layer3_network_coll_id = 'REQUIRED' THEN
+			IF NEW.layer3_network_collection_id IS NULL THEN
+				RAISE 'layer3_network_collection_id is required.'
 					USING ERRCODE = 'invalid_parameter_value';
 			END IF;
-	ELSIF v_prop.Permit_layer3_network_id = 'PROHIBITED' THEN
-			IF NEW.layer3_network_id IS NOT NULL THEN
-				RAISE 'layer3_network_id is prohibited.'
+	ELSIF v_prop.permit_layer3_network_coll_id = 'PROHIBITED' THEN
+			IF NEW.layer3_network_collection_id IS NOT NULL THEN
+				RAISE 'layer3_network_collection_id is prohibited.'
 					USING ERRCODE = 'invalid_parameter_value';
 			END IF;
 	END IF;
@@ -10501,6 +11233,222 @@ AS $function$
 ;
 
 -- New function
+CREATE OR REPLACE FUNCTION jazzhands.perform_audit_l2_network_coll_l2_network()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+	    DECLARE
+		appuser VARCHAR;
+	    BEGIN
+		BEGIN
+		    appuser := session_user
+			|| '/' || current_setting('jazzhands.appuser');
+		EXCEPTION WHEN OTHERS THEN
+		    appuser := session_user;
+		END;
+
+    		appuser = substr(appuser, 1, 255);
+
+		IF TG_OP = 'DELETE' THEN
+		    INSERT INTO audit.l2_network_coll_l2_network
+		    VALUES ( OLD.*, 'DEL', now(), appuser );
+		    RETURN OLD;
+		ELSIF TG_OP = 'UPDATE' THEN
+		    INSERT INTO audit.l2_network_coll_l2_network
+		    VALUES ( NEW.*, 'UPD', now(), appuser );
+		    RETURN NEW;
+		ELSIF TG_OP = 'INSERT' THEN
+		    INSERT INTO audit.l2_network_coll_l2_network
+		    VALUES ( NEW.*, 'INS', now(), appuser );
+		    RETURN NEW;
+		END IF;
+		RETURN NULL;
+	    END;
+	$function$
+;
+
+-- New function
+CREATE OR REPLACE FUNCTION jazzhands.perform_audit_l3_network_coll_l3_network()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+	    DECLARE
+		appuser VARCHAR;
+	    BEGIN
+		BEGIN
+		    appuser := session_user
+			|| '/' || current_setting('jazzhands.appuser');
+		EXCEPTION WHEN OTHERS THEN
+		    appuser := session_user;
+		END;
+
+    		appuser = substr(appuser, 1, 255);
+
+		IF TG_OP = 'DELETE' THEN
+		    INSERT INTO audit.l3_network_coll_l3_network
+		    VALUES ( OLD.*, 'DEL', now(), appuser );
+		    RETURN OLD;
+		ELSIF TG_OP = 'UPDATE' THEN
+		    INSERT INTO audit.l3_network_coll_l3_network
+		    VALUES ( NEW.*, 'UPD', now(), appuser );
+		    RETURN NEW;
+		ELSIF TG_OP = 'INSERT' THEN
+		    INSERT INTO audit.l3_network_coll_l3_network
+		    VALUES ( NEW.*, 'INS', now(), appuser );
+		    RETURN NEW;
+		END IF;
+		RETURN NULL;
+	    END;
+	$function$
+;
+
+-- New function
+CREATE OR REPLACE FUNCTION jazzhands.perform_audit_layer2_network_collection()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+	    DECLARE
+		appuser VARCHAR;
+	    BEGIN
+		BEGIN
+		    appuser := session_user
+			|| '/' || current_setting('jazzhands.appuser');
+		EXCEPTION WHEN OTHERS THEN
+		    appuser := session_user;
+		END;
+
+    		appuser = substr(appuser, 1, 255);
+
+		IF TG_OP = 'DELETE' THEN
+		    INSERT INTO audit.layer2_network_collection
+		    VALUES ( OLD.*, 'DEL', now(), appuser );
+		    RETURN OLD;
+		ELSIF TG_OP = 'UPDATE' THEN
+		    INSERT INTO audit.layer2_network_collection
+		    VALUES ( NEW.*, 'UPD', now(), appuser );
+		    RETURN NEW;
+		ELSIF TG_OP = 'INSERT' THEN
+		    INSERT INTO audit.layer2_network_collection
+		    VALUES ( NEW.*, 'INS', now(), appuser );
+		    RETURN NEW;
+		END IF;
+		RETURN NULL;
+	    END;
+	$function$
+;
+
+-- New function
+CREATE OR REPLACE FUNCTION jazzhands.perform_audit_layer2_network_collection_hier()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+	    DECLARE
+		appuser VARCHAR;
+	    BEGIN
+		BEGIN
+		    appuser := session_user
+			|| '/' || current_setting('jazzhands.appuser');
+		EXCEPTION WHEN OTHERS THEN
+		    appuser := session_user;
+		END;
+
+    		appuser = substr(appuser, 1, 255);
+
+		IF TG_OP = 'DELETE' THEN
+		    INSERT INTO audit.layer2_network_collection_hier
+		    VALUES ( OLD.*, 'DEL', now(), appuser );
+		    RETURN OLD;
+		ELSIF TG_OP = 'UPDATE' THEN
+		    INSERT INTO audit.layer2_network_collection_hier
+		    VALUES ( NEW.*, 'UPD', now(), appuser );
+		    RETURN NEW;
+		ELSIF TG_OP = 'INSERT' THEN
+		    INSERT INTO audit.layer2_network_collection_hier
+		    VALUES ( NEW.*, 'INS', now(), appuser );
+		    RETURN NEW;
+		END IF;
+		RETURN NULL;
+	    END;
+	$function$
+;
+
+-- New function
+CREATE OR REPLACE FUNCTION jazzhands.perform_audit_layer3_network_collection()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+	    DECLARE
+		appuser VARCHAR;
+	    BEGIN
+		BEGIN
+		    appuser := session_user
+			|| '/' || current_setting('jazzhands.appuser');
+		EXCEPTION WHEN OTHERS THEN
+		    appuser := session_user;
+		END;
+
+    		appuser = substr(appuser, 1, 255);
+
+		IF TG_OP = 'DELETE' THEN
+		    INSERT INTO audit.layer3_network_collection
+		    VALUES ( OLD.*, 'DEL', now(), appuser );
+		    RETURN OLD;
+		ELSIF TG_OP = 'UPDATE' THEN
+		    INSERT INTO audit.layer3_network_collection
+		    VALUES ( NEW.*, 'UPD', now(), appuser );
+		    RETURN NEW;
+		ELSIF TG_OP = 'INSERT' THEN
+		    INSERT INTO audit.layer3_network_collection
+		    VALUES ( NEW.*, 'INS', now(), appuser );
+		    RETURN NEW;
+		END IF;
+		RETURN NULL;
+	    END;
+	$function$
+;
+
+-- New function
+CREATE OR REPLACE FUNCTION jazzhands.perform_audit_layer3_network_collection_hier()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+	    DECLARE
+		appuser VARCHAR;
+	    BEGIN
+		BEGIN
+		    appuser := session_user
+			|| '/' || current_setting('jazzhands.appuser');
+		EXCEPTION WHEN OTHERS THEN
+		    appuser := session_user;
+		END;
+
+    		appuser = substr(appuser, 1, 255);
+
+		IF TG_OP = 'DELETE' THEN
+		    INSERT INTO audit.layer3_network_collection_hier
+		    VALUES ( OLD.*, 'DEL', now(), appuser );
+		    RETURN OLD;
+		ELSIF TG_OP = 'UPDATE' THEN
+		    INSERT INTO audit.layer3_network_collection_hier
+		    VALUES ( NEW.*, 'UPD', now(), appuser );
+		    RETURN NEW;
+		ELSIF TG_OP = 'INSERT' THEN
+		    INSERT INTO audit.layer3_network_collection_hier
+		    VALUES ( NEW.*, 'INS', now(), appuser );
+		    RETURN NEW;
+		END IF;
+		RETURN NULL;
+	    END;
+	$function$
+;
+
+-- New function
 CREATE OR REPLACE FUNCTION jazzhands.perform_audit_person_company_attr()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -10636,6 +11584,78 @@ AS $function$
 		    RETURN NEW;
 		ELSIF TG_OP = 'INSERT' THEN
 		    INSERT INTO audit.val_dns_domain_collection_type
+		    VALUES ( NEW.*, 'INS', now(), appuser );
+		    RETURN NEW;
+		END IF;
+		RETURN NULL;
+	    END;
+	$function$
+;
+
+-- New function
+CREATE OR REPLACE FUNCTION jazzhands.perform_audit_val_layer2_network_coll_type()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+	    DECLARE
+		appuser VARCHAR;
+	    BEGIN
+		BEGIN
+		    appuser := session_user
+			|| '/' || current_setting('jazzhands.appuser');
+		EXCEPTION WHEN OTHERS THEN
+		    appuser := session_user;
+		END;
+
+    		appuser = substr(appuser, 1, 255);
+
+		IF TG_OP = 'DELETE' THEN
+		    INSERT INTO audit.val_layer2_network_coll_type
+		    VALUES ( OLD.*, 'DEL', now(), appuser );
+		    RETURN OLD;
+		ELSIF TG_OP = 'UPDATE' THEN
+		    INSERT INTO audit.val_layer2_network_coll_type
+		    VALUES ( NEW.*, 'UPD', now(), appuser );
+		    RETURN NEW;
+		ELSIF TG_OP = 'INSERT' THEN
+		    INSERT INTO audit.val_layer2_network_coll_type
+		    VALUES ( NEW.*, 'INS', now(), appuser );
+		    RETURN NEW;
+		END IF;
+		RETURN NULL;
+	    END;
+	$function$
+;
+
+-- New function
+CREATE OR REPLACE FUNCTION jazzhands.perform_audit_val_layer3_network_coll_type()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+	    DECLARE
+		appuser VARCHAR;
+	    BEGIN
+		BEGIN
+		    appuser := session_user
+			|| '/' || current_setting('jazzhands.appuser');
+		EXCEPTION WHEN OTHERS THEN
+		    appuser := session_user;
+		END;
+
+    		appuser = substr(appuser, 1, 255);
+
+		IF TG_OP = 'DELETE' THEN
+		    INSERT INTO audit.val_layer3_network_coll_type
+		    VALUES ( OLD.*, 'DEL', now(), appuser );
+		    RETURN OLD;
+		ELSIF TG_OP = 'UPDATE' THEN
+		    INSERT INTO audit.val_layer3_network_coll_type
+		    VALUES ( NEW.*, 'UPD', now(), appuser );
+		    RETURN NEW;
+		ELSIF TG_OP = 'INSERT' THEN
+		    INSERT INTO audit.val_layer3_network_coll_type
 		    VALUES ( NEW.*, 'INS', now(), appuser );
 		    RETURN NEW;
 		END IF;
@@ -11926,6 +12946,11 @@ $function$
 -- Processing tables with no structural changes
 -- Some of these may be redundant
 -- fk constraints
+ALTER TABLE device DROP CONSTRAINT IF EXISTS fk_device_id_dnsrecord;
+ALTER TABLE device
+	ADD CONSTRAINT fk_device_id_dnsrecord
+	FOREIGN KEY (identifying_dns_record_id) REFERENCES dns_record(dns_record_id) DEFERRABLE;
+
 ALTER TABLE physicalish_volume DROP CONSTRAINT IF EXISTS ak_physvolname_type_devid;
 ALTER TABLE physicalish_volume
 	ADD CONSTRAINT ak_physvolname_type_devid

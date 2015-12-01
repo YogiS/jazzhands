@@ -54,8 +54,8 @@
 -- XXX - not sure if this is still needed.  Leaving out until it is.
 -- \i create_v_limited_users.sql
 
-\i create_v_device_slots.sql
-\i create_v_device_components.sql
+\i pgsql/create_v_device_slots.sql
+\i pgsql/create_v_device_components.sql
 
 \i create_physical_port.sql
 \i create_layer1_connection.sql

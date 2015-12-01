@@ -30,7 +30,7 @@
 --
 \set ON_ERROR_STOP
 
-select now();
+select timeofday(), now();
 
 select set_config('jazzhands.appuser', 'createtester', false);
 SET client_encoding = 'UTF8';
@@ -92,4 +92,4 @@ begin;
 rollback;
 -- RAISE EXCEPTION 'need to put transactions back in testing';
 
-select now();
+select timeofday(), now();
