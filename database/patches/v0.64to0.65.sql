@@ -3,6 +3,7 @@ Invoked:
 
 	--suffix=v64
 	--col-default=appaal_group_name:'database'
+	--col-default=logical_volume_type:'legacy'
 	--scan-tables
 	--first=layer2_network
 	--first=layer3_network
@@ -3061,7 +3062,7 @@ CREATE SEQUENCE layer3_network_collection_layer3_network_collection_id_seq;
 
 
 --------------------------------------------------------------------
--- DEALING WITH TABLE layer2_network [1146023]
+-- DEALING WITH TABLE layer2_network [1212574]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'layer2_network', 'layer2_network');
 
@@ -3094,7 +3095,7 @@ DROP TRIGGER IF EXISTS trigger_audit_layer2_network ON jazzhands.layer2_network;
 SELECT schema_support.save_dependant_objects_for_replay('jazzhands', 'layer2_network');
 ---- BEGIN audit.layer2_network TEARDOWN
 -- Save grants for later reapplication
-SELECT schema_support.save_grants_for_replay('audit', 'layer2_network', 'audit.layer2_network');
+SELECT schema_support.save_grants_for_replay('audit', 'layer2_network', 'layer2_network');
 
 -- FOREIGN KEYS FROM
 
@@ -3255,7 +3256,7 @@ DROP TABLE IF EXISTS audit.layer2_network_v64;
 -- DONE DEALING WITH TABLE layer2_network [1173678]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE layer3_network [1146042]
+-- DEALING WITH TABLE layer3_network [1212593]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'layer3_network', 'layer3_network');
 
@@ -3285,7 +3286,7 @@ DROP TRIGGER IF EXISTS trigger_audit_layer3_network ON jazzhands.layer3_network;
 SELECT schema_support.save_dependant_objects_for_replay('jazzhands', 'layer3_network');
 ---- BEGIN audit.layer3_network TEARDOWN
 -- Save grants for later reapplication
-SELECT schema_support.save_grants_for_replay('audit', 'layer3_network', 'audit.layer3_network');
+SELECT schema_support.save_grants_for_replay('audit', 'layer3_network', 'layer3_network');
 
 -- FOREIGN KEYS FROM
 
@@ -3432,7 +3433,7 @@ DROP TABLE IF EXISTS audit.layer3_network_v64;
 -- DONE DEALING WITH TABLE layer3_network [1173721]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE val_app_key [1147008]
+-- DEALING WITH TABLE val_app_key [1213558]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'val_app_key', 'val_app_key');
 
@@ -3455,7 +3456,7 @@ DROP TRIGGER IF EXISTS trigger_audit_val_app_key ON jazzhands.val_app_key;
 SELECT schema_support.save_dependant_objects_for_replay('jazzhands', 'val_app_key');
 ---- BEGIN audit.val_app_key TEARDOWN
 -- Save grants for later reapplication
-SELECT schema_support.save_grants_for_replay('audit', 'val_app_key', 'audit.val_app_key');
+SELECT schema_support.save_grants_for_replay('audit', 'val_app_key', 'val_app_key');
 
 -- FOREIGN KEYS FROM
 
@@ -3571,7 +3572,7 @@ DROP TABLE IF EXISTS audit.val_app_key_v64;
 -- DONE DEALING WITH TABLE val_app_key [1174727]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE val_app_key_values [1147016]
+-- DEALING WITH TABLE val_app_key_values [1213566]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'val_app_key_values', 'val_app_key_values');
 
@@ -3593,7 +3594,7 @@ DROP TRIGGER IF EXISTS trigger_audit_val_app_key_values ON jazzhands.val_app_key
 SELECT schema_support.save_dependant_objects_for_replay('jazzhands', 'val_app_key_values');
 ---- BEGIN audit.val_app_key_values TEARDOWN
 -- Save grants for later reapplication
-SELECT schema_support.save_grants_for_replay('audit', 'val_app_key_values', 'audit.val_app_key_values');
+SELECT schema_support.save_grants_for_replay('audit', 'val_app_key_values', 'val_app_key_values');
 
 -- FOREIGN KEYS FROM
 
@@ -3997,6 +3998,11 @@ SELECT schema_support.build_audit_table('audit', 'jazzhands', 'val_logical_volum
 --
 -- Copying initialization data
 --
+INSERT INTO val_logical_volume_type
+	( logical_volume_type,description
+) VALUES (
+	 'legacy',NULL );
+
 
 -- PRIMARY AND ALTERNATE KEYS
 ALTER TABLE val_logical_volume_type ADD CONSTRAINT pk_logical_volume_type PRIMARY KEY (logical_volume_type);
@@ -4022,7 +4028,7 @@ SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_logical_v
 -- DONE DEALING WITH TABLE val_logical_volume_type [1175126]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE val_netblock_collection_type [1147356]
+-- DEALING WITH TABLE val_netblock_collection_type [1213906]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'val_netblock_collection_type', 'val_netblock_collection_type');
 
@@ -4046,7 +4052,7 @@ DROP TRIGGER IF EXISTS trigger_audit_val_netblock_collection_type ON jazzhands.v
 SELECT schema_support.save_dependant_objects_for_replay('jazzhands', 'val_netblock_collection_type');
 ---- BEGIN audit.val_netblock_collection_type TEARDOWN
 -- Save grants for later reapplication
-SELECT schema_support.save_grants_for_replay('audit', 'val_netblock_collection_type', 'audit.val_netblock_collection_type');
+SELECT schema_support.save_grants_for_replay('audit', 'val_netblock_collection_type', 'val_netblock_collection_type');
 
 -- FOREIGN KEYS FROM
 
@@ -4322,7 +4328,7 @@ SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_person_co
 -- DONE DEALING WITH TABLE val_person_company_attr_value [1175253]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE val_property [1147542]
+-- DEALING WITH TABLE val_property [1214092]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'val_property', 'val_property');
 
@@ -4373,7 +4379,7 @@ DROP TRIGGER IF EXISTS trigger_audit_val_property ON jazzhands.val_property;
 SELECT schema_support.save_dependant_objects_for_replay('jazzhands', 'val_property');
 ---- BEGIN audit.val_property TEARDOWN
 -- Save grants for later reapplication
-SELECT schema_support.save_grants_for_replay('audit', 'val_property', 'audit.val_property');
+SELECT schema_support.save_grants_for_replay('audit', 'val_property', 'val_property');
 
 -- FOREIGN KEYS FROM
 
@@ -4897,7 +4903,7 @@ DROP TABLE IF EXISTS audit.val_property_v64;
 -- DONE DEALING WITH TABLE val_property [1175348]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE val_raid_type [1147635]
+-- DEALING WITH TABLE val_raid_type [1214185]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'val_raid_type', 'val_raid_type');
 
@@ -4919,7 +4925,7 @@ DROP TRIGGER IF EXISTS trigger_audit_val_raid_type ON jazzhands.val_raid_type;
 SELECT schema_support.save_dependant_objects_for_replay('jazzhands', 'val_raid_type');
 ---- BEGIN audit.val_raid_type TEARDOWN
 -- Save grants for later reapplication
-SELECT schema_support.save_grants_for_replay('audit', 'val_raid_type', 'audit.val_raid_type');
+SELECT schema_support.save_grants_for_replay('audit', 'val_raid_type', 'val_raid_type');
 
 -- FOREIGN KEYS FROM
 
@@ -5033,7 +5039,7 @@ DROP TABLE IF EXISTS audit.val_raid_type_v64;
 -- DONE DEALING WITH TABLE val_raid_type [1175454]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE val_slot_function [1147653]
+-- DEALING WITH TABLE val_slot_function [1214203]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'val_slot_function', 'val_slot_function');
 
@@ -5058,7 +5064,7 @@ DROP TRIGGER IF EXISTS trigger_audit_val_slot_function ON jazzhands.val_slot_fun
 SELECT schema_support.save_dependant_objects_for_replay('jazzhands', 'val_slot_function');
 ---- BEGIN audit.val_slot_function TEARDOWN
 -- Save grants for later reapplication
-SELECT schema_support.save_grants_for_replay('audit', 'val_slot_function', 'audit.val_slot_function');
+SELECT schema_support.save_grants_for_replay('audit', 'val_slot_function', 'val_slot_function');
 
 -- FOREIGN KEYS FROM
 
@@ -5179,7 +5185,7 @@ DROP TABLE IF EXISTS audit.val_slot_function_v64;
 -- DONE DEALING WITH TABLE val_slot_function [1175472]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE account_token [1145242]
+-- DEALING WITH TABLE account_token [1211793]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'account_token', 'account_token');
 
@@ -5205,7 +5211,7 @@ DROP TRIGGER IF EXISTS trigger_audit_account_token ON jazzhands.account_token;
 SELECT schema_support.save_dependant_objects_for_replay('jazzhands', 'account_token');
 ---- BEGIN audit.account_token TEARDOWN
 -- Save grants for later reapplication
-SELECT schema_support.save_grants_for_replay('audit', 'account_token', 'audit.account_token');
+SELECT schema_support.save_grants_for_replay('audit', 'account_token', 'account_token');
 
 -- FOREIGN KEYS FROM
 
@@ -5325,7 +5331,7 @@ DROP TABLE IF EXISTS audit.account_token_v64;
 -- DONE DEALING WITH TABLE account_token [1172808]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE appaal_instance_property [1145300]
+-- DEALING WITH TABLE appaal_instance_property [1211851]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'appaal_instance_property', 'appaal_instance_property');
 
@@ -5350,7 +5356,7 @@ DROP TRIGGER IF EXISTS trigger_audit_appaal_instance_property ON jazzhands.appaa
 SELECT schema_support.save_dependant_objects_for_replay('jazzhands', 'appaal_instance_property');
 ---- BEGIN audit.appaal_instance_property TEARDOWN
 -- Save grants for later reapplication
-SELECT schema_support.save_grants_for_replay('audit', 'appaal_instance_property', 'audit.appaal_instance_property');
+SELECT schema_support.save_grants_for_replay('audit', 'appaal_instance_property', 'appaal_instance_property');
 
 -- FOREIGN KEYS FROM
 
@@ -5482,7 +5488,7 @@ DROP TABLE IF EXISTS audit.appaal_instance_property_v64;
 -- DONE DEALING WITH TABLE appaal_instance_property [1172863]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE approval_instance_item [1145324]
+-- DEALING WITH TABLE approval_instance_item [1211875]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'approval_instance_item', 'approval_instance_item');
 
@@ -5512,7 +5518,7 @@ DROP TRIGGER IF EXISTS trigger_audit_approval_instance_item ON jazzhands.approva
 SELECT schema_support.save_dependant_objects_for_replay('jazzhands', 'approval_instance_item');
 ---- BEGIN audit.approval_instance_item TEARDOWN
 -- Save grants for later reapplication
-SELECT schema_support.save_grants_for_replay('audit', 'approval_instance_item', 'audit.approval_instance_item');
+SELECT schema_support.save_grants_for_replay('audit', 'approval_instance_item', 'approval_instance_item');
 
 -- FOREIGN KEYS FROM
 
@@ -5688,7 +5694,7 @@ DROP TABLE IF EXISTS audit.approval_instance_item_v64;
 -- DONE DEALING WITH TABLE approval_instance_item [1172890]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE approval_instance_step [1145351]
+-- DEALING WITH TABLE approval_instance_step [1211902]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'approval_instance_step', 'approval_instance_step');
 
@@ -5722,7 +5728,7 @@ DROP TRIGGER IF EXISTS trigger_audit_approval_instance_step ON jazzhands.approva
 SELECT schema_support.save_dependant_objects_for_replay('jazzhands', 'approval_instance_step');
 ---- BEGIN audit.approval_instance_step TEARDOWN
 -- Save grants for later reapplication
-SELECT schema_support.save_grants_for_replay('audit', 'approval_instance_step', 'audit.approval_instance_step');
+SELECT schema_support.save_grants_for_replay('audit', 'approval_instance_step', 'approval_instance_step');
 
 -- FOREIGN KEYS FROM
 
@@ -5920,7 +5926,7 @@ DROP TABLE IF EXISTS audit.approval_instance_step_v64;
 -- DONE DEALING WITH TABLE approval_instance_step [1172917]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE approval_instance_step_notify [1145368]
+-- DEALING WITH TABLE approval_instance_step_notify [1211919]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'approval_instance_step_notify', 'approval_instance_step_notify');
 
@@ -5945,7 +5951,7 @@ DROP TRIGGER IF EXISTS trigger_audit_approval_instance_step_notify ON jazzhands.
 SELECT schema_support.save_dependant_objects_for_replay('jazzhands', 'approval_instance_step_notify');
 ---- BEGIN audit.approval_instance_step_notify TEARDOWN
 -- Save grants for later reapplication
-SELECT schema_support.save_grants_for_replay('audit', 'approval_instance_step_notify', 'audit.approval_instance_step_notify');
+SELECT schema_support.save_grants_for_replay('audit', 'approval_instance_step_notify', 'approval_instance_step_notify');
 
 -- FOREIGN KEYS FROM
 
@@ -5993,7 +5999,7 @@ INSERT INTO approval_instance_step_notify (
 	approv_instance_step_notify_id,
 	approval_instance_step_id,
 	approval_notify_type,
-	NULL,		-- new column (account_id)
+	1,		-- new column (account_id)
 	approval_notify_whence,
 	data_ins_user,
 	data_ins_date,
@@ -6019,7 +6025,7 @@ INSERT INTO audit.approval_instance_step_notify (
 	approv_instance_step_notify_id,
 	approval_instance_step_id,
 	approval_notify_type,
-	NULL,		-- new column (account_id)
+	1,		-- new column (account_id)
 	approval_notify_whence,
 	data_ins_user,
 	data_ins_date,
@@ -6067,7 +6073,7 @@ DROP TABLE IF EXISTS audit.approval_instance_step_notify_v64;
 -- DONE DEALING WITH TABLE approval_instance_step_notify [1172933]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE approval_process [1145380]
+-- DEALING WITH TABLE approval_process [1211931]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'approval_process', 'approval_process');
 
@@ -6099,7 +6105,7 @@ DROP TRIGGER IF EXISTS trigger_audit_approval_process ON jazzhands.approval_proc
 SELECT schema_support.save_dependant_objects_for_replay('jazzhands', 'approval_process');
 ---- BEGIN audit.approval_process TEARDOWN
 -- Save grants for later reapplication
-SELECT schema_support.save_grants_for_replay('audit', 'approval_process', 'audit.approval_process');
+SELECT schema_support.save_grants_for_replay('audit', 'approval_process', 'approval_process');
 
 -- FOREIGN KEYS FROM
 
@@ -6278,7 +6284,7 @@ DROP TABLE IF EXISTS audit.approval_process_v64;
 -- DONE DEALING WITH TABLE approval_process [1172946]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE approval_process_chain [1145396]
+-- DEALING WITH TABLE approval_process_chain [1211947]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'approval_process_chain', 'approval_process_chain');
 
@@ -6307,7 +6313,7 @@ DROP TRIGGER IF EXISTS trigger_audit_approval_process_chain ON jazzhands.approva
 SELECT schema_support.save_dependant_objects_for_replay('jazzhands', 'approval_process_chain');
 ---- BEGIN audit.approval_process_chain TEARDOWN
 -- Save grants for later reapplication
-SELECT schema_support.save_grants_for_replay('audit', 'approval_process_chain', 'audit.approval_process_chain');
+SELECT schema_support.save_grants_for_replay('audit', 'approval_process_chain', 'approval_process_chain');
 
 -- FOREIGN KEYS FROM
 
@@ -6650,7 +6656,7 @@ SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'company_colll
 -- DONE DEALING WITH TABLE company_colllection [1173087]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE department [1145612]
+-- DEALING WITH TABLE department [1212163]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'department', 'department');
 
@@ -6680,7 +6686,7 @@ DROP TRIGGER IF EXISTS trigger_audit_department ON jazzhands.department;
 SELECT schema_support.save_dependant_objects_for_replay('jazzhands', 'department');
 ---- BEGIN audit.department TEARDOWN
 -- Save grants for later reapplication
-SELECT schema_support.save_grants_for_replay('audit', 'department', 'audit.department');
+SELECT schema_support.save_grants_for_replay('audit', 'department', 'department');
 
 -- FOREIGN KEYS FROM
 
@@ -6709,7 +6715,7 @@ CREATE TABLE department
 	is_active	character(1) NOT NULL,
 	dept_code	varchar(30)  NULL,
 	cost_center	varchar(10)  NULL,
-	cost_center_name	varchar(50) NOT NULL,
+	cost_center_name	varchar(50) NULL,
 	cost_center_number	integer  NULL,
 	default_badge_type_id	integer  NULL,
 	data_ins_user	varchar(255)  NULL,
@@ -7285,7 +7291,7 @@ SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'layer3_networ
 -- DONE DEALING WITH TABLE layer3_network_collection_hier [1173749]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE logical_port [1146058]
+-- DEALING WITH TABLE logical_port [1212609]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'logical_port', 'logical_port');
 
@@ -7314,7 +7320,7 @@ DROP TRIGGER IF EXISTS trigger_audit_logical_port ON jazzhands.logical_port;
 SELECT schema_support.save_dependant_objects_for_replay('jazzhands', 'logical_port');
 ---- BEGIN audit.logical_port TEARDOWN
 -- Save grants for later reapplication
-SELECT schema_support.save_grants_for_replay('audit', 'logical_port', 'audit.logical_port');
+SELECT schema_support.save_grants_for_replay('audit', 'logical_port', 'logical_port');
 
 -- FOREIGN KEYS FROM
 
@@ -7455,7 +7461,7 @@ DROP TABLE IF EXISTS audit.logical_port_v64;
 -- DONE DEALING WITH TABLE logical_port [1173761]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE logical_volume [1146082]
+-- DEALING WITH TABLE logical_volume [1212632]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'logical_volume', 'logical_volume');
 
@@ -7488,7 +7494,7 @@ DROP TRIGGER IF EXISTS trigger_audit_logical_volume ON jazzhands.logical_volume;
 SELECT schema_support.save_dependant_objects_for_replay('jazzhands', 'logical_volume');
 ---- BEGIN audit.logical_volume TEARDOWN
 -- Save grants for later reapplication
-SELECT schema_support.save_grants_for_replay('audit', 'logical_volume', 'audit.logical_volume');
+SELECT schema_support.save_grants_for_replay('audit', 'logical_volume', 'logical_volume');
 
 -- FOREIGN KEYS FROM
 
@@ -7544,7 +7550,7 @@ INSERT INTO logical_volume (
 ) SELECT
 	logical_volume_id,
 	logical_volume_name,
-	NULL,		-- new column (logical_volume_type)
+	'legacy',		-- new column (logical_volume_type)
 	volume_group_id,
 	device_id,
 	logical_volume_size_in_bytes,
@@ -7576,7 +7582,7 @@ INSERT INTO audit.logical_volume (
 ) SELECT
 	logical_volume_id,
 	logical_volume_name,
-	NULL,		-- new column (logical_volume_type)
+	'legacy',		-- new column (logical_volume_type)
 	volume_group_id,
 	device_id,
 	logical_volume_size_in_bytes,
@@ -7653,7 +7659,7 @@ DROP TABLE IF EXISTS audit.logical_volume_v64;
 -- DONE DEALING WITH TABLE logical_volume [1173784]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE logical_volume_property [1146102]
+-- DEALING WITH TABLE logical_volume_property [1212652]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'logical_volume_property', 'logical_volume_property');
 
@@ -7679,7 +7685,7 @@ DROP TRIGGER IF EXISTS trigger_audit_logical_volume_property ON jazzhands.logica
 SELECT schema_support.save_dependant_objects_for_replay('jazzhands', 'logical_volume_property');
 ---- BEGIN audit.logical_volume_property TEARDOWN
 -- Save grants for later reapplication
-SELECT schema_support.save_grants_for_replay('audit', 'logical_volume_property', 'audit.logical_volume_property');
+SELECT schema_support.save_grants_for_replay('audit', 'logical_volume_property', 'logical_volume_property');
 
 -- FOREIGN KEYS FROM
 
@@ -7856,7 +7862,7 @@ SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'person_compan
 -- DONE DEALING WITH TABLE person_company_attr [1174082]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE property [1146532]
+-- DEALING WITH TABLE property [1213082]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'property', 'property');
 
@@ -7929,7 +7935,7 @@ DROP TRIGGER IF EXISTS trigger_validate_property ON jazzhands.property;
 SELECT schema_support.save_dependant_objects_for_replay('jazzhands', 'property');
 ---- BEGIN audit.property TEARDOWN
 -- Save grants for later reapplication
-SELECT schema_support.save_grants_for_replay('audit', 'property', 'audit.property');
+SELECT schema_support.save_grants_for_replay('audit', 'property', 'property');
 
 -- FOREIGN KEYS FROM
 
@@ -8362,7 +8368,7 @@ DROP TABLE IF EXISTS audit.property_v64;
 -- DONE DEALING WITH TABLE property [1174249]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE slot [1146704]
+-- DEALING WITH TABLE slot [1213254]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'slot', 'slot');
 
@@ -8404,7 +8410,7 @@ DROP TRIGGER IF EXISTS trigger_audit_slot ON jazzhands.slot;
 SELECT schema_support.save_dependant_objects_for_replay('jazzhands', 'slot');
 ---- BEGIN audit.slot TEARDOWN
 -- Save grants for later reapplication
-SELECT schema_support.save_grants_for_replay('audit', 'slot', 'audit.slot');
+SELECT schema_support.save_grants_for_replay('audit', 'slot', 'slot');
 
 -- FOREIGN KEYS FROM
 
@@ -8635,7 +8641,7 @@ DROP TABLE IF EXISTS audit.slot_v64;
 -- DONE DEALING WITH TABLE slot [1174422]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE token [1146911]
+-- DEALING WITH TABLE token [1213461]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'token', 'token');
 
@@ -8667,7 +8673,7 @@ DROP TRIGGER IF EXISTS trigger_audit_token ON jazzhands.token;
 SELECT schema_support.save_dependant_objects_for_replay('jazzhands', 'token');
 ---- BEGIN audit.token TEARDOWN
 -- Save grants for later reapplication
-SELECT schema_support.save_grants_for_replay('audit', 'token', 'audit.token');
+SELECT schema_support.save_grants_for_replay('audit', 'token', 'token');
 
 -- FOREIGN KEYS FROM
 
@@ -8866,7 +8872,7 @@ DROP TABLE IF EXISTS audit.token_v64;
 -- DONE DEALING WITH TABLE token [1174629]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE volume_group [1147861]
+-- DEALING WITH TABLE volume_group [1214411]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'volume_group', 'volume_group');
 
@@ -8900,7 +8906,7 @@ DROP TRIGGER IF EXISTS trigger_audit_volume_group ON jazzhands.volume_group;
 SELECT schema_support.save_dependant_objects_for_replay('jazzhands', 'volume_group');
 ---- BEGIN audit.volume_group TEARDOWN
 -- Save grants for later reapplication
-SELECT schema_support.save_grants_for_replay('audit', 'volume_group', 'audit.volume_group');
+SELECT schema_support.save_grants_for_replay('audit', 'volume_group', 'volume_group');
 
 -- FOREIGN KEYS FROM
 
@@ -9065,7 +9071,7 @@ DROP TABLE IF EXISTS audit.volume_group_v64;
 -- DONE DEALING WITH TABLE volume_group [1175682]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE volume_group_physicalish_vol [1147879]
+-- DEALING WITH TABLE volume_group_physicalish_vol [1214429]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'volume_group_physicalish_vol', 'volume_group_physicalish_vol');
 
@@ -9098,7 +9104,7 @@ DROP TRIGGER IF EXISTS trigger_audit_volume_group_physicalish_vol ON jazzhands.v
 SELECT schema_support.save_dependant_objects_for_replay('jazzhands', 'volume_group_physicalish_vol');
 ---- BEGIN audit.volume_group_physicalish_vol TEARDOWN
 -- Save grants for later reapplication
-SELECT schema_support.save_grants_for_replay('audit', 'volume_group_physicalish_vol', 'audit.volume_group_physicalish_vol');
+SELECT schema_support.save_grants_for_replay('audit', 'volume_group_physicalish_vol', 'volume_group_physicalish_vol');
 
 -- FOREIGN KEYS FROM
 
@@ -9241,7 +9247,7 @@ DROP TABLE IF EXISTS audit.volume_group_physicalish_vol_v64;
 -- DONE DEALING WITH TABLE volume_group_physicalish_vol [1175701]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE x509_certificate [1147908]
+-- DEALING WITH TABLE x509_certificate [1214458]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'x509_certificate', 'x509_certificate');
 
@@ -9271,7 +9277,7 @@ DROP TRIGGER IF EXISTS trigger_audit_x509_certificate ON jazzhands.x509_certific
 SELECT schema_support.save_dependant_objects_for_replay('jazzhands', 'x509_certificate');
 ---- BEGIN audit.x509_certificate TEARDOWN
 -- Save grants for later reapplication
-SELECT schema_support.save_grants_for_replay('audit', 'x509_certificate', 'audit.x509_certificate');
+SELECT schema_support.save_grants_for_replay('audit', 'x509_certificate', 'x509_certificate');
 
 -- FOREIGN KEYS FROM
 
@@ -9509,7 +9515,7 @@ DROP TABLE IF EXISTS audit.x509_certificate_v64;
 -- DONE DEALING WITH TABLE x509_certificate [1175730]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE v_property [1153448]
+-- DEALING WITH TABLE v_property [1219998]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'v_property', 'v_property');
 SELECT schema_support.save_dependant_objects_for_replay('jazzhands', 'v_property');
@@ -9560,7 +9566,7 @@ delete from __recreate where type = 'view' and object = 'v_property';
 -- DONE DEALING WITH TABLE v_property [1181774]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE v_acct_coll_prop_expanded [1153546]
+-- DEALING WITH TABLE v_acct_coll_prop_expanded [1220096]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'v_acct_coll_prop_expanded', 'v_acct_coll_prop_expanded');
 SELECT schema_support.save_dependant_objects_for_replay('jazzhands', 'v_acct_coll_prop_expanded');
@@ -9657,7 +9663,7 @@ delete from __recreate where type = 'view' and object = 'v_approval_instance_ste
 -- DONE DEALING WITH TABLE v_approval_instance_step_expanded [1182013]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE v_property [1153448]
+-- DEALING WITH TABLE v_property [1219998]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'v_property', 'v_property');
 SELECT schema_support.save_dependant_objects_for_replay('jazzhands', 'v_property');
@@ -9708,7 +9714,7 @@ delete from __recreate where type = 'view' and object = 'v_property';
 -- DONE DEALING WITH TABLE v_property [1181774]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE v_token [1153468]
+-- DEALING WITH TABLE v_token [1220018]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'v_token', 'v_token');
 SELECT schema_support.save_dependant_objects_for_replay('jazzhands', 'v_token');
@@ -9739,7 +9745,7 @@ delete from __recreate where type = 'view' and object = 'v_token';
 -- DONE DEALING WITH TABLE v_token [1181794]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE v_approval_matrix [1153662]
+-- DEALING WITH TABLE v_approval_matrix [1220212]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'v_approval_matrix', 'v_approval_matrix');
 SELECT schema_support.save_dependant_objects_for_replay('approval_utils', 'v_approval_matrix');
@@ -9786,7 +9792,7 @@ delete from __recreate where type = 'view' and object = 'v_approval_matrix';
 -- DONE DEALING WITH TABLE v_approval_matrix [1181988]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE v_account_collection_approval_process [1153682]
+-- DEALING WITH TABLE v_account_collection_approval_process [1220232]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'v_account_collection_approval_process', 'v_account_collection_approval_process');
 SELECT schema_support.save_dependant_objects_for_replay('approval_utils', 'v_account_collection_approval_process');
@@ -12957,6 +12963,7 @@ ALTER TABLE physicalish_volume
 	UNIQUE (device_id, physicalish_volume_name, physicalish_volume_type) DEFERRABLE;
 
 -- index
+DROP INDEX IF EXISTS idx_dns_record_lower_dns_name;
 CREATE INDEX idx_dns_record_lower_dns_name ON dns_record USING btree (lower(dns_name::text));
 -- triggers
 
