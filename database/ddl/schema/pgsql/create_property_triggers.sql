@@ -76,10 +76,10 @@ BEGIN
 				(account_collection_Id = NEW.account_collection_Id)) AND
 			((netblock_collection_Id IS NULL AND NEW.netblock_collection_Id IS NULL) OR
 				(netblock_collection_Id = NEW.netblock_collection_Id)) AND
-			((layer2_network_id IS NULL AND NEW.layer2_network_id IS NULL) OR
-				(layer2_network_id = NEW.layer2_network_id)) AND
-			((layer3_network_id IS NULL AND NEW.layer3_network_id IS NULL) OR
-				(layer3_network_id = NEW.layer3_network_id)) AND
+			((layer2_network_collection_id IS NULL AND NEW.layer2_network_collection_id IS NULL) OR
+				(layer2_network_collection_id = NEW.layer2_network_collection_id)) AND
+			((layer3_network_collection_id IS NULL AND NEW.layer3_network_collection_id IS NULL) OR
+				(layer3_network_collection_id = NEW.layer3_network_collection_id)) AND
 			((person_id IS NULL AND NEW.Person_id IS NULL) OR
 				(Person_Id = NEW.person_id)) AND
 			((property_collection_id IS NULL AND NEW.property_collection_id IS NULL) OR
@@ -127,10 +127,10 @@ BEGIN
 				(Account_Realm_id = NEW.Account_Realm_id)) AND
 			((account_collection_Id IS NULL AND NEW.account_collection_Id IS NULL) OR
 				(account_collection_Id = NEW.account_collection_Id)) AND
-			((layer2_network_id IS NULL AND NEW.layer2_network_id IS NULL) OR
-				(layer2_network_id = NEW.layer2_network_id)) AND
-			((layer3_network_id IS NULL AND NEW.layer3_network_id IS NULL) OR
-				(layer3_network_id = NEW.layer3_network_id)) AND
+			((layer2_network_collection_id IS NULL AND NEW.layer2_network_collection_id IS NULL) OR
+				(layer2_network_collection_id = NEW.layer2_network_collection_id)) AND
+			((layer3_network_collection_id IS NULL AND NEW.layer3_network_collection_id IS NULL) OR
+				(layer3_network_collection_id = NEW.layer3_network_collection_id)) AND
 			((netblock_collection_Id IS NULL AND NEW.netblock_collection_Id IS NULL) OR
 				(netblock_collection_Id = NEW.netblock_collection_Id)) AND
 			((property_collection_Id IS NULL AND NEW.property_collection_Id IS NULL) OR
@@ -473,26 +473,26 @@ BEGIN
 			END IF;
 	END IF;
 
-	IF v_prop.Permit_layer2_network_id = 'REQUIRED' THEN
-			IF NEW.layer2_network_id IS NULL THEN
-				RAISE 'layer2_network_id is required.'
+	IF v_prop.permit_layer2_network_coll_id = 'REQUIRED' THEN
+			IF NEW.layer2_network_collection_id IS NULL THEN
+				RAISE 'layer2_network_collection_id is required.'
 					USING ERRCODE = 'invalid_parameter_value';
 			END IF;
-	ELSIF v_prop.Permit_layer2_network_id = 'PROHIBITED' THEN
-			IF NEW.layer2_network_id IS NOT NULL THEN
-				RAISE 'layer2_network_id is prohibited.'
+	ELSIF v_prop.permit_layer2_network_coll_id = 'PROHIBITED' THEN
+			IF NEW.layer2_network_collection_id IS NOT NULL THEN
+				RAISE 'layer2_network_collection_id is prohibited.'
 					USING ERRCODE = 'invalid_parameter_value';
 			END IF;
 	END IF;
 
-	IF v_prop.Permit_layer3_network_id = 'REQUIRED' THEN
-			IF NEW.layer3_network_id IS NULL THEN
-				RAISE 'layer3_network_id is required.'
+	IF v_prop.permit_layer3_network_coll_id = 'REQUIRED' THEN
+			IF NEW.layer3_network_collection_id IS NULL THEN
+				RAISE 'layer3_network_collection_id is required.'
 					USING ERRCODE = 'invalid_parameter_value';
 			END IF;
-	ELSIF v_prop.Permit_layer3_network_id = 'PROHIBITED' THEN
-			IF NEW.layer3_network_id IS NOT NULL THEN
-				RAISE 'layer3_network_id is prohibited.'
+	ELSIF v_prop.permit_layer3_network_coll_id = 'PROHIBITED' THEN
+			IF NEW.layer3_network_collection_id IS NOT NULL THEN
+				RAISE 'layer3_network_collection_id is prohibited.'
 					USING ERRCODE = 'invalid_parameter_value';
 			END IF;
 	END IF;
