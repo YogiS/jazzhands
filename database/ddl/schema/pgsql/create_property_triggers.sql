@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011-2013 Matthew Ragan
+ * Copyright (c) 2011-2015 Matthew Ragan
  * Copyright (c) 2012-2015 Todd Kover
  * All rights reserved.
  *
@@ -18,14 +18,20 @@
 
 CREATE OR REPLACE FUNCTION validate_property() RETURNS TRIGGER AS $$
 DECLARE
-	tally			integer;
-	v_prop			VAL_Property%ROWTYPE;
-	v_proptype		VAL_Property_Type%ROWTYPE;
-	v_account_collection	account_collection%ROWTYPE;
+	tally				integer;
+	v_prop				VAL_Property%ROWTYPE;
+	v_proptype			VAL_Property_Type%ROWTYPE;
+	v_account_collection		account_collection%ROWTYPE;
+	v_company_collection		company_collection%ROWTYPE;
 	v_device_collection		device_collection%ROWTYPE;
-	v_netblock_collection	netblock_collection%ROWTYPE;
-	v_num			integer;
-	v_listvalue		Property.Property_Value%TYPE;
+	v_dns_domain_collection		dns_domain_collection%ROWTYPE;
+	v_layer2_network_collection	layer2_network_collection%ROWTYPE;
+	v_layer3_network_collection	layer3_network_collection%ROWTYPE;
+	v_netblock_collection		netblock_collection%ROWTYPE;
+	v_property_collection		property_collection%ROWTYPE;
+	v_service_env_collection	service_environment_collection%ROWTYPE;
+	v_num				integer;
+	v_listvalue			Property.Property_Value%TYPE;
 BEGIN
 
 	-- Pull in the data from the property and property_type so we can
@@ -56,10 +62,14 @@ BEGIN
 			Property_Type = NEW.Property_Type AND
 			((Company_Id IS NULL AND NEW.Company_Id IS NULL) OR
 				(Company_Id = NEW.Company_Id)) AND
+			((Company_Collection_Id IS NULL AND NEW.Company_Collection_Id IS NULL) OR
+				(Company_Collection_Id = NEW.Company_Collection_Id)) AND
 			((Device_Collection_Id IS NULL AND NEW.Device_Collection_Id IS NULL) OR
 				(Device_Collection_Id = NEW.Device_Collection_Id)) AND
 			((DNS_Domain_Id IS NULL AND NEW.DNS_Domain_Id IS NULL) OR
 				(DNS_Domain_Id = NEW.DNS_Domain_Id)) AND
+			((DNS_Domain_Collection_Id IS NULL AND NEW.DNS_Domain_Collection_Id IS NULL) OR
+				(DNS_Domain_Collection_Id = NEW.DNS_Domain_Collection_Id)) AND
 			((Operating_System_Id IS NULL AND NEW.Operating_System_Id IS NULL) OR
 				(Operating_System_Id = NEW.Operating_System_Id)) AND
 			((operating_system_snapshot_id IS NULL AND NEW.operating_system_snapshot_id IS NULL) OR
@@ -103,12 +113,16 @@ BEGIN
 		PERFORM 1 FROM Property WHERE
 			Property_Id != NEW.Property_Id AND
 			Property_Type = NEW.Property_Type AND
+			((Company_Collection_Id IS NULL AND NEW.Company_Collection_Id IS NULL) OR
+				(Company_Collection_Id = NEW.Company_Collection_Id)) AND
 			((Company_Id IS NULL AND NEW.Company_Id IS NULL) OR
 				(Company_Id = NEW.Company_Id)) AND
 			((Device_Collection_Id IS NULL AND NEW.Device_Collection_Id IS NULL) OR
 				(Device_Collection_Id = NEW.Device_Collection_Id)) AND
 			((DNS_Domain_Id IS NULL AND NEW.DNS_Domain_Id IS NULL) OR
 				(DNS_Domain_Id = NEW.DNS_Domain_Id)) AND
+			((DNS_Domain_Collection_Id IS NULL AND NEW.DNS_Domain_Collection_Id IS NULL) OR
+				(DNS_Domain_Collection_Id = NEW.DNS_Domain_Collection_Id)) AND
 			((Operating_System_Id IS NULL AND NEW.Operating_System_Id IS NULL) OR
 				(Operating_System_Id = NEW.Operating_System_Id)) AND
 			((operating_system_snapshot_id IS NULL AND NEW.operating_system_snapshot_id IS NULL) OR
@@ -278,8 +292,206 @@ BEGIN
 			ERRCODE = 'invalid_parameter_value';
 	END IF;
 
+	-- If the LHS contains a account_collection_ID, check to see if it must be a
+	-- specific type (e.g. per-account), and verify that if so
+	IF NEW.account_collection_id IS NOT NULL THEN
+		IF v_prop.account_collection_type IS NOT NULL THEN
+			BEGIN
+				SELECT * INTO STRICT v_account_collection 
+					FROM account_collection WHERE
+					account_collection_Id = NEW.account_collection_id;
+				IF v_account_collection.account_collection_Type != v_prop.account_collection_type
+				THEN
+					RAISE 'account_collection_id must be of type %',
+					v_prop.prop_val_acct_coll_type_rstrct
+					USING ERRCODE = 'invalid_parameter_value';
+				END IF;
+			EXCEPTION
+				WHEN NO_DATA_FOUND THEN
+					-- let the database deal with the fk exception later
+					NULL;
+			END;
+		END IF;
+	END IF;
+
+	-- If the LHS contains a account_collection_ID, check to see if it must be a
+	-- specific type (e.g. per-account), and verify that if so
+	IF NEW.account_collection_id IS NOT NULL THEN
+		IF v_prop.account_collection_type IS NOT NULL THEN
+			BEGIN
+				SELECT * INTO STRICT v_account_collection 
+					FROM account_collection WHERE
+					account_collection_Id = NEW.account_collection_id;
+				IF v_account_collection.account_collection_Type != v_prop.account_collection_type
+				THEN
+					RAISE 'account_collection_id must be of type %',
+					v_prop.prop_val_acct_coll_type_rstrct
+					USING ERRCODE = 'invalid_parameter_value';
+				END IF;
+			EXCEPTION
+				WHEN NO_DATA_FOUND THEN
+					-- let the database deal with the fk exception later
+					NULL;
+			END;
+		END IF;
+	END IF;
+
+	-- If the LHS contains a device_collection_ID, check to see if it must be a
+	-- specific type (e.g. per-device), and verify that if so
+	IF NEW.device_collection_id IS NOT NULL THEN
+		IF v_prop.device_collection_type IS NOT NULL THEN
+			BEGIN
+				SELECT * INTO STRICT v_device_collection 
+					FROM device_collection WHERE
+					device_collection_Id = NEW.device_collection_id;
+				IF v_device_collection.device_collection_Type != v_prop.device_collection_type
+				THEN
+					RAISE 'device_collection_id must be of type %',
+					v_prop.prop_val_acct_coll_type_rstrct
+					USING ERRCODE = 'invalid_parameter_value';
+				END IF;
+			EXCEPTION
+				WHEN NO_DATA_FOUND THEN
+					-- let the database deal with the fk exception later
+					NULL;
+			END;
+		END IF;
+	END IF;
+
+	-- If the LHS contains a dns_domain_collection_ID, check to see if it must be a
+	-- specific type (e.g. per-dns_domain), and verify that if so
+	IF NEW.dns_domain_collection_id IS NOT NULL THEN
+		IF v_prop.dns_domain_collection_type IS NOT NULL THEN
+			BEGIN
+				SELECT * INTO STRICT v_dns_domain_collection 
+					FROM dns_domain_collection WHERE
+					dns_domain_collection_Id = NEW.dns_domain_collection_id;
+				IF v_dns_domain_collection.dns_domain_collection_Type != v_prop.dns_domain_collection_type
+				THEN
+					RAISE 'dns_domain_collection_id must be of type %',
+					v_prop.prop_val_acct_coll_type_rstrct
+					USING ERRCODE = 'invalid_parameter_value';
+				END IF;
+			EXCEPTION
+				WHEN NO_DATA_FOUND THEN
+					-- let the database deal with the fk exception later
+					NULL;
+			END;
+		END IF;
+	END IF;
+
+	-- If the LHS contains a layer2_network_collection_ID, check to see if it must be a
+	-- specific type (e.g. per-layer2_network), and verify that if so
+	IF NEW.layer2_network_collection_id IS NOT NULL THEN
+		IF v_prop.layer2_network_collection_type IS NOT NULL THEN
+			BEGIN
+				SELECT * INTO STRICT v_layer2_network_collection 
+					FROM layer2_network_collection WHERE
+					layer2_network_collection_Id = NEW.layer2_network_collection_id;
+				IF v_layer2_network_collection.layer2_network_collection_Type != v_prop.layer2_network_collection_type
+				THEN
+					RAISE 'layer2_network_collection_id must be of type %',
+					v_prop.prop_val_acct_coll_type_rstrct
+					USING ERRCODE = 'invalid_parameter_value';
+				END IF;
+			EXCEPTION
+				WHEN NO_DATA_FOUND THEN
+					-- let the database deal with the fk exception later
+					NULL;
+			END;
+		END IF;
+	END IF;
+
+	-- If the LHS contains a layer3_network_collection_ID, check to see if it must be a
+	-- specific type (e.g. per-layer3_network), and verify that if so
+	IF NEW.layer3_network_collection_id IS NOT NULL THEN
+		IF v_prop.layer3_network_collection_type IS NOT NULL THEN
+			BEGIN
+				SELECT * INTO STRICT v_layer3_network_collection 
+					FROM layer3_network_collection WHERE
+					layer3_network_collection_Id = NEW.layer3_network_collection_id;
+				IF v_layer3_network_collection.layer3_network_collection_Type != v_prop.layer3_network_collection_type
+				THEN
+					RAISE 'layer3_network_collection_id must be of type %',
+					v_prop.prop_val_acct_coll_type_rstrct
+					USING ERRCODE = 'invalid_parameter_value';
+				END IF;
+			EXCEPTION
+				WHEN NO_DATA_FOUND THEN
+					-- let the database deal with the fk exception later
+					NULL;
+			END;
+		END IF;
+	END IF;
+
+	-- If the LHS contains a netblock_collection_ID, check to see if it must be a
+	-- specific type (e.g. per-netblock), and verify that if so
+	IF NEW.netblock_collection_id IS NOT NULL THEN
+		IF v_prop.netblock_collection_type IS NOT NULL THEN
+			BEGIN
+				SELECT * INTO STRICT v_netblock_collection 
+					FROM netblock_collection WHERE
+					netblock_collection_Id = NEW.netblock_collection_id;
+				IF v_netblock_collection.netblock_collection_Type != v_prop.netblock_collection_type
+				THEN
+					RAISE 'netblock_collection_id must be of type %',
+					v_prop.prop_val_acct_coll_type_rstrct
+					USING ERRCODE = 'invalid_parameter_value';
+				END IF;
+			EXCEPTION
+				WHEN NO_DATA_FOUND THEN
+					-- let the database deal with the fk exception later
+					NULL;
+			END;
+		END IF;
+	END IF;
+
+	-- If the LHS contains a property_collection_ID, check to see if it must be a
+	-- specific type (e.g. per-property), and verify that if so
+	IF NEW.property_collection_id IS NOT NULL THEN
+		IF v_prop.property_collection_type IS NOT NULL THEN
+			BEGIN
+				SELECT * INTO STRICT v_property_collection 
+					FROM property_collection WHERE
+					property_collection_Id = NEW.property_collection_id;
+				IF v_property_collection.property_collection_Type != v_prop.property_collection_type
+				THEN
+					RAISE 'property_collection_id must be of type %',
+					v_prop.prop_val_acct_coll_type_rstrct
+					USING ERRCODE = 'invalid_parameter_value';
+				END IF;
+			EXCEPTION
+				WHEN NO_DATA_FOUND THEN
+					-- let the database deal with the fk exception later
+					NULL;
+			END;
+		END IF;
+	END IF;
+
+	-- If the LHS contains a service_env_collection_ID, check to see if it must be a
+	-- specific type (e.g. per-service_env), and verify that if so
+	IF NEW.service_env_collection_id IS NOT NULL THEN
+		IF v_prop.service_env_collection_type IS NOT NULL THEN
+			BEGIN
+				SELECT * INTO STRICT v_service_env_collection 
+					FROM service_env_collection WHERE
+					service_env_collection_Id = NEW.service_env_collection_id;
+				IF v_service_env_collection.service_env_collection_Type != v_prop.service_env_collection_type
+				THEN
+					RAISE 'service_env_collection_id must be of type %',
+					v_prop.prop_val_acct_coll_type_rstrct
+					USING ERRCODE = 'invalid_parameter_value';
+				END IF;
+			EXCEPTION
+				WHEN NO_DATA_FOUND THEN
+					-- let the database deal with the fk exception later
+					NULL;
+			END;
+		END IF;
+	END IF;
+
 	-- If the RHS contains a account_collection_ID, check to see if it must be a
-	-- specific type (e.g. per-user), and verify that if so
+	-- specific type (e.g. per-account), and verify that if so
 	IF NEW.Property_Value_Account_Coll_Id IS NOT NULL THEN
 		IF v_prop.prop_val_acct_coll_type_rstrct IS NOT NULL THEN
 			BEGIN
@@ -360,6 +572,18 @@ BEGIN
 	ELSIF v_prop.Permit_Company_Id = 'PROHIBITED' THEN
 			IF NEW.Company_Id IS NOT NULL THEN
 				RAISE 'Company_Id is prohibited.'
+					USING ERRCODE = 'invalid_parameter_value';
+			END IF;
+	END IF;
+
+	IF v_prop.Permit_Company_Collection_Id = 'REQUIRED' THEN
+			IF NEW.Company_Collection_Id IS NULL THEN
+				RAISE 'Company_Collection_Id is required.'
+					USING ERRCODE = 'invalid_parameter_value';
+			END IF;
+	ELSIF v_prop.Permit_Company_Collection_Id = 'PROHIBITED' THEN
+			IF NEW.Company_Collection_Id IS NOT NULL THEN
+				RAISE 'Company_Collection_Id is prohibited.'
 					USING ERRCODE = 'invalid_parameter_value';
 			END IF;
 	END IF;

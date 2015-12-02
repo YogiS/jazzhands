@@ -15,1874 +15,19 @@ Invoked:
 SELECT schema_support.begin_maintenance();
 select timeofday(), now();
 --
--- Process schema jazzhands
---
--- Changed function
-SELECT schema_support.save_grants_for_replay('jazzhands', 'account_automated_reporting_ac');
-CREATE OR REPLACE FUNCTION jazzhands.account_automated_reporting_ac()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO jazzhands
-AS $function$
-DECLARE
-	_tally	INTEGER;
-	_numrpt	INTEGER;
-	_r		RECORD;
-BEGIN
-	IF TG_OP = 'DELETE' THEN
-		IF OLD.account_role != 'primary' THEN
-			RETURN OLD;
-		END IF;
-	ELSIF TG_OP = 'INSERT' THEN
-		IF NEW.account_role != 'primary' THEN
-			RETURN NEW;
-		END IF;
-	ELSIF TG_OP = 'UPDATE' THEN
-		IF NEW.account_role != 'primary' AND OLD.account_role != 'primary' THEN
-			RETURN NEW;
-		END IF;
-	END IF;
-
-	-- XXX check account realm to see if we should be inserting for this
-	-- XXX account realm
-
-	IF TG_OP = 'INSERT' THEN
-		PERFORM auto_ac_manip.make_all_auto_acs_right(
-			account_id := NEW.account_id, 
-			account_realm_id := NEW.account_realm_id,
-			login := NEW.login
-		);
-	ELSIF TG_OP = 'UPDATE' THEN
-		PERFORM auto_ac_manip.rename_automated_report_acs(
-			NEW.account_id, OLD.login, NEW.login, NEW.account_realm_id);
-	ELSIF TG_OP = 'DELETE' THEN
-		DELETE FROM account_collection_account WHERE account_id
-			= OLD.account_id
-		AND account_collection_id IN ( select account_collection_id
-			FROM account_collection where account_collection_type
-			= 'automated'
-		);
-		-- PERFORM auto_ac_manip.destroy_report_account_collections(
-		-- 	account_id := OLD.account_id,
-		-- 	account_realm_id := OLD.account_realm_id
-		-- );
-	END IF;
-
-	IF TG_OP = 'DELETE' THEN
-		RETURN OLD;
-	ELSE
-		RETURN NEW;
-	END IF;
-END;
-$function$
-;
-
--- Changed function
-SELECT schema_support.save_grants_for_replay('jazzhands', 'automated_ac_on_account');
-CREATE OR REPLACE FUNCTION jazzhands.automated_ac_on_account()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO jazzhands
-AS $function$
-DECLARE
-	_tally	INTEGER;
-	_r		RECORD;
-BEGIN
-	IF TG_OP = 'DELETE' THEN
-		IF OLD.account_role != 'primary' THEN
-			RETURN OLD;
-		END IF;
-	ELSIF TG_OP = 'INSERT' THEN
-		IF NEW.account_role != 'primary' THEN
-			RETURN NEW;
-		END IF;
-	ELSIF TG_OP = 'UPDATE' THEN
-		IF NEW.account_role != 'primary' AND OLD.account_role != 'primary' THEN
-			RETURN NEW;
-		END IF;
-	END IF;
-
-
-	IF TG_OP = 'INSERT' OR TG_OP = 'UPDATE'  THEN
-		PERFORM auto_ac_manip.make_site_acs_right(NEW.account_id);
-		PERFORM auto_ac_manip.make_personal_acs_right(NEW.account_id);
-
-		-- update the person's manager to match
-		WITH RECURSIVE map AS (
-			SELECT account_id as root_account_id,
-				account_id, login, manager_account_id, manager_login
-			FROM v_account_manager_map
-			UNION
-			SELECT map.root_account_id, m.account_id, m.login,
-				m.manager_account_id, m.manager_login 
-				from v_account_manager_map m
-					join map on m.account_id = map.manager_account_id
-			), x AS ( SELECT auto_ac_manip.make_auto_report_acs_right(
-					account_id := manager_account_id,
-					account_realm_id := NEW.account_realm_id,
-					login := manager_login)
-				FROM map
-				WHERE root_account_id = NEW.account_id
-			) SELECT count(*) INTO _tally FROM x;
-	END IF;
-
-	IF TG_OP = 'UPDATE'  THEN
-		PERFORM auto_ac_manip.make_site_acs_right(OLD.account_id);
-		PERFORM auto_ac_manip.make_personal_acs_right(OLD.account_id);
-	END IF;
-
-	-- when deleting, do nothing rather than calling the above, same as
-	-- update; pointless because account is getting deleted anyway.
-
-	IF TG_OP = 'DELETE' THEN
-		RETURN OLD;
-	ELSE
-		RETURN NEW;
-	END IF;
-END;
-$function$
-;
-
--- Changed function
-SELECT schema_support.save_grants_for_replay('jazzhands', 'dns_rec_prevent_dups');
-CREATE OR REPLACE FUNCTION jazzhands.dns_rec_prevent_dups()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO jazzhands
-AS $function$
-DECLARE
-	_tally	INTEGER;
-BEGIN
-	-- should not be able to insert the same record(s) twice
-	SELECT	count(*)
-	  INTO	_tally
-	  FROM	dns_record
-	  WHERE
-	  		( lower(dns_name) = lower(NEW.dns_name) OR 
-				(dns_name IS NULL AND NEW.dns_name is NULL)
-			)
-		AND
-	  		( dns_domain_id = NEW.dns_domain_id )
-		AND
-	  		( dns_class = NEW.dns_class )
-		AND
-	  		( dns_type = NEW.dns_type )
-		AND 
-	  		( dns_srv_service = NEW.dns_srv_service OR 
-				(dns_srv_service IS NULL and NEW.dns_srv_service is NULL)
-			)
-		AND 
-	  		( dns_srv_protocol = NEW.dns_srv_protocol OR 
-				(dns_srv_protocol IS NULL and NEW.dns_srv_protocol is NULL)
-			)
-		AND 
-	  		( dns_srv_port = NEW.dns_srv_port OR 
-				(dns_srv_port IS NULL and NEW.dns_srv_port is NULL)
-			)
-		AND 
-	  		( dns_value = NEW.dns_value OR 
-				(dns_value IS NULL and NEW.dns_value is NULL)
-			)
-		AND
-	  		( netblock_id = NEW.netblock_id OR 
-				(netblock_id IS NULL AND NEW.netblock_id is NULL)
-			)
-		AND	is_enabled = 'Y'
-	    AND dns_record_id != NEW.dns_record_id
-	;
-
-	IF _tally != 0 THEN
-		RAISE EXCEPTION 'Attempt to insert the same dns record'
-			USING ERRCODE = 'unique_violation';
-	END IF;
-
-	IF NEW.DNS_TYPE = 'A' OR NEW.DNS_TYPE = 'AAAA' THEN
-		IF NEW.SHOULD_GENERATE_PTR = 'Y' THEN
-			SELECT	count(*)
-			 INTO	_tally
-			 FROM	dns_record
-			WHERE dns_class = 'IN' 
-			AND dns_type = 'A' 
-			AND should_generate_ptr = 'Y'
-			AND is_enabled = 'Y'
-			AND netblock_id = NEW.NETBLOCK_ID
-			AND dns_record_id != NEW.DNS_RECORD_ID;
-	
-			IF _tally != 0 THEN
-				RAISE EXCEPTION 'May not have more than one SHOULD_GENERATE_PTR record on the same IP on netblock_id %', NEW.netblock_id
-					USING ERRCODE = 'JH201';
-			END IF;
-		END IF;
-	END IF;
-
-	RETURN NEW;
-END;
-$function$
-;
-
--- Changed function
-SELECT schema_support.save_grants_for_replay('jazzhands', 'dns_record_cname_checker');
-CREATE OR REPLACE FUNCTION jazzhands.dns_record_cname_checker()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO jazzhands
-AS $function$
-DECLARE
-	_tally	INTEGER;	
-	_dom	TEXT;
-BEGIN
-	_tally := 0;
-	IF TG_OP = 'INSERT' OR NEW.DNS_TYPE != OLD.DNS_TYPE THEN
-		IF NEW.DNS_TYPE = 'CNAME' THEN
-			IF TG_OP = 'UPDATE' THEN
-			SELECT	COUNT(*)
-				  INTO	_tally
-				  FROM	dns_record x
-				 WHERE	
-				 		NEW.dns_domain_id = x.dns_domain_id
-				 AND	OLD.dns_record_id != x.dns_record_id
-				 AND	(
-				 			NEW.dns_name IS NULL and x.dns_name is NULL
-							or
-							lower(NEW.dns_name) = lower(x.dns_name)
-						)
-				;
-			ELSE
-				-- only difference between above and this is the use of OLD
-				SELECT	COUNT(*)
-				  INTO	_tally
-				  FROM	dns_record x
-				 WHERE	
-				 		NEW.dns_domain_id = x.dns_domain_id
-				 AND	(
-				 			NEW.dns_name IS NULL and x.dns_name is NULL
-							or
-							lower(NEW.dns_name) = lower(x.dns_name)
-						)
-				;
-			END IF;
-		-- this clause is basically the same as above except = 'CANME'
-		ELSIF NEW.DNS_TYPE != 'CNAME' THEN
-			IF TG_OP = 'UPDATE' THEN
-				SELECT	COUNT(*)
-				  INTO	_tally
-				  FROM	dns_record x
-				 WHERE	x.dns_type = 'CNAME'
-				 AND	NEW.dns_domain_id = x.dns_domain_id
-				 AND	OLD.dns_record_id != x.dns_record_id
-				 AND	(
-				 			NEW.dns_name IS NULL and x.dns_name is NULL
-							or
-							lower(NEW.dns_name) = lower(x.dns_name)
-						)
-				;
-			ELSE
-				-- only difference between above and this is the use of OLD
-				SELECT	COUNT(*)
-				  INTO	_tally
-				  FROM	dns_record x
-				 WHERE	x.dns_type = 'CNAME'
-				 AND	NEW.dns_domain_id = x.dns_domain_id
-				 AND	(
-				 			NEW.dns_name IS NULL and x.dns_name is NULL
-							or
-							lower(NEW.dns_name) = lower(x.dns_name)
-						)
-				;
-			END IF;
-		END IF;
-	END IF;
-
-	IF _tally > 0 THEN
-		SELECT soa_name INTO _dom FROM dns_domain
-		WHERE dns_domain_id = NEW.dns_domain_id ;
-
-		if NEW.dns_name IS NULL THEN
-			RAISE EXCEPTION '% may not have CNAME and other records (%)', 
-				_dom, _tally
-				USING ERRCODE = 'unique_violation';
-		ELSE
-			RAISE EXCEPTION '%.% may not have CNAME and other records (%)', 
-				NEW.dns_name, _dom, _tally
-				USING ERRCODE = 'unique_violation';
-		END IF;
-	END IF;
-	RETURN NEW;
-END;
-$function$
-;
-
--- Changed function
-SELECT schema_support.save_grants_for_replay('jazzhands', 'dns_record_update_nontime');
-CREATE OR REPLACE FUNCTION jazzhands.dns_record_update_nontime()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO jazzhands
-AS $function$
-DECLARE
-	_dnsdomainid	DNS_DOMAIN.DNS_DOMAIN_ID%type;
-	_ipaddr			NETBLOCK.IP_ADDRESS%type;
-	_mkold			boolean;
-	_mknew			boolean;
-	_mkdom			boolean;
-	_mkip			boolean;
-BEGIN
-	_mkold = false;
-	_mkold = false;
-	_mknew = true;
-
-	IF TG_OP = 'DELETE' THEN
-		_mknew := false;
-		_mkold := true;
-		_mkdom := true;
-		if  OLD.netblock_id is not null  THEN
-			_mkip := true;
-		END IF;
-	ELSIF TG_OP = 'INSERT' THEN
-		_mkold := false;
-		_mkdom := true;
-		if  NEW.netblock_id is not null  THEN
-			_mkip := true;
-		END IF;
-	ELSIF TG_OP = 'UPDATE' THEN
-		IF OLD.DNS_DOMAIN_ID != NEW.DNS_DOMAIN_ID THEN
-			_mkold := true;
-			_mkip := true;
-		END IF;
-		_mkdom := true;
-
-		IF OLD.dns_name IS DISTINCT FROM NEW.dns_name THEN
-			_mknew := true;
-			IF NEW.DNS_TYPE = 'A' OR NEW.DNS_TYPE = 'AAAA' THEN
-				IF NEW.SHOULD_GENERATE_PTR = 'Y' THEN
-					_mkip := true;
-				END IF;
-			END IF;
-		END IF;
-
-		IF OLD.SHOULD_GENERATE_PTR != NEW.SHOULD_GENERATE_PTR THEN
-			_mkold := true;
-			_mkip := true;
-		END IF;
-
-		IF (OLD.netblock_id IS DISTINCT FROM NEW.netblock_id) THEN
-			_mkold := true;
-			_mknew := true;
-			_mkip := true;
-		END IF;
-	END IF;
-				
-	if _mkold THEN
-		IF _mkdom THEN
-			_dnsdomainid := OLD.dns_domain_id;
-		ELSE
-			_dnsdomainid := NULL;
-		END IF;
-		if _mkip and OLD.netblock_id is not NULL THEN
-			SELECT	ip_address 
-			  INTO	_ipaddr 
-			  FROM	netblock 
-			 WHERE	netblock_id  = OLD.netblock_id;
-		ELSE
-			_ipaddr := NULL;
-		END IF;
-		insert into DNS_CHANGE_RECORD
-			(dns_domain_id, ip_address) VALUES (_dnsdomainid, _ipaddr);
-	END IF;
-	if _mknew THEN
-		if _mkdom THEN
-			_dnsdomainid := NEW.dns_domain_id;
-		ELSE
-			_dnsdomainid := NULL;
-		END IF;
-		if _mkip and NEW.netblock_id is not NULL THEN
-			SELECT	ip_address 
-			  INTO	_ipaddr 
-			  FROM	netblock 
-			 WHERE	netblock_id  = NEW.netblock_id;
-		ELSE
-			_ipaddr := NULL;
-		END IF;
-		insert into DNS_CHANGE_RECORD
-			(dns_domain_id, ip_address) VALUES (_dnsdomainid, _ipaddr);
-	END IF;
-	IF TG_OP = 'DELETE' THEN
-		return OLD;
-	END IF;
-	return NEW;
-END;
-$function$
-;
-
--- Changed function
-SELECT schema_support.save_grants_for_replay('jazzhands', 'validate_property');
-CREATE OR REPLACE FUNCTION jazzhands.validate_property()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO jazzhands
-AS $function$
-DECLARE
-	tally			integer;
-	v_prop			VAL_Property%ROWTYPE;
-	v_proptype		VAL_Property_Type%ROWTYPE;
-	v_account_collection	account_collection%ROWTYPE;
-	v_device_collection		device_collection%ROWTYPE;
-	v_netblock_collection	netblock_collection%ROWTYPE;
-	v_num			integer;
-	v_listvalue		Property.Property_Value%TYPE;
-BEGIN
-
-	-- Pull in the data from the property and property_type so we can
-	-- figure out what is and is not valid
-
-	BEGIN
-		SELECT * INTO STRICT v_prop FROM VAL_Property WHERE
-			Property_Name = NEW.Property_Name AND
-			Property_Type = NEW.Property_Type;
-
-		SELECT * INTO STRICT v_proptype FROM VAL_Property_Type WHERE
-			Property_Type = NEW.Property_Type;
-	EXCEPTION
-		WHEN NO_DATA_FOUND THEN
-			RAISE EXCEPTION 
-				'Property name or type does not exist'
-				USING ERRCODE = 'foreign_key_violation';
-			RETURN NULL;
-	END;
-
-	-- Check to see if the property itself is multivalue.  That is, if only
-	-- one value can be set for this property for a specific property LHS
-
-	IF (v_prop.is_multivalue = 'N') THEN
-		PERFORM 1 FROM Property WHERE
-			Property_Id != NEW.Property_Id AND
-			Property_Name = NEW.Property_Name AND
-			Property_Type = NEW.Property_Type AND
-			((Company_Id IS NULL AND NEW.Company_Id IS NULL) OR
-				(Company_Id = NEW.Company_Id)) AND
-			((Device_Collection_Id IS NULL AND NEW.Device_Collection_Id IS NULL) OR
-				(Device_Collection_Id = NEW.Device_Collection_Id)) AND
-			((DNS_Domain_Id IS NULL AND NEW.DNS_Domain_Id IS NULL) OR
-				(DNS_Domain_Id = NEW.DNS_Domain_Id)) AND
-			((Operating_System_Id IS NULL AND NEW.Operating_System_Id IS NULL) OR
-				(Operating_System_Id = NEW.Operating_System_Id)) AND
-			((operating_system_snapshot_id IS NULL AND NEW.operating_system_snapshot_id IS NULL) OR
-				(operating_system_snapshot_id = NEW.operating_system_snapshot_id)) AND
-			((service_env_collection_id IS NULL AND NEW.service_env_collection_id IS NULL) OR
-				(service_env_collection_id = NEW.service_env_collection_id)) AND
-			((Site_Code IS NULL AND NEW.Site_Code IS NULL) OR
-				(Site_Code = NEW.Site_Code)) AND
-			((Account_Id IS NULL AND NEW.Account_Id IS NULL) OR
-				(Account_Id = NEW.Account_Id)) AND
-			((Account_Realm_Id IS NULL AND NEW.Account_Realm_Id IS NULL) OR
-				(Account_Realm_Id = NEW.Account_Realm_Id)) AND
-			((account_collection_Id IS NULL AND NEW.account_collection_Id IS NULL) OR
-				(account_collection_Id = NEW.account_collection_Id)) AND
-			((netblock_collection_Id IS NULL AND NEW.netblock_collection_Id IS NULL) OR
-				(netblock_collection_Id = NEW.netblock_collection_Id)) AND
-			((layer2_network_collection_id IS NULL AND NEW.layer2_network_collection_id IS NULL) OR
-				(layer2_network_collection_id = NEW.layer2_network_collection_id)) AND
-			((layer3_network_collection_id IS NULL AND NEW.layer3_network_collection_id IS NULL) OR
-				(layer3_network_collection_id = NEW.layer3_network_collection_id)) AND
-			((person_id IS NULL AND NEW.Person_id IS NULL) OR
-				(Person_Id = NEW.person_id)) AND
-			((property_collection_id IS NULL AND NEW.property_collection_id IS NULL) OR
-				(property_collection_id = NEW.property_collection_id))
-			;
-
-		IF FOUND THEN
-			RAISE EXCEPTION 
-				'Property of type % already exists for given LHS and property is not multivalue',
-				NEW.Property_Type
-				USING ERRCODE = 'unique_violation';
-			RETURN NULL;
-		END IF;
-	END IF;
-
-	-- Check to see if the property type is multivalue.  That is, if only
-	-- one property and value can be set for any properties with this type
-	-- for a specific property LHS
-
-	IF (v_proptype.is_multivalue = 'N') THEN
-		PERFORM 1 FROM Property WHERE
-			Property_Id != NEW.Property_Id AND
-			Property_Type = NEW.Property_Type AND
-			((Company_Id IS NULL AND NEW.Company_Id IS NULL) OR
-				(Company_Id = NEW.Company_Id)) AND
-			((Device_Collection_Id IS NULL AND NEW.Device_Collection_Id IS NULL) OR
-				(Device_Collection_Id = NEW.Device_Collection_Id)) AND
-			((DNS_Domain_Id IS NULL AND NEW.DNS_Domain_Id IS NULL) OR
-				(DNS_Domain_Id = NEW.DNS_Domain_Id)) AND
-			((Operating_System_Id IS NULL AND NEW.Operating_System_Id IS NULL) OR
-				(Operating_System_Id = NEW.Operating_System_Id)) AND
-			((operating_system_snapshot_id IS NULL AND NEW.operating_system_snapshot_id IS NULL) OR
-				(operating_system_snapshot_id = NEW.operating_system_snapshot_id)) AND
-			((service_env_collection_id IS NULL AND NEW.service_env_collection_id IS NULL) OR
-				(service_env_collection_id = NEW.service_env_collection_id)) AND
-			((Site_Code IS NULL AND NEW.Site_Code IS NULL) OR
-				(Site_Code = NEW.Site_Code)) AND
-			((Person_id IS NULL AND NEW.Person_id IS NULL) OR
-				(Person_Id = NEW.Person_Id)) AND
-			((Account_Id IS NULL AND NEW.Account_Id IS NULL) OR
-				(Account_Id = NEW.Account_Id)) AND
-			((Account_Id IS NULL AND NEW.Account_Id IS NULL) OR
-				(Account_Id = NEW.Account_Id)) AND
-			((Account_Realm_id IS NULL AND NEW.Account_Realm_id IS NULL) OR
-				(Account_Realm_id = NEW.Account_Realm_id)) AND
-			((account_collection_Id IS NULL AND NEW.account_collection_Id IS NULL) OR
-				(account_collection_Id = NEW.account_collection_Id)) AND
-			((layer2_network_collection_id IS NULL AND NEW.layer2_network_collection_id IS NULL) OR
-				(layer2_network_collection_id = NEW.layer2_network_collection_id)) AND
-			((layer3_network_collection_id IS NULL AND NEW.layer3_network_collection_id IS NULL) OR
-				(layer3_network_collection_id = NEW.layer3_network_collection_id)) AND
-			((netblock_collection_Id IS NULL AND NEW.netblock_collection_Id IS NULL) OR
-				(netblock_collection_Id = NEW.netblock_collection_Id)) AND
-			((property_collection_Id IS NULL AND NEW.property_collection_Id IS NULL) OR
-				(property_collection_Id = NEW.property_collection_Id))
-		;
-
-		IF FOUND THEN
-			RAISE EXCEPTION 
-				'Property % of type % already exists for given LHS and property type is not multivalue',
-				NEW.Property_Name, NEW.Property_Type
-				USING ERRCODE = 'unique_violation';
-			RETURN NULL;
-		END IF;
-	END IF;
-
-	-- now validate the property_value columns.
-	tally := 0;
-
-	--
-	-- first determine if the property_value is set properly.
-	--
-
-	-- iterate over each of fk PROPERTY_VALUE columns and if a valid
-	-- value is set, increment tally, otherwise raise an exception.
-	IF NEW.Property_Value_Company_Id IS NOT NULL THEN
-		IF v_prop.Property_Data_Type = 'company_id' THEN
-			tally := tally + 1;
-		ELSE
-			RAISE 'Property value may not be Company_Id' USING
-				ERRCODE = 'invalid_parameter_value';
-		END IF;
-	END IF;
-	IF NEW.Property_Value_Password_Type IS NOT NULL THEN
-		IF v_prop.Property_Data_Type = 'password_type' THEN
-			tally := tally + 1;
-		ELSE
-			RAISE 'Property value may not be Password_Type' USING
-				ERRCODE = 'invalid_parameter_value';
-		END IF;
-	END IF;
-	IF NEW.Property_Value_Token_Col_Id IS NOT NULL THEN
-		IF v_prop.Property_Data_Type = 'token_collection_id' THEN
-			tally := tally + 1;
-		ELSE
-			RAISE 'Property value may not be Token_Collection_Id' USING
-				ERRCODE = 'invalid_parameter_value';
-		END IF;
-	END IF;
-	IF NEW.Property_Value_SW_Package_Id IS NOT NULL THEN
-		IF v_prop.Property_Data_Type = 'sw_package_id' THEN
-			tally := tally + 1;
-		ELSE
-			RAISE 'Property value may not be SW_Package_Id' USING
-				ERRCODE = 'invalid_parameter_value';
-		END IF;
-	END IF;
-	IF NEW.Property_Value_Account_Coll_Id IS NOT NULL THEN
-		IF v_prop.Property_Data_Type = 'account_collection_id' THEN
-			tally := tally + 1;
-		ELSE
-			RAISE 'Property value may not be account_collection_id' USING
-				ERRCODE = 'invalid_parameter_value';
-		END IF;
-	END IF;
-	IF NEW.Property_Value_nblk_Coll_Id IS NOT NULL THEN
-		IF v_prop.Property_Data_Type = 'netblock_collection_id' THEN
-			tally := tally + 1;
-		ELSE
-			RAISE 'Property value may not be nblk_collection_id' USING
-				ERRCODE = 'invalid_parameter_value';
-		END IF;
-	END IF;
-	IF NEW.Property_Value_Timestamp IS NOT NULL THEN
-		IF v_prop.Property_Data_Type = 'timestamp' THEN
-			tally := tally + 1;
-		ELSE
-			RAISE 'Property value may not be Timestamp' USING
-				ERRCODE = 'invalid_parameter_value';
-		END IF;
-	END IF;
-	IF NEW.Property_Value_Person_Id IS NOT NULL THEN
-		IF v_prop.Property_Data_Type = 'person_id' THEN
-			tally := tally + 1;
-		ELSE
-			RAISE 'Property value may not be Person_Id' USING
-				ERRCODE = 'invalid_parameter_value';
-		END IF;
-	END IF;
-	IF NEW.Property_Value_Device_Coll_Id IS NOT NULL THEN
-		IF v_prop.Property_Data_Type = 'device_collection_id' THEN
-			tally := tally + 1;
-		ELSE
-			RAISE 'Property value may not be Device_Collection_Id' USING
-				ERRCODE = 'invalid_parameter_value';
-		END IF;
-	END IF;
-
-	-- at this point, tally will be set to 1 if one of the other property
-	-- values is set to something valid.  Now, check the various options for
-	-- PROPERTY_VALUE itself.  If a new type is added to the val table, this
-	-- trigger needs to be updated or it will be considered invalid.  If a
-	-- new PROPERTY_VALUE_* column is added, then it will pass through without
-	-- trigger modification.  This should be considered bad.
-
-	IF NEW.Property_Value IS NOT NULL THEN
-		tally := tally + 1;
-		IF v_prop.Property_Data_Type = 'boolean' THEN
-			IF NEW.Property_Value != 'Y' AND NEW.Property_Value != 'N' THEN
-				RAISE 'Boolean Property_Value must be Y or N' USING
-					ERRCODE = 'invalid_parameter_value';
-			END IF;
-		ELSIF v_prop.Property_Data_Type = 'number' THEN
-			BEGIN
-				v_num := to_number(NEW.property_value, '9');
-			EXCEPTION
-				WHEN OTHERS THEN
-					RAISE 'Property_Value must be numeric' USING
-						ERRCODE = 'invalid_parameter_value';
-			END;
-		ELSIF v_prop.Property_Data_Type = 'list' THEN
-			BEGIN
-				SELECT Valid_Property_Value INTO STRICT v_listvalue FROM 
-					VAL_Property_Value WHERE
-						Property_Name = NEW.Property_Name AND
-						Property_Type = NEW.Property_Type AND
-						Valid_Property_Value = NEW.Property_Value;
-			EXCEPTION
-				WHEN NO_DATA_FOUND THEN
-					RAISE 'Property_Value must be a valid value' USING
-						ERRCODE = 'invalid_parameter_value';
-			END;
-		ELSIF v_prop.Property_Data_Type != 'string' THEN
-			RAISE 'Property_Data_Type is not a known type' USING
-				ERRCODE = 'invalid_parameter_value';
-		END IF;
-	END IF;
-
-	IF v_prop.Property_Data_Type != 'none' AND tally = 0 THEN
-		RAISE 'One of the PROPERTY_VALUE fields must be set.' USING
-			ERRCODE = 'invalid_parameter_value';
-	END IF;
-
-	IF tally > 1 THEN
-		RAISE 'Only one of the PROPERTY_VALUE fields may be set.' USING
-			ERRCODE = 'invalid_parameter_value';
-	END IF;
-
-	-- If the RHS contains a account_collection_ID, check to see if it must be a
-	-- specific type (e.g. per-user), and verify that if so
-	IF NEW.Property_Value_Account_Coll_Id IS NOT NULL THEN
-		IF v_prop.prop_val_acct_coll_type_rstrct IS NOT NULL THEN
-			BEGIN
-				SELECT * INTO STRICT v_account_collection 
-					FROM account_collection WHERE
-					account_collection_Id = NEW.Property_Value_Account_Coll_Id;
-				IF v_account_collection.account_collection_Type != v_prop.prop_val_acct_coll_type_rstrct
-				THEN
-					RAISE 'Property_Value_Account_Coll_Id must be of type %',
-					v_prop.prop_val_acct_coll_type_rstrct
-					USING ERRCODE = 'invalid_parameter_value';
-				END IF;
-			EXCEPTION
-				WHEN NO_DATA_FOUND THEN
-					-- let the database deal with the fk exception later
-					NULL;
-			END;
-		END IF;
-	END IF;
-
-	-- If the RHS contains a netblock_collection_ID, check to see if it must be a
-	-- specific type and verify that if so
-	IF NEW.Property_Value_nblk_Coll_Id IS NOT NULL THEN
-		IF v_prop.prop_val_acct_coll_type_rstrct IS NOT NULL THEN
-			BEGIN
-				SELECT * INTO STRICT v_netblock_collection 
-					FROM netblock_collection WHERE
-					netblock_collection_Id = NEW.Property_Value_nblk_Coll_Id;
-				IF v_netblock_collection.netblock_collection_Type != v_prop.prop_val_acct_coll_type_rstrct
-				THEN
-					RAISE 'Property_Value_nblk_Coll_Id must be of type %',
-					v_prop.prop_val_acct_coll_type_rstrct
-					USING ERRCODE = 'invalid_parameter_value';
-				END IF;
-			EXCEPTION
-				WHEN NO_DATA_FOUND THEN
-					-- let the database deal with the fk exception later
-					NULL;
-			END;
-		END IF;
-	END IF;
-
-	-- If the RHS contains a device_collection_id, check to see if it must be a
-	-- specific type and verify that if so
-	IF NEW.Property_Value_Device_Coll_Id IS NOT NULL THEN
-		IF v_prop.prop_val_dev_coll_type_rstrct IS NOT NULL THEN
-			BEGIN
-				SELECT * INTO STRICT v_device_collection 
-					FROM device_collection WHERE
-					device_collection_id = NEW.Property_Value_Device_Coll_Id;
-				IF v_device_collection.device_collection_type != 
-					v_prop.prop_val_dev_coll_type_rstrct
-				THEN
-					RAISE 'Property_Value_Device_Coll_Id must be of type %',
-					v_prop.prop_val_dev_coll_type_rstrct
-					USING ERRCODE = 'invalid_parameter_value';
-				END IF;
-			EXCEPTION
-				WHEN NO_DATA_FOUND THEN
-					-- let the database deal with the fk exception later
-					NULL;
-			END;
-		END IF;
-	END IF;
-
-	-- At this point, the RHS has been checked, so now we verify data
-	-- set on the LHS
-
-	-- There needs to be a stanza here for every "lhs".  If a new column is
-	-- added to the property table, a new stanza needs to be added here,
-	-- otherwise it will not be validated.  This should be considered bad.
-
-	IF v_prop.Permit_Company_Id = 'REQUIRED' THEN
-			IF NEW.Company_Id IS NULL THEN
-				RAISE 'Company_Id is required.'
-					USING ERRCODE = 'invalid_parameter_value';
-			END IF;
-	ELSIF v_prop.Permit_Company_Id = 'PROHIBITED' THEN
-			IF NEW.Company_Id IS NOT NULL THEN
-				RAISE 'Company_Id is prohibited.'
-					USING ERRCODE = 'invalid_parameter_value';
-			END IF;
-	END IF;
-
-	IF v_prop.Permit_Device_Collection_Id = 'REQUIRED' THEN
-			IF NEW.Device_Collection_Id IS NULL THEN
-				RAISE 'Device_Collection_Id is required.'
-					USING ERRCODE = 'invalid_parameter_value';
-			END IF;
-
-	ELSIF v_prop.Permit_Device_Collection_Id = 'PROHIBITED' THEN
-			IF NEW.Device_Collection_Id IS NOT NULL THEN
-				RAISE 'Device_Collection_Id is prohibited.'
-					USING ERRCODE = 'invalid_parameter_value';
-			END IF;
-	END IF;
-
-	IF v_prop.Permit_DNS_Domain_Id = 'REQUIRED' THEN
-			IF NEW.DNS_Domain_Id IS NULL THEN
-				RAISE 'DNS_Domain_Id is required.'
-					USING ERRCODE = 'invalid_parameter_value';
-			END IF;
-	ELSIF v_prop.Permit_DNS_Domain_Id = 'PROHIBITED' THEN
-			IF NEW.DNS_Domain_Id IS NOT NULL THEN
-				RAISE 'DNS_Domain_Id is prohibited.'
-					USING ERRCODE = 'invalid_parameter_value';
-			END IF;
-	END IF;
-
-	IF v_prop.permit_service_env_collection = 'REQUIRED' THEN
-			IF NEW.service_env_collection_id IS NULL THEN
-				RAISE 'service_env_collection_id is required.'
-					USING ERRCODE = 'invalid_parameter_value';
-			END IF;
-	ELSIF v_prop.permit_service_env_collection = 'PROHIBITED' THEN
-			IF NEW.service_env_collection_id IS NOT NULL THEN
-				RAISE 'service_environment is prohibited.'
-					USING ERRCODE = 'invalid_parameter_value';
-			END IF;
-	END IF;
-
-	IF v_prop.Permit_Operating_System_Id = 'REQUIRED' THEN
-			IF NEW.Operating_System_Id IS NULL THEN
-				RAISE 'Operating_System_Id is required.'
-					USING ERRCODE = 'invalid_parameter_value';
-			END IF;
-	ELSIF v_prop.Permit_Operating_System_Id = 'PROHIBITED' THEN
-			IF NEW.Operating_System_Id IS NOT NULL THEN
-				RAISE 'Operating_System_Id is prohibited.'
-					USING ERRCODE = 'invalid_parameter_value';
-			END IF;
-	END IF;
-
-	IF v_prop.permit_os_snapshot_id = 'REQUIRED' THEN
-			IF NEW.operating_system_snapshot_id IS NULL THEN
-				RAISE 'operating_system_snapshot_id is required.'
-					USING ERRCODE = 'invalid_parameter_value';
-			END IF;
-	ELSIF v_prop.permit_os_snapshot_id = 'PROHIBITED' THEN
-			IF NEW.operating_system_snapshot_id IS NOT NULL THEN
-				RAISE 'operating_system_snapshot_id is prohibited.'
-					USING ERRCODE = 'invalid_parameter_value';
-			END IF;
-	END IF;
-
-	IF v_prop.Permit_Site_Code = 'REQUIRED' THEN
-			IF NEW.Site_Code IS NULL THEN
-				RAISE 'Site_Code is required.'
-					USING ERRCODE = 'invalid_parameter_value';
-			END IF;
-	ELSIF v_prop.Permit_Site_Code = 'PROHIBITED' THEN
-			IF NEW.Site_Code IS NOT NULL THEN
-				RAISE 'Site_Code is prohibited.'
-					USING ERRCODE = 'invalid_parameter_value';
-			END IF;
-	END IF;
-
-	IF v_prop.Permit_Account_Id = 'REQUIRED' THEN
-			IF NEW.Account_Id IS NULL THEN
-				RAISE 'Account_Id is required.'
-					USING ERRCODE = 'invalid_parameter_value';
-			END IF;
-	ELSIF v_prop.Permit_Account_Id = 'PROHIBITED' THEN
-			IF NEW.Account_Id IS NOT NULL THEN
-				RAISE 'Account_Id is prohibited.'
-					USING ERRCODE = 'invalid_parameter_value';
-			END IF;
-	END IF;
-
-	IF v_prop.Permit_Account_Realm_Id = 'REQUIRED' THEN
-			IF NEW.Account_Realm_Id IS NULL THEN
-				RAISE 'Account_Realm_Id is required.'
-					USING ERRCODE = 'invalid_parameter_value';
-			END IF;
-	ELSIF v_prop.Permit_Account_Realm_Id = 'PROHIBITED' THEN
-			IF NEW.Account_Realm_Id IS NOT NULL THEN
-				RAISE 'Account_Realm_Id is prohibited.'
-					USING ERRCODE = 'invalid_parameter_value';
-			END IF;
-	END IF;
-
-	IF v_prop.Permit_account_collection_Id = 'REQUIRED' THEN
-			IF NEW.account_collection_Id IS NULL THEN
-				RAISE 'account_collection_Id is required.'
-					USING ERRCODE = 'invalid_parameter_value';
-			END IF;
-	ELSIF v_prop.Permit_account_collection_Id = 'PROHIBITED' THEN
-			IF NEW.account_collection_Id IS NOT NULL THEN
-				RAISE 'account_collection_Id is prohibited.'
-					USING ERRCODE = 'invalid_parameter_value';
-			END IF;
-	END IF;
-
-	IF v_prop.permit_layer2_network_coll_id = 'REQUIRED' THEN
-			IF NEW.layer2_network_collection_id IS NULL THEN
-				RAISE 'layer2_network_collection_id is required.'
-					USING ERRCODE = 'invalid_parameter_value';
-			END IF;
-	ELSIF v_prop.permit_layer2_network_coll_id = 'PROHIBITED' THEN
-			IF NEW.layer2_network_collection_id IS NOT NULL THEN
-				RAISE 'layer2_network_collection_id is prohibited.'
-					USING ERRCODE = 'invalid_parameter_value';
-			END IF;
-	END IF;
-
-	IF v_prop.permit_layer3_network_coll_id = 'REQUIRED' THEN
-			IF NEW.layer3_network_collection_id IS NULL THEN
-				RAISE 'layer3_network_collection_id is required.'
-					USING ERRCODE = 'invalid_parameter_value';
-			END IF;
-	ELSIF v_prop.permit_layer3_network_coll_id = 'PROHIBITED' THEN
-			IF NEW.layer3_network_collection_id IS NOT NULL THEN
-				RAISE 'layer3_network_collection_id is prohibited.'
-					USING ERRCODE = 'invalid_parameter_value';
-			END IF;
-	END IF;
-
-	IF v_prop.Permit_netblock_collection_Id = 'REQUIRED' THEN
-			IF NEW.netblock_collection_Id IS NULL THEN
-				RAISE 'netblock_collection_Id is required.'
-					USING ERRCODE = 'invalid_parameter_value';
-			END IF;
-	ELSIF v_prop.Permit_netblock_collection_Id = 'PROHIBITED' THEN
-			IF NEW.netblock_collection_Id IS NOT NULL THEN
-				RAISE 'netblock_collection_Id is prohibited.'
-					USING ERRCODE = 'invalid_parameter_value';
-			END IF;
-	END IF;
-
-	IF v_prop.Permit_property_collection_Id = 'REQUIRED' THEN
-			IF NEW.property_collection_Id IS NULL THEN
-				RAISE 'property_collection_Id is required.'
-					USING ERRCODE = 'invalid_parameter_value';
-			END IF;
-	ELSIF v_prop.Permit_property_collection_Id = 'PROHIBITED' THEN
-			IF NEW.property_collection_Id IS NOT NULL THEN
-				RAISE 'property_collection_Id is prohibited.'
-					USING ERRCODE = 'invalid_parameter_value';
-			END IF;
-	END IF;
-
-	IF v_prop.Permit_Person_Id = 'REQUIRED' THEN
-			IF NEW.Person_Id IS NULL THEN
-				RAISE 'Person_Id is required.'
-					USING ERRCODE = 'invalid_parameter_value';
-			END IF;
-	ELSIF v_prop.Permit_Person_Id = 'PROHIBITED' THEN
-			IF NEW.Person_Id IS NOT NULL THEN
-				RAISE 'Person_Id is prohibited.'
-					USING ERRCODE = 'invalid_parameter_value';
-			END IF;
-	END IF;
-
-	IF v_prop.Permit_Property_Rank = 'REQUIRED' THEN
-			IF NEW.property_rank IS NULL THEN
-				RAISE 'property_rank is required.'
-					USING ERRCODE = 'invalid_parameter_value';
-			END IF;
-	ELSIF v_prop.Permit_Property_Rank = 'PROHIBITED' THEN
-			IF NEW.property_rank IS NOT NULL THEN
-				RAISE 'property_rank is prohibited.'
-					USING ERRCODE = 'invalid_parameter_value';
-			END IF;
-	END IF;
-
-	RETURN NEW;
-END;
-$function$
-;
-
--- New function
-CREATE OR REPLACE FUNCTION jazzhands.approval_instance_item_approval_notify()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO jazzhands
-AS $function$
-BEGIN
-	NOTIFY approval_instance_item_approval_change;
-	RETURN NEW;
-END;
-$function$
-;
-
--- New function
-CREATE OR REPLACE FUNCTION jazzhands.approval_instance_item_approved_immutable()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO jazzhands
-AS $function$
-BEGIN
-	IF OLD.is_approved != NEW.is_approved THEN
-		RAISE EXCEPTION 'Approval may not be changed';
-	END IF;
-	RETURN NEW;
-END;
-$function$
-;
-
--- New function
-CREATE OR REPLACE FUNCTION jazzhands.approval_instance_step_auto_complete()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO jazzhands
-AS $function$
-DECLARE
-	_tally	INTEGER;
-BEGIN
-	--
-	-- on insert, if the parent was already marked as completed, fail.
-	-- arguably, this should happen on updates as well
-	--	possibly should move this to a before trigger
-	--
-	IF TG_OP = 'INSERT' THEN
-		SELECT	count(*)
-		INTO	_tally
-		FROM	approval_instance_step
-		WHERE	approval_instance_step_id = NEW.approval_instance_step_id
-		AND		is_completed = 'Y';
-
-		IF _tally > 0 THEN
-			RAISE EXCEPTION 'Completed attestation cycles may not have items added';
-		END IF;
-	END IF;
-
-	IF NEW.is_approved IS NOT NULL THEN
-		SELECT	count(*)
-		INTO	_tally
-		FROM	approval_instance_item
-		WHERE	approval_instance_step_id = NEW.approval_instance_step_id
-		AND		approval_instance_item_id != NEW.approval_instance_item_id
-		AND		is_approved IS NOT NULL;
-
-		IF _tally = 0 THEN
-			UPDATE	approval_instance_step
-			SET		is_completed = 'Y',
-					approval_instance_step_end = now()
-			WHERE	approval_instance_step_id = NEW.approval_instance_step_id;
-		END IF;
-		
-	END IF;
-	RETURN NEW;
-END;
-$function$
-;
-
--- New function
-CREATE OR REPLACE FUNCTION jazzhands.approval_instance_step_completed_immutable()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO jazzhands
-AS $function$
-BEGIN
-	IF ( OLD.is_completed ='Y' AND NEW.is_completed = 'N' ) THEN
-		RAISE EXCEPTION 'Approval completion may not be reverted';
-	END IF;
-	RETURN NEW;
-END;
-$function$
-;
-
--- New function
-CREATE OR REPLACE FUNCTION jazzhands.approval_instance_step_resolve_instance()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO jazzhands
-AS $function$
-DECLARE
-	_tally INTEGER;
-BEGIN
-	SELECT	count(*)
-	INTO	_tally
-	FROM	approval_instance_step
-	WHERE	is_completed = 'N'
-	AND		approval_instance_id = NEW.approval_instance_id;
-
-	IF _tally = 0 THEN
-		UPDATE approval_instance
-		SET	approval_end = now()
-		WHERE	approval_instance_id = NEW.approval_instance_id;
-	END IF;
-	RETURN NEW;
-END;
-$function$
-;
-
--- New function
-CREATE OR REPLACE FUNCTION jazzhands.perform_audit_company_collection_company()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
-AS $function$
-	    DECLARE
-		appuser VARCHAR;
-	    BEGIN
-		BEGIN
-		    appuser := session_user
-			|| '/' || current_setting('jazzhands.appuser');
-		EXCEPTION WHEN OTHERS THEN
-		    appuser := session_user;
-		END;
-
-    		appuser = substr(appuser, 1, 255);
-
-		IF TG_OP = 'DELETE' THEN
-		    INSERT INTO audit.company_collection_company
-		    VALUES ( OLD.*, 'DEL', now(), appuser );
-		    RETURN OLD;
-		ELSIF TG_OP = 'UPDATE' THEN
-		    INSERT INTO audit.company_collection_company
-		    VALUES ( NEW.*, 'UPD', now(), appuser );
-		    RETURN NEW;
-		ELSIF TG_OP = 'INSERT' THEN
-		    INSERT INTO audit.company_collection_company
-		    VALUES ( NEW.*, 'INS', now(), appuser );
-		    RETURN NEW;
-		END IF;
-		RETURN NULL;
-	    END;
-	$function$
-;
-
--- New function
-CREATE OR REPLACE FUNCTION jazzhands.perform_audit_company_collection_hier()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
-AS $function$
-	    DECLARE
-		appuser VARCHAR;
-	    BEGIN
-		BEGIN
-		    appuser := session_user
-			|| '/' || current_setting('jazzhands.appuser');
-		EXCEPTION WHEN OTHERS THEN
-		    appuser := session_user;
-		END;
-
-    		appuser = substr(appuser, 1, 255);
-
-		IF TG_OP = 'DELETE' THEN
-		    INSERT INTO audit.company_collection_hier
-		    VALUES ( OLD.*, 'DEL', now(), appuser );
-		    RETURN OLD;
-		ELSIF TG_OP = 'UPDATE' THEN
-		    INSERT INTO audit.company_collection_hier
-		    VALUES ( NEW.*, 'UPD', now(), appuser );
-		    RETURN NEW;
-		ELSIF TG_OP = 'INSERT' THEN
-		    INSERT INTO audit.company_collection_hier
-		    VALUES ( NEW.*, 'INS', now(), appuser );
-		    RETURN NEW;
-		END IF;
-		RETURN NULL;
-	    END;
-	$function$
-;
-
--- New function
-CREATE OR REPLACE FUNCTION jazzhands.perform_audit_company_colllection()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
-AS $function$
-	    DECLARE
-		appuser VARCHAR;
-	    BEGIN
-		BEGIN
-		    appuser := session_user
-			|| '/' || current_setting('jazzhands.appuser');
-		EXCEPTION WHEN OTHERS THEN
-		    appuser := session_user;
-		END;
-
-    		appuser = substr(appuser, 1, 255);
-
-		IF TG_OP = 'DELETE' THEN
-		    INSERT INTO audit.company_colllection
-		    VALUES ( OLD.*, 'DEL', now(), appuser );
-		    RETURN OLD;
-		ELSIF TG_OP = 'UPDATE' THEN
-		    INSERT INTO audit.company_colllection
-		    VALUES ( NEW.*, 'UPD', now(), appuser );
-		    RETURN NEW;
-		ELSIF TG_OP = 'INSERT' THEN
-		    INSERT INTO audit.company_colllection
-		    VALUES ( NEW.*, 'INS', now(), appuser );
-		    RETURN NEW;
-		END IF;
-		RETURN NULL;
-	    END;
-	$function$
-;
-
--- New function
-CREATE OR REPLACE FUNCTION jazzhands.perform_audit_dns_domain_collection()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
-AS $function$
-	    DECLARE
-		appuser VARCHAR;
-	    BEGIN
-		BEGIN
-		    appuser := session_user
-			|| '/' || current_setting('jazzhands.appuser');
-		EXCEPTION WHEN OTHERS THEN
-		    appuser := session_user;
-		END;
-
-    		appuser = substr(appuser, 1, 255);
-
-		IF TG_OP = 'DELETE' THEN
-		    INSERT INTO audit.dns_domain_collection
-		    VALUES ( OLD.*, 'DEL', now(), appuser );
-		    RETURN OLD;
-		ELSIF TG_OP = 'UPDATE' THEN
-		    INSERT INTO audit.dns_domain_collection
-		    VALUES ( NEW.*, 'UPD', now(), appuser );
-		    RETURN NEW;
-		ELSIF TG_OP = 'INSERT' THEN
-		    INSERT INTO audit.dns_domain_collection
-		    VALUES ( NEW.*, 'INS', now(), appuser );
-		    RETURN NEW;
-		END IF;
-		RETURN NULL;
-	    END;
-	$function$
-;
-
--- New function
-CREATE OR REPLACE FUNCTION jazzhands.perform_audit_dns_domain_collection_dns_dom()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
-AS $function$
-	    DECLARE
-		appuser VARCHAR;
-	    BEGIN
-		BEGIN
-		    appuser := session_user
-			|| '/' || current_setting('jazzhands.appuser');
-		EXCEPTION WHEN OTHERS THEN
-		    appuser := session_user;
-		END;
-
-    		appuser = substr(appuser, 1, 255);
-
-		IF TG_OP = 'DELETE' THEN
-		    INSERT INTO audit.dns_domain_collection_dns_dom
-		    VALUES ( OLD.*, 'DEL', now(), appuser );
-		    RETURN OLD;
-		ELSIF TG_OP = 'UPDATE' THEN
-		    INSERT INTO audit.dns_domain_collection_dns_dom
-		    VALUES ( NEW.*, 'UPD', now(), appuser );
-		    RETURN NEW;
-		ELSIF TG_OP = 'INSERT' THEN
-		    INSERT INTO audit.dns_domain_collection_dns_dom
-		    VALUES ( NEW.*, 'INS', now(), appuser );
-		    RETURN NEW;
-		END IF;
-		RETURN NULL;
-	    END;
-	$function$
-;
-
--- New function
-CREATE OR REPLACE FUNCTION jazzhands.perform_audit_dns_domain_collection_hier()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
-AS $function$
-	    DECLARE
-		appuser VARCHAR;
-	    BEGIN
-		BEGIN
-		    appuser := session_user
-			|| '/' || current_setting('jazzhands.appuser');
-		EXCEPTION WHEN OTHERS THEN
-		    appuser := session_user;
-		END;
-
-    		appuser = substr(appuser, 1, 255);
-
-		IF TG_OP = 'DELETE' THEN
-		    INSERT INTO audit.dns_domain_collection_hier
-		    VALUES ( OLD.*, 'DEL', now(), appuser );
-		    RETURN OLD;
-		ELSIF TG_OP = 'UPDATE' THEN
-		    INSERT INTO audit.dns_domain_collection_hier
-		    VALUES ( NEW.*, 'UPD', now(), appuser );
-		    RETURN NEW;
-		ELSIF TG_OP = 'INSERT' THEN
-		    INSERT INTO audit.dns_domain_collection_hier
-		    VALUES ( NEW.*, 'INS', now(), appuser );
-		    RETURN NEW;
-		END IF;
-		RETURN NULL;
-	    END;
-	$function$
-;
-
--- New function
-CREATE OR REPLACE FUNCTION jazzhands.perform_audit_l2_network_coll_l2_network()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
-AS $function$
-	    DECLARE
-		appuser VARCHAR;
-	    BEGIN
-		BEGIN
-		    appuser := session_user
-			|| '/' || current_setting('jazzhands.appuser');
-		EXCEPTION WHEN OTHERS THEN
-		    appuser := session_user;
-		END;
-
-    		appuser = substr(appuser, 1, 255);
-
-		IF TG_OP = 'DELETE' THEN
-		    INSERT INTO audit.l2_network_coll_l2_network
-		    VALUES ( OLD.*, 'DEL', now(), appuser );
-		    RETURN OLD;
-		ELSIF TG_OP = 'UPDATE' THEN
-		    INSERT INTO audit.l2_network_coll_l2_network
-		    VALUES ( NEW.*, 'UPD', now(), appuser );
-		    RETURN NEW;
-		ELSIF TG_OP = 'INSERT' THEN
-		    INSERT INTO audit.l2_network_coll_l2_network
-		    VALUES ( NEW.*, 'INS', now(), appuser );
-		    RETURN NEW;
-		END IF;
-		RETURN NULL;
-	    END;
-	$function$
-;
-
--- New function
-CREATE OR REPLACE FUNCTION jazzhands.perform_audit_l3_network_coll_l3_network()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
-AS $function$
-	    DECLARE
-		appuser VARCHAR;
-	    BEGIN
-		BEGIN
-		    appuser := session_user
-			|| '/' || current_setting('jazzhands.appuser');
-		EXCEPTION WHEN OTHERS THEN
-		    appuser := session_user;
-		END;
-
-    		appuser = substr(appuser, 1, 255);
-
-		IF TG_OP = 'DELETE' THEN
-		    INSERT INTO audit.l3_network_coll_l3_network
-		    VALUES ( OLD.*, 'DEL', now(), appuser );
-		    RETURN OLD;
-		ELSIF TG_OP = 'UPDATE' THEN
-		    INSERT INTO audit.l3_network_coll_l3_network
-		    VALUES ( NEW.*, 'UPD', now(), appuser );
-		    RETURN NEW;
-		ELSIF TG_OP = 'INSERT' THEN
-		    INSERT INTO audit.l3_network_coll_l3_network
-		    VALUES ( NEW.*, 'INS', now(), appuser );
-		    RETURN NEW;
-		END IF;
-		RETURN NULL;
-	    END;
-	$function$
-;
-
--- New function
-CREATE OR REPLACE FUNCTION jazzhands.perform_audit_layer2_network_collection()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
-AS $function$
-	    DECLARE
-		appuser VARCHAR;
-	    BEGIN
-		BEGIN
-		    appuser := session_user
-			|| '/' || current_setting('jazzhands.appuser');
-		EXCEPTION WHEN OTHERS THEN
-		    appuser := session_user;
-		END;
-
-    		appuser = substr(appuser, 1, 255);
-
-		IF TG_OP = 'DELETE' THEN
-		    INSERT INTO audit.layer2_network_collection
-		    VALUES ( OLD.*, 'DEL', now(), appuser );
-		    RETURN OLD;
-		ELSIF TG_OP = 'UPDATE' THEN
-		    INSERT INTO audit.layer2_network_collection
-		    VALUES ( NEW.*, 'UPD', now(), appuser );
-		    RETURN NEW;
-		ELSIF TG_OP = 'INSERT' THEN
-		    INSERT INTO audit.layer2_network_collection
-		    VALUES ( NEW.*, 'INS', now(), appuser );
-		    RETURN NEW;
-		END IF;
-		RETURN NULL;
-	    END;
-	$function$
-;
-
--- New function
-CREATE OR REPLACE FUNCTION jazzhands.perform_audit_layer2_network_collection_hier()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
-AS $function$
-	    DECLARE
-		appuser VARCHAR;
-	    BEGIN
-		BEGIN
-		    appuser := session_user
-			|| '/' || current_setting('jazzhands.appuser');
-		EXCEPTION WHEN OTHERS THEN
-		    appuser := session_user;
-		END;
-
-    		appuser = substr(appuser, 1, 255);
-
-		IF TG_OP = 'DELETE' THEN
-		    INSERT INTO audit.layer2_network_collection_hier
-		    VALUES ( OLD.*, 'DEL', now(), appuser );
-		    RETURN OLD;
-		ELSIF TG_OP = 'UPDATE' THEN
-		    INSERT INTO audit.layer2_network_collection_hier
-		    VALUES ( NEW.*, 'UPD', now(), appuser );
-		    RETURN NEW;
-		ELSIF TG_OP = 'INSERT' THEN
-		    INSERT INTO audit.layer2_network_collection_hier
-		    VALUES ( NEW.*, 'INS', now(), appuser );
-		    RETURN NEW;
-		END IF;
-		RETURN NULL;
-	    END;
-	$function$
-;
-
--- New function
-CREATE OR REPLACE FUNCTION jazzhands.perform_audit_layer3_network_collection()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
-AS $function$
-	    DECLARE
-		appuser VARCHAR;
-	    BEGIN
-		BEGIN
-		    appuser := session_user
-			|| '/' || current_setting('jazzhands.appuser');
-		EXCEPTION WHEN OTHERS THEN
-		    appuser := session_user;
-		END;
-
-    		appuser = substr(appuser, 1, 255);
-
-		IF TG_OP = 'DELETE' THEN
-		    INSERT INTO audit.layer3_network_collection
-		    VALUES ( OLD.*, 'DEL', now(), appuser );
-		    RETURN OLD;
-		ELSIF TG_OP = 'UPDATE' THEN
-		    INSERT INTO audit.layer3_network_collection
-		    VALUES ( NEW.*, 'UPD', now(), appuser );
-		    RETURN NEW;
-		ELSIF TG_OP = 'INSERT' THEN
-		    INSERT INTO audit.layer3_network_collection
-		    VALUES ( NEW.*, 'INS', now(), appuser );
-		    RETURN NEW;
-		END IF;
-		RETURN NULL;
-	    END;
-	$function$
-;
-
--- New function
-CREATE OR REPLACE FUNCTION jazzhands.perform_audit_layer3_network_collection_hier()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
-AS $function$
-	    DECLARE
-		appuser VARCHAR;
-	    BEGIN
-		BEGIN
-		    appuser := session_user
-			|| '/' || current_setting('jazzhands.appuser');
-		EXCEPTION WHEN OTHERS THEN
-		    appuser := session_user;
-		END;
-
-    		appuser = substr(appuser, 1, 255);
-
-		IF TG_OP = 'DELETE' THEN
-		    INSERT INTO audit.layer3_network_collection_hier
-		    VALUES ( OLD.*, 'DEL', now(), appuser );
-		    RETURN OLD;
-		ELSIF TG_OP = 'UPDATE' THEN
-		    INSERT INTO audit.layer3_network_collection_hier
-		    VALUES ( NEW.*, 'UPD', now(), appuser );
-		    RETURN NEW;
-		ELSIF TG_OP = 'INSERT' THEN
-		    INSERT INTO audit.layer3_network_collection_hier
-		    VALUES ( NEW.*, 'INS', now(), appuser );
-		    RETURN NEW;
-		END IF;
-		RETURN NULL;
-	    END;
-	$function$
-;
-
--- New function
-CREATE OR REPLACE FUNCTION jazzhands.perform_audit_person_company_attr()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
-AS $function$
-	    DECLARE
-		appuser VARCHAR;
-	    BEGIN
-		BEGIN
-		    appuser := session_user
-			|| '/' || current_setting('jazzhands.appuser');
-		EXCEPTION WHEN OTHERS THEN
-		    appuser := session_user;
-		END;
-
-    		appuser = substr(appuser, 1, 255);
-
-		IF TG_OP = 'DELETE' THEN
-		    INSERT INTO audit.person_company_attr
-		    VALUES ( OLD.*, 'DEL', now(), appuser );
-		    RETURN OLD;
-		ELSIF TG_OP = 'UPDATE' THEN
-		    INSERT INTO audit.person_company_attr
-		    VALUES ( NEW.*, 'UPD', now(), appuser );
-		    RETURN NEW;
-		ELSIF TG_OP = 'INSERT' THEN
-		    INSERT INTO audit.person_company_attr
-		    VALUES ( NEW.*, 'INS', now(), appuser );
-		    RETURN NEW;
-		END IF;
-		RETURN NULL;
-	    END;
-	$function$
-;
-
--- New function
-CREATE OR REPLACE FUNCTION jazzhands.perform_audit_val_appaal_group_name()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
-AS $function$
-	    DECLARE
-		appuser VARCHAR;
-	    BEGIN
-		BEGIN
-		    appuser := session_user
-			|| '/' || current_setting('jazzhands.appuser');
-		EXCEPTION WHEN OTHERS THEN
-		    appuser := session_user;
-		END;
-
-    		appuser = substr(appuser, 1, 255);
-
-		IF TG_OP = 'DELETE' THEN
-		    INSERT INTO audit.val_appaal_group_name
-		    VALUES ( OLD.*, 'DEL', now(), appuser );
-		    RETURN OLD;
-		ELSIF TG_OP = 'UPDATE' THEN
-		    INSERT INTO audit.val_appaal_group_name
-		    VALUES ( NEW.*, 'UPD', now(), appuser );
-		    RETURN NEW;
-		ELSIF TG_OP = 'INSERT' THEN
-		    INSERT INTO audit.val_appaal_group_name
-		    VALUES ( NEW.*, 'INS', now(), appuser );
-		    RETURN NEW;
-		END IF;
-		RETURN NULL;
-	    END;
-	$function$
-;
-
--- New function
-CREATE OR REPLACE FUNCTION jazzhands.perform_audit_val_company_collection_type()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
-AS $function$
-	    DECLARE
-		appuser VARCHAR;
-	    BEGIN
-		BEGIN
-		    appuser := session_user
-			|| '/' || current_setting('jazzhands.appuser');
-		EXCEPTION WHEN OTHERS THEN
-		    appuser := session_user;
-		END;
-
-    		appuser = substr(appuser, 1, 255);
-
-		IF TG_OP = 'DELETE' THEN
-		    INSERT INTO audit.val_company_collection_type
-		    VALUES ( OLD.*, 'DEL', now(), appuser );
-		    RETURN OLD;
-		ELSIF TG_OP = 'UPDATE' THEN
-		    INSERT INTO audit.val_company_collection_type
-		    VALUES ( NEW.*, 'UPD', now(), appuser );
-		    RETURN NEW;
-		ELSIF TG_OP = 'INSERT' THEN
-		    INSERT INTO audit.val_company_collection_type
-		    VALUES ( NEW.*, 'INS', now(), appuser );
-		    RETURN NEW;
-		END IF;
-		RETURN NULL;
-	    END;
-	$function$
-;
-
--- New function
-CREATE OR REPLACE FUNCTION jazzhands.perform_audit_val_dns_domain_collection_type()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
-AS $function$
-	    DECLARE
-		appuser VARCHAR;
-	    BEGIN
-		BEGIN
-		    appuser := session_user
-			|| '/' || current_setting('jazzhands.appuser');
-		EXCEPTION WHEN OTHERS THEN
-		    appuser := session_user;
-		END;
-
-    		appuser = substr(appuser, 1, 255);
-
-		IF TG_OP = 'DELETE' THEN
-		    INSERT INTO audit.val_dns_domain_collection_type
-		    VALUES ( OLD.*, 'DEL', now(), appuser );
-		    RETURN OLD;
-		ELSIF TG_OP = 'UPDATE' THEN
-		    INSERT INTO audit.val_dns_domain_collection_type
-		    VALUES ( NEW.*, 'UPD', now(), appuser );
-		    RETURN NEW;
-		ELSIF TG_OP = 'INSERT' THEN
-		    INSERT INTO audit.val_dns_domain_collection_type
-		    VALUES ( NEW.*, 'INS', now(), appuser );
-		    RETURN NEW;
-		END IF;
-		RETURN NULL;
-	    END;
-	$function$
-;
-
--- New function
-CREATE OR REPLACE FUNCTION jazzhands.perform_audit_val_layer2_network_coll_type()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
-AS $function$
-	    DECLARE
-		appuser VARCHAR;
-	    BEGIN
-		BEGIN
-		    appuser := session_user
-			|| '/' || current_setting('jazzhands.appuser');
-		EXCEPTION WHEN OTHERS THEN
-		    appuser := session_user;
-		END;
-
-    		appuser = substr(appuser, 1, 255);
-
-		IF TG_OP = 'DELETE' THEN
-		    INSERT INTO audit.val_layer2_network_coll_type
-		    VALUES ( OLD.*, 'DEL', now(), appuser );
-		    RETURN OLD;
-		ELSIF TG_OP = 'UPDATE' THEN
-		    INSERT INTO audit.val_layer2_network_coll_type
-		    VALUES ( NEW.*, 'UPD', now(), appuser );
-		    RETURN NEW;
-		ELSIF TG_OP = 'INSERT' THEN
-		    INSERT INTO audit.val_layer2_network_coll_type
-		    VALUES ( NEW.*, 'INS', now(), appuser );
-		    RETURN NEW;
-		END IF;
-		RETURN NULL;
-	    END;
-	$function$
-;
-
--- New function
-CREATE OR REPLACE FUNCTION jazzhands.perform_audit_val_layer3_network_coll_type()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
-AS $function$
-	    DECLARE
-		appuser VARCHAR;
-	    BEGIN
-		BEGIN
-		    appuser := session_user
-			|| '/' || current_setting('jazzhands.appuser');
-		EXCEPTION WHEN OTHERS THEN
-		    appuser := session_user;
-		END;
-
-    		appuser = substr(appuser, 1, 255);
-
-		IF TG_OP = 'DELETE' THEN
-		    INSERT INTO audit.val_layer3_network_coll_type
-		    VALUES ( OLD.*, 'DEL', now(), appuser );
-		    RETURN OLD;
-		ELSIF TG_OP = 'UPDATE' THEN
-		    INSERT INTO audit.val_layer3_network_coll_type
-		    VALUES ( NEW.*, 'UPD', now(), appuser );
-		    RETURN NEW;
-		ELSIF TG_OP = 'INSERT' THEN
-		    INSERT INTO audit.val_layer3_network_coll_type
-		    VALUES ( NEW.*, 'INS', now(), appuser );
-		    RETURN NEW;
-		END IF;
-		RETURN NULL;
-	    END;
-	$function$
-;
-
--- New function
-CREATE OR REPLACE FUNCTION jazzhands.perform_audit_val_logical_volume_type()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
-AS $function$
-	    DECLARE
-		appuser VARCHAR;
-	    BEGIN
-		BEGIN
-		    appuser := session_user
-			|| '/' || current_setting('jazzhands.appuser');
-		EXCEPTION WHEN OTHERS THEN
-		    appuser := session_user;
-		END;
-
-    		appuser = substr(appuser, 1, 255);
-
-		IF TG_OP = 'DELETE' THEN
-		    INSERT INTO audit.val_logical_volume_type
-		    VALUES ( OLD.*, 'DEL', now(), appuser );
-		    RETURN OLD;
-		ELSIF TG_OP = 'UPDATE' THEN
-		    INSERT INTO audit.val_logical_volume_type
-		    VALUES ( NEW.*, 'UPD', now(), appuser );
-		    RETURN NEW;
-		ELSIF TG_OP = 'INSERT' THEN
-		    INSERT INTO audit.val_logical_volume_type
-		    VALUES ( NEW.*, 'INS', now(), appuser );
-		    RETURN NEW;
-		END IF;
-		RETURN NULL;
-	    END;
-	$function$
-;
-
--- New function
-CREATE OR REPLACE FUNCTION jazzhands.perform_audit_val_person_company_attr_dtype()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
-AS $function$
-	    DECLARE
-		appuser VARCHAR;
-	    BEGIN
-		BEGIN
-		    appuser := session_user
-			|| '/' || current_setting('jazzhands.appuser');
-		EXCEPTION WHEN OTHERS THEN
-		    appuser := session_user;
-		END;
-
-    		appuser = substr(appuser, 1, 255);
-
-		IF TG_OP = 'DELETE' THEN
-		    INSERT INTO audit.val_person_company_attr_dtype
-		    VALUES ( OLD.*, 'DEL', now(), appuser );
-		    RETURN OLD;
-		ELSIF TG_OP = 'UPDATE' THEN
-		    INSERT INTO audit.val_person_company_attr_dtype
-		    VALUES ( NEW.*, 'UPD', now(), appuser );
-		    RETURN NEW;
-		ELSIF TG_OP = 'INSERT' THEN
-		    INSERT INTO audit.val_person_company_attr_dtype
-		    VALUES ( NEW.*, 'INS', now(), appuser );
-		    RETURN NEW;
-		END IF;
-		RETURN NULL;
-	    END;
-	$function$
-;
-
--- New function
-CREATE OR REPLACE FUNCTION jazzhands.perform_audit_val_person_company_attr_name()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
-AS $function$
-	    DECLARE
-		appuser VARCHAR;
-	    BEGIN
-		BEGIN
-		    appuser := session_user
-			|| '/' || current_setting('jazzhands.appuser');
-		EXCEPTION WHEN OTHERS THEN
-		    appuser := session_user;
-		END;
-
-    		appuser = substr(appuser, 1, 255);
-
-		IF TG_OP = 'DELETE' THEN
-		    INSERT INTO audit.val_person_company_attr_name
-		    VALUES ( OLD.*, 'DEL', now(), appuser );
-		    RETURN OLD;
-		ELSIF TG_OP = 'UPDATE' THEN
-		    INSERT INTO audit.val_person_company_attr_name
-		    VALUES ( NEW.*, 'UPD', now(), appuser );
-		    RETURN NEW;
-		ELSIF TG_OP = 'INSERT' THEN
-		    INSERT INTO audit.val_person_company_attr_name
-		    VALUES ( NEW.*, 'INS', now(), appuser );
-		    RETURN NEW;
-		END IF;
-		RETURN NULL;
-	    END;
-	$function$
-;
-
--- New function
-CREATE OR REPLACE FUNCTION jazzhands.perform_audit_val_person_company_attr_value()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
-AS $function$
-	    DECLARE
-		appuser VARCHAR;
-	    BEGIN
-		BEGIN
-		    appuser := session_user
-			|| '/' || current_setting('jazzhands.appuser');
-		EXCEPTION WHEN OTHERS THEN
-		    appuser := session_user;
-		END;
-
-    		appuser = substr(appuser, 1, 255);
-
-		IF TG_OP = 'DELETE' THEN
-		    INSERT INTO audit.val_person_company_attr_value
-		    VALUES ( OLD.*, 'DEL', now(), appuser );
-		    RETURN OLD;
-		ELSIF TG_OP = 'UPDATE' THEN
-		    INSERT INTO audit.val_person_company_attr_value
-		    VALUES ( NEW.*, 'UPD', now(), appuser );
-		    RETURN NEW;
-		ELSIF TG_OP = 'INSERT' THEN
-		    INSERT INTO audit.val_person_company_attr_value
-		    VALUES ( NEW.*, 'INS', now(), appuser );
-		    RETURN NEW;
-		END IF;
-		RETURN NULL;
-	    END;
-	$function$
-;
-
---
--- Process schema net_manip
+-- Process middle (non-trigger) schema jazzhands
 --
 --
--- Process schema network_strings
+-- Process middle (non-trigger) schema net_manip
 --
 --
--- Process schema time_util
+-- Process middle (non-trigger) schema network_strings
 --
 --
--- Process schema dns_utils
+-- Process middle (non-trigger) schema time_util
+--
+--
+-- Process middle (non-trigger) schema dns_utils
 --
 -- Changed function
 SELECT schema_support.save_grants_for_replay('dns_utils', 'add_dns_domain');
@@ -2089,7 +234,7 @@ $function$
 ;
 
 --
--- Process schema person_manip
+-- Process middle (non-trigger) schema person_manip
 --
 -- Changed function
 SELECT schema_support.save_grants_for_replay('person_manip', 'pick_login');
@@ -2186,7 +331,7 @@ $function$
 ;
 
 --
--- Process schema auto_ac_manip
+-- Process middle (non-trigger) schema auto_ac_manip
 --
 -- Changed function
 SELECT schema_support.save_grants_for_replay('auto_ac_manip', 'destroy_report_account_collections');
@@ -2238,22 +383,22 @@ $function$
 ;
 
 --
--- Process schema company_manip
+-- Process middle (non-trigger) schema company_manip
 --
 --
--- Process schema port_support
+-- Process middle (non-trigger) schema port_support
 --
 --
--- Process schema port_utils
+-- Process middle (non-trigger) schema port_utils
 --
 --
--- Process schema device_utils
+-- Process middle (non-trigger) schema device_utils
 --
 --
--- Process schema netblock_utils
+-- Process middle (non-trigger) schema netblock_utils
 --
 --
--- Process schema netblock_manip
+-- Process middle (non-trigger) schema netblock_manip
 --
 -- Changed function
 SELECT schema_support.save_grants_for_replay('netblock_manip', 'allocate_netblock');
@@ -2492,22 +637,22 @@ $function$
 ;
 
 --
--- Process schema physical_address_utils
+-- Process middle (non-trigger) schema physical_address_utils
 --
 --
--- Process schema component_utils
+-- Process middle (non-trigger) schema component_utils
 --
 --
--- Process schema snapshot_manip
+-- Process middle (non-trigger) schema snapshot_manip
 --
 --
--- Process schema lv_manip
+-- Process middle (non-trigger) schema lv_manip
 --
 --
--- Process schema schema_support
+-- Process middle (non-trigger) schema schema_support
 --
 --
--- Process schema approval_utils
+-- Process middle (non-trigger) schema approval_utils
 --
 -- Changed function
 SELECT schema_support.save_grants_for_replay('approval_utils', 'approve');
@@ -3062,7 +1207,7 @@ CREATE SEQUENCE layer3_network_collection_layer3_network_collection_id_seq;
 
 
 --------------------------------------------------------------------
--- DEALING WITH TABLE layer2_network [1212574]
+-- DEALING WITH TABLE layer2_network [1884066]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'layer2_network', 'layer2_network');
 
@@ -3253,10 +1398,10 @@ ALTER SEQUENCE layer2_network_layer2_network_id_seq
 	 OWNED BY layer2_network.layer2_network_id;
 DROP TABLE IF EXISTS layer2_network_v64;
 DROP TABLE IF EXISTS audit.layer2_network_v64;
--- DONE DEALING WITH TABLE layer2_network [1173678]
+-- DONE DEALING WITH TABLE layer2_network [1874336]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE layer3_network [1212593]
+-- DEALING WITH TABLE layer3_network [1884085]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'layer3_network', 'layer3_network');
 
@@ -3430,10 +1575,10 @@ ALTER SEQUENCE layer3_network_layer3_network_id_seq
 	 OWNED BY layer3_network.layer3_network_id;
 DROP TABLE IF EXISTS layer3_network_v64;
 DROP TABLE IF EXISTS audit.layer3_network_v64;
--- DONE DEALING WITH TABLE layer3_network [1173721]
+-- DONE DEALING WITH TABLE layer3_network [1874379]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE val_app_key [1213558]
+-- DEALING WITH TABLE val_app_key [1885051]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'val_app_key', 'val_app_key');
 
@@ -3569,10 +1714,10 @@ SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_app_key');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_app_key');
 DROP TABLE IF EXISTS val_app_key_v64;
 DROP TABLE IF EXISTS audit.val_app_key_v64;
--- DONE DEALING WITH TABLE val_app_key [1174727]
+-- DONE DEALING WITH TABLE val_app_key [1875384]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE val_app_key_values [1213566]
+-- DEALING WITH TABLE val_app_key_values [1885059]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'val_app_key_values', 'val_app_key_values');
 
@@ -3692,7 +1837,7 @@ SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_app_key_values');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_app_key_values');
 DROP TABLE IF EXISTS val_app_key_values_v64;
 DROP TABLE IF EXISTS audit.val_app_key_values_v64;
--- DONE DEALING WITH TABLE val_app_key_values [1174736]
+-- DONE DEALING WITH TABLE val_app_key_values [1875393]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE val_appaal_group_name
@@ -3750,7 +1895,7 @@ ALTER TABLE val_app_key
 -- TRIGGERS
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_appaal_group_name');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_appaal_group_name');
--- DONE DEALING WITH TABLE val_appaal_group_name [1174744]
+-- DONE DEALING WITH TABLE val_appaal_group_name [1875401]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE val_company_collection_type
@@ -3796,9 +1941,9 @@ ALTER TABLE val_company_collection_type ADD CONSTRAINT check_yes_no_845966153
 	CHECK (can_have_hierarchy = ANY (ARRAY['Y'::bpchar, 'N'::bpchar]));
 
 -- FOREIGN KEYS FROM
--- consider FK val_company_collection_type and company_colllection
+-- consider FK val_company_collection_type and company_collection
 -- Skipping this FK since table does not exist yet
---ALTER TABLE company_colllection
+--ALTER TABLE company_collection
 --	ADD CONSTRAINT fk_comp_coll_com_coll_type
 --	FOREIGN KEY (company_collection_type) REFERENCES val_company_collection_type(company_collection_type);
 
@@ -3814,7 +1959,7 @@ ALTER TABLE val_company_collection_type ADD CONSTRAINT check_yes_no_845966153
 -- TRIGGERS
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_company_collection_type');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_company_collection_type');
--- DONE DEALING WITH TABLE val_company_collection_type [1174832]
+-- DONE DEALING WITH TABLE val_company_collection_type [1875489]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE val_dns_domain_collection_type
@@ -3865,7 +2010,7 @@ ALTER TABLE val_dns_domain_collection_type ADD CONSTRAINT check_yes_no_991893281
 -- TRIGGERS
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_dns_domain_collection_type');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_dns_domain_collection_type');
--- DONE DEALING WITH TABLE val_dns_domain_collection_type [1174973]
+-- DONE DEALING WITH TABLE val_dns_domain_collection_type [1875630]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE val_layer2_network_coll_type
@@ -3923,7 +2068,7 @@ ALTER TABLE val_layer2_network_coll_type ADD CONSTRAINT check_yes_no_2053022263
 -- TRIGGERS
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_layer2_network_coll_type');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_layer2_network_coll_type');
--- DONE DEALING WITH TABLE val_layer2_network_coll_type [1175081]
+-- DONE DEALING WITH TABLE val_layer2_network_coll_type [1875738]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE val_layer3_network_coll_type
@@ -3981,7 +2126,7 @@ ALTER TABLE val_layer3_network_coll_type ADD CONSTRAINT check_yes_no_l3nc_chh
 -- TRIGGERS
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_layer3_network_coll_type');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_layer3_network_coll_type');
--- DONE DEALING WITH TABLE val_layer3_network_coll_type [1175091]
+-- DONE DEALING WITH TABLE val_layer3_network_coll_type [1875748]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE val_logical_volume_type
@@ -4025,10 +2170,10 @@ ALTER TABLE val_logical_volume_type ADD CONSTRAINT pk_logical_volume_type PRIMAR
 -- TRIGGERS
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_logical_volume_type');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_logical_volume_type');
--- DONE DEALING WITH TABLE val_logical_volume_type [1175126]
+-- DONE DEALING WITH TABLE val_logical_volume_type [1875783]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE val_netblock_collection_type [1213906]
+-- DEALING WITH TABLE val_netblock_collection_type [1885399]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'val_netblock_collection_type', 'val_netblock_collection_type');
 
@@ -4196,7 +2341,7 @@ SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_netblock_collectio
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_netblock_collection_type');
 DROP TABLE IF EXISTS val_netblock_collection_type_v64;
 DROP TABLE IF EXISTS audit.val_netblock_collection_type_v64;
--- DONE DEALING WITH TABLE val_netblock_collection_type [1175134]
+-- DONE DEALING WITH TABLE val_netblock_collection_type [1875791]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE val_person_company_attr_dtype
@@ -4235,7 +2380,7 @@ ALTER TABLE val_person_company_attr_dtype ADD CONSTRAINT pk_val_pers_comp_attr_d
 -- TRIGGERS
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_person_company_attr_dtype');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_person_company_attr_dtype');
--- DONE DEALING WITH TABLE val_person_company_attr_dtype [1175236]
+-- DONE DEALING WITH TABLE val_person_company_attr_dtype [1875893]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE val_person_company_attr_name
@@ -4286,7 +2431,7 @@ ALTER TABLE val_person_company_attr_name
 -- TRIGGERS
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_person_company_attr_name');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_person_company_attr_name');
--- DONE DEALING WITH TABLE val_person_company_attr_name [1175244]
+-- DONE DEALING WITH TABLE val_person_company_attr_name [1875901]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE val_person_company_attr_value
@@ -4325,10 +2470,10 @@ ALTER TABLE val_person_company_attr_value
 -- TRIGGERS
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_person_company_attr_value');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_person_company_attr_value');
--- DONE DEALING WITH TABLE val_person_company_attr_value [1175253]
+-- DONE DEALING WITH TABLE val_person_company_attr_value [1875910]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE val_property [1214092]
+-- DEALING WITH TABLE val_property [1885585]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'val_property', 'val_property');
 
@@ -4900,10 +3045,10 @@ SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_property');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_property');
 DROP TABLE IF EXISTS val_property_v64;
 DROP TABLE IF EXISTS audit.val_property_v64;
--- DONE DEALING WITH TABLE val_property [1175348]
+-- DONE DEALING WITH TABLE val_property [1876005]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE val_raid_type [1214185]
+-- DEALING WITH TABLE val_raid_type [1885678]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'val_raid_type', 'val_raid_type');
 
@@ -5036,10 +3181,10 @@ SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_raid_type');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_raid_type');
 DROP TABLE IF EXISTS val_raid_type_v64;
 DROP TABLE IF EXISTS audit.val_raid_type_v64;
--- DONE DEALING WITH TABLE val_raid_type [1175454]
+-- DONE DEALING WITH TABLE val_raid_type [1876111]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE val_slot_function [1214203]
+-- DEALING WITH TABLE val_slot_function [1885696]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'val_slot_function', 'val_slot_function');
 
@@ -5182,10 +3327,10 @@ SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_slot_function');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_slot_function');
 DROP TABLE IF EXISTS val_slot_function_v64;
 DROP TABLE IF EXISTS audit.val_slot_function_v64;
--- DONE DEALING WITH TABLE val_slot_function [1175472]
+-- DONE DEALING WITH TABLE val_slot_function [1876129]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE account_token [1211793]
+-- DEALING WITH TABLE account_token [1883285]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'account_token', 'account_token');
 
@@ -5328,10 +3473,10 @@ ALTER SEQUENCE account_token_account_token_id_seq
 	 OWNED BY account_token.account_token_id;
 DROP TABLE IF EXISTS account_token_v64;
 DROP TABLE IF EXISTS audit.account_token_v64;
--- DONE DEALING WITH TABLE account_token [1172808]
+-- DONE DEALING WITH TABLE account_token [1873466]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE appaal_instance_property [1211851]
+-- DEALING WITH TABLE appaal_instance_property [1883343]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'appaal_instance_property', 'appaal_instance_property');
 
@@ -5485,10 +3630,10 @@ SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'appaal_instance_proper
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'appaal_instance_property');
 DROP TABLE IF EXISTS appaal_instance_property_v64;
 DROP TABLE IF EXISTS audit.appaal_instance_property_v64;
--- DONE DEALING WITH TABLE appaal_instance_property [1172863]
+-- DONE DEALING WITH TABLE appaal_instance_property [1873521]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE approval_instance_item [1211875]
+-- DEALING WITH TABLE approval_instance_item [1883367]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'approval_instance_item', 'approval_instance_item');
 
@@ -5551,7 +3696,7 @@ CREATE TABLE approval_instance_item
 	approved_rhs	varchar(255)  NULL,
 	is_approved	character(1)  NULL,
 	approved_account_id	integer  NULL,
-	approval_note	varchar(4096)  NULL,
+	approval_note	text  NULL,
 	data_ins_user	varchar(255)  NULL,
 	data_ins_date	timestamp with time zone  NULL,
 	data_upd_user	varchar(255)  NULL,
@@ -5676,12 +3821,87 @@ ALTER TABLE approval_instance_item
 	FOREIGN KEY (next_approval_instance_item_id) REFERENCES approval_instance_item(approval_instance_item_id);
 
 -- TRIGGERS
+-- consider NEW oid 1883006
+CREATE OR REPLACE FUNCTION jazzhands.approval_instance_item_approval_notify()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+BEGIN
+	NOTIFY approval_instance_item_approval_change;
+	RETURN NEW;
+END;
+$function$
+;
 CREATE TRIGGER trigger_approval_instance_item_approval_notify AFTER INSERT OR UPDATE OF is_approved ON approval_instance_item FOR EACH STATEMENT EXECUTE PROCEDURE approval_instance_item_approval_notify();
 
 -- XXX - may need to include trigger function
+-- consider NEW oid 1883002
+CREATE OR REPLACE FUNCTION jazzhands.approval_instance_item_approved_immutable()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+BEGIN
+	IF OLD.is_approved != NEW.is_approved THEN
+		RAISE EXCEPTION 'Approval may not be changed';
+	END IF;
+	RETURN NEW;
+END;
+$function$
+;
 CREATE TRIGGER trigger_approval_instance_item_approved_immutable BEFORE UPDATE OF is_approved ON approval_instance_item FOR EACH ROW EXECUTE PROCEDURE approval_instance_item_approved_immutable();
 
 -- XXX - may need to include trigger function
+-- consider NEW oid 1882998
+CREATE OR REPLACE FUNCTION jazzhands.approval_instance_step_auto_complete()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	_tally	INTEGER;
+BEGIN
+	--
+	-- on insert, if the parent was already marked as completed, fail.
+	-- arguably, this should happen on updates as well
+	--	possibly should move this to a before trigger
+	--
+	IF TG_OP = 'INSERT' THEN
+		SELECT	count(*)
+		INTO	_tally
+		FROM	approval_instance_step
+		WHERE	approval_instance_step_id = NEW.approval_instance_step_id
+		AND		is_completed = 'Y';
+
+		IF _tally > 0 THEN
+			RAISE EXCEPTION 'Completed attestation cycles may not have items added';
+		END IF;
+	END IF;
+
+	IF NEW.is_approved IS NOT NULL THEN
+		SELECT	count(*)
+		INTO	_tally
+		FROM	approval_instance_item
+		WHERE	approval_instance_step_id = NEW.approval_instance_step_id
+		AND		approval_instance_item_id != NEW.approval_instance_item_id
+		AND		is_approved IS NOT NULL;
+
+		IF _tally = 0 THEN
+			UPDATE	approval_instance_step
+			SET		is_completed = 'Y',
+					approval_instance_step_end = now()
+			WHERE	approval_instance_step_id = NEW.approval_instance_step_id;
+		END IF;
+		
+	END IF;
+	RETURN NEW;
+END;
+$function$
+;
 CREATE TRIGGER trigger_approval_instance_step_auto_complete AFTER INSERT OR UPDATE OF is_approved ON approval_instance_item FOR EACH ROW EXECUTE PROCEDURE approval_instance_step_auto_complete();
 
 -- XXX - may need to include trigger function
@@ -5691,10 +3911,10 @@ ALTER SEQUENCE approval_instance_item_approval_instance_item_id_seq
 	 OWNED BY approval_instance_item.approval_instance_item_id;
 DROP TABLE IF EXISTS approval_instance_item_v64;
 DROP TABLE IF EXISTS audit.approval_instance_item_v64;
--- DONE DEALING WITH TABLE approval_instance_item [1172890]
+-- DONE DEALING WITH TABLE approval_instance_item [1873548]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE approval_instance_step [1211902]
+-- DEALING WITH TABLE approval_instance_step [1883394]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'approval_instance_step', 'approval_instance_step');
 
@@ -5911,9 +4131,49 @@ ALTER TABLE approval_instance_step
 	FOREIGN KEY (approval_type) REFERENCES val_approval_type(approval_type);
 
 -- TRIGGERS
+-- consider NEW oid 1883000
+CREATE OR REPLACE FUNCTION jazzhands.approval_instance_step_completed_immutable()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+BEGIN
+	IF ( OLD.is_completed ='Y' AND NEW.is_completed = 'N' ) THEN
+		RAISE EXCEPTION 'Approval completion may not be reverted';
+	END IF;
+	RETURN NEW;
+END;
+$function$
+;
 CREATE TRIGGER trigger_approval_instance_step_completed_immutable BEFORE UPDATE OF is_completed ON approval_instance_step FOR EACH ROW EXECUTE PROCEDURE approval_instance_step_completed_immutable();
 
 -- XXX - may need to include trigger function
+-- consider NEW oid 1883004
+CREATE OR REPLACE FUNCTION jazzhands.approval_instance_step_resolve_instance()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	_tally INTEGER;
+BEGIN
+	SELECT	count(*)
+	INTO	_tally
+	FROM	approval_instance_step
+	WHERE	is_completed = 'N'
+	AND		approval_instance_id = NEW.approval_instance_id;
+
+	IF _tally = 0 THEN
+		UPDATE approval_instance
+		SET	approval_end = now()
+		WHERE	approval_instance_id = NEW.approval_instance_id;
+	END IF;
+	RETURN NEW;
+END;
+$function$
+;
 CREATE TRIGGER trigger_approval_instance_step_resolve_instance AFTER UPDATE OF is_completed ON approval_instance_step FOR EACH ROW EXECUTE PROCEDURE approval_instance_step_resolve_instance();
 
 -- XXX - may need to include trigger function
@@ -5923,10 +4183,10 @@ ALTER SEQUENCE approval_instance_step_approval_instance_step_id_seq
 	 OWNED BY approval_instance_step.approval_instance_step_id;
 DROP TABLE IF EXISTS approval_instance_step_v64;
 DROP TABLE IF EXISTS audit.approval_instance_step_v64;
--- DONE DEALING WITH TABLE approval_instance_step [1172917]
+-- DONE DEALING WITH TABLE approval_instance_step [1873575]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE approval_instance_step_notify [1211919]
+-- DEALING WITH TABLE approval_instance_step_notify [1883411]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'approval_instance_step_notify', 'approval_instance_step_notify');
 
@@ -5999,7 +4259,7 @@ INSERT INTO approval_instance_step_notify (
 	approv_instance_step_notify_id,
 	approval_instance_step_id,
 	approval_notify_type,
-	1,		-- new column (account_id)
+	NULL,		-- new column (account_id)
 	approval_notify_whence,
 	data_ins_user,
 	data_ins_date,
@@ -6025,7 +4285,7 @@ INSERT INTO audit.approval_instance_step_notify (
 	approv_instance_step_notify_id,
 	approval_instance_step_id,
 	approval_notify_type,
-	1,		-- new column (account_id)
+	NULL,		-- new column (account_id)
 	approval_notify_whence,
 	data_ins_user,
 	data_ins_date,
@@ -6066,14 +4326,35 @@ ALTER TABLE approval_instance_step_notify
 	FOREIGN KEY (account_id) REFERENCES account(account_id);
 
 -- TRIGGERS
+-- consider NEW oid 1883008
+CREATE OR REPLACE FUNCTION jazzhands.legacy_approval_instance_step_notify_account()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+BEGIN
+	IF NEW.account_id IS NULL THEN
+		SELECT	approver_account_id
+		INTO	NEW.account_id
+		FROM	legacy_approval_instance_step
+		WHERE	legacy_approval_instance_step_id = NEW.legacy_approval_instance_step_id;
+	END IF;
+	RETURN NEW;
+END;
+$function$
+;
+CREATE TRIGGER trigger_legacy_approval_instance_step_notify_account BEFORE INSERT OR UPDATE OF account_id ON approval_instance_step_notify FOR EACH STATEMENT EXECUTE PROCEDURE legacy_approval_instance_step_notify_account();
+
+-- XXX - may need to include trigger function
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'approval_instance_step_notify');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'approval_instance_step_notify');
 DROP TABLE IF EXISTS approval_instance_step_notify_v64;
 DROP TABLE IF EXISTS audit.approval_instance_step_notify_v64;
--- DONE DEALING WITH TABLE approval_instance_step_notify [1172933]
+-- DONE DEALING WITH TABLE approval_instance_step_notify [1873591]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE approval_process [1211931]
+-- DEALING WITH TABLE approval_process [1883423]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'approval_process', 'approval_process');
 
@@ -6281,10 +4562,10 @@ ALTER SEQUENCE approval_process_approval_process_id_seq
 	 OWNED BY approval_process.approval_process_id;
 DROP TABLE IF EXISTS approval_process_v64;
 DROP TABLE IF EXISTS audit.approval_process_v64;
--- DONE DEALING WITH TABLE approval_process [1172946]
+-- DONE DEALING WITH TABLE approval_process [1873604]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE approval_process_chain [1211947]
+-- DEALING WITH TABLE approval_process_chain [1883439]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'approval_process_chain', 'approval_process_chain');
 
@@ -6511,7 +4792,69 @@ ALTER SEQUENCE approval_process_chain_approval_process_chain_id_seq
 	 OWNED BY approval_process_chain.approval_process_chain_id;
 DROP TABLE IF EXISTS approval_process_chain_v64;
 DROP TABLE IF EXISTS audit.approval_process_chain_v64;
--- DONE DEALING WITH TABLE approval_process_chain [1172962]
+-- DONE DEALING WITH TABLE approval_process_chain [1873620]
+--------------------------------------------------------------------
+--------------------------------------------------------------------
+-- DEALING WITH NEW TABLE company_collection
+CREATE TABLE company_collection
+(
+	company_collection_id	integer NOT NULL,
+	company_collection_name	varchar(255) NOT NULL,
+	company_collection_type	varchar(50) NOT NULL,
+	description	varchar(255)  NULL,
+	data_ins_user	varchar(255)  NULL,
+	data_ins_date	timestamp with time zone  NULL,
+	data_upd_user	varchar(255)  NULL,
+	data_upd_date	timestamp with time zone  NULL
+);
+SELECT schema_support.build_audit_table('audit', 'jazzhands', 'company_collection', true);
+
+-- PRIMARY AND ALTERNATE KEYS
+ALTER TABLE company_collection ADD CONSTRAINT ak_company_collection_namtyp UNIQUE (company_collection_name, company_collection_type);
+ALTER TABLE company_collection ADD CONSTRAINT pk_company_collection PRIMARY KEY (company_collection_id);
+
+-- Table/Column Comments
+-- INDEXES
+CREATE INDEX xifcomp_coll_com_coll_type ON company_collection USING btree (company_collection_type);
+
+-- CHECK CONSTRAINTS
+
+-- FOREIGN KEYS FROM
+-- consider FK company_collection and company_collection_hier
+-- Skipping this FK since table does not exist yet
+--ALTER TABLE company_collection_hier
+--	ADD CONSTRAINT fk_comp_coll_comp_coll_id
+--	FOREIGN KEY (company_collection_id) REFERENCES company_collection(company_collection_id);
+
+-- consider FK company_collection and company_collection_hier
+-- Skipping this FK since table does not exist yet
+--ALTER TABLE company_collection_hier
+--	ADD CONSTRAINT fk_comp_coll_comp_coll_kid_id
+--	FOREIGN KEY (child_company_collection_id) REFERENCES company_collection(company_collection_id);
+
+-- consider FK company_collection and company_collection_company
+-- Skipping this FK since table does not exist yet
+--ALTER TABLE company_collection_company
+--	ADD CONSTRAINT fk_company_coll_company_coll_i
+--	FOREIGN KEY (company_collection_id) REFERENCES company_collection(company_collection_id);
+
+-- consider FK company_collection and property
+-- Skipping this FK since column does not exist yet
+--ALTER TABLE property
+--	ADD CONSTRAINT fk_prop_compcoll_id
+--	FOREIGN KEY (company_collection_id) REFERENCES company_collection(company_collection_id);
+
+
+-- FOREIGN KEYS TO
+-- consider FK company_collection and val_company_collection_type
+ALTER TABLE company_collection
+	ADD CONSTRAINT fk_comp_coll_com_coll_type
+	FOREIGN KEY (company_collection_type) REFERENCES val_company_collection_type(company_collection_type);
+
+-- TRIGGERS
+SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'company_collection');
+SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'company_collection');
+-- DONE DEALING WITH TABLE company_collection [1873725]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE company_collection_company
@@ -6539,12 +4882,10 @@ CREATE INDEX xifcompany_coll_company_id ON company_collection_company USING btre
 -- FOREIGN KEYS FROM
 
 -- FOREIGN KEYS TO
--- consider FK company_collection_company and company_colllection
--- Skipping this FK since table does not exist yet
---ALTER TABLE company_collection_company
---	ADD CONSTRAINT fk_company_coll_company_coll_i
---	FOREIGN KEY (company_collection_id) REFERENCES company_colllection(company_collection_id);
-
+-- consider FK company_collection_company and company_collection
+ALTER TABLE company_collection_company
+	ADD CONSTRAINT fk_company_coll_company_coll_i
+	FOREIGN KEY (company_collection_id) REFERENCES company_collection(company_collection_id);
 -- consider FK company_collection_company and company
 ALTER TABLE company_collection_company
 	ADD CONSTRAINT fk_company_coll_company_id
@@ -6553,7 +4894,7 @@ ALTER TABLE company_collection_company
 -- TRIGGERS
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'company_collection_company');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'company_collection_company');
--- DONE DEALING WITH TABLE company_collection_company [1173067]
+-- DONE DEALING WITH TABLE company_collection_company [1873736]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE company_collection_hier
@@ -6581,82 +4922,22 @@ CREATE INDEX xifcomp_coll_comp_coll_kid_id ON company_collection_hier USING btre
 -- FOREIGN KEYS FROM
 
 -- FOREIGN KEYS TO
--- consider FK company_collection_hier and company_colllection
--- Skipping this FK since table does not exist yet
---ALTER TABLE company_collection_hier
---	ADD CONSTRAINT fk_comp_coll_comp_coll_id
---	FOREIGN KEY (company_collection_id) REFERENCES company_colllection(company_collection_id);
-
--- consider FK company_collection_hier and company_colllection
--- Skipping this FK since table does not exist yet
---ALTER TABLE company_collection_hier
---	ADD CONSTRAINT fk_comp_coll_comp_coll_kid_id
---	FOREIGN KEY (child_company_collection_id) REFERENCES company_colllection(company_collection_id);
-
+-- consider FK company_collection_hier and company_collection
+ALTER TABLE company_collection_hier
+	ADD CONSTRAINT fk_comp_coll_comp_coll_id
+	FOREIGN KEY (company_collection_id) REFERENCES company_collection(company_collection_id);
+-- consider FK company_collection_hier and company_collection
+ALTER TABLE company_collection_hier
+	ADD CONSTRAINT fk_comp_coll_comp_coll_kid_id
+	FOREIGN KEY (child_company_collection_id) REFERENCES company_collection(company_collection_id);
 
 -- TRIGGERS
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'company_collection_hier');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'company_collection_hier');
--- DONE DEALING WITH TABLE company_collection_hier [1173077]
+-- DONE DEALING WITH TABLE company_collection_hier [1873746]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH NEW TABLE company_colllection
-CREATE TABLE company_colllection
-(
-	company_collection_id	integer NOT NULL,
-	company_collection_name	varchar(255) NOT NULL,
-	company_collection_type	varchar(50) NOT NULL,
-	description	varchar(255)  NULL,
-	data_ins_user	varchar(255)  NULL,
-	data_ins_date	timestamp with time zone  NULL,
-	data_upd_user	varchar(255)  NULL,
-	data_upd_date	timestamp with time zone  NULL
-);
-SELECT schema_support.build_audit_table('audit', 'jazzhands', 'company_colllection', true);
-
--- PRIMARY AND ALTERNATE KEYS
-ALTER TABLE company_colllection ADD CONSTRAINT ak_company_collection_namtyp UNIQUE (company_collection_name, company_collection_type);
-ALTER TABLE company_colllection ADD CONSTRAINT pk_company_collection PRIMARY KEY (company_collection_id);
-
--- Table/Column Comments
--- INDEXES
-CREATE INDEX xifcomp_coll_com_coll_type ON company_colllection USING btree (company_collection_type);
-
--- CHECK CONSTRAINTS
-
--- FOREIGN KEYS FROM
--- consider FK company_colllection and company_collection_hier
-ALTER TABLE company_collection_hier
-	ADD CONSTRAINT fk_comp_coll_comp_coll_id
-	FOREIGN KEY (company_collection_id) REFERENCES company_colllection(company_collection_id);
--- consider FK company_colllection and company_collection_hier
-ALTER TABLE company_collection_hier
-	ADD CONSTRAINT fk_comp_coll_comp_coll_kid_id
-	FOREIGN KEY (child_company_collection_id) REFERENCES company_colllection(company_collection_id);
--- consider FK company_colllection and company_collection_company
-ALTER TABLE company_collection_company
-	ADD CONSTRAINT fk_company_coll_company_coll_i
-	FOREIGN KEY (company_collection_id) REFERENCES company_colllection(company_collection_id);
--- consider FK company_colllection and property
--- Skipping this FK since column does not exist yet
---ALTER TABLE property
---	ADD CONSTRAINT fk_prop_compcoll_id
---	FOREIGN KEY (company_collection_id) REFERENCES company_colllection(company_collection_id);
-
-
--- FOREIGN KEYS TO
--- consider FK company_colllection and val_company_collection_type
-ALTER TABLE company_colllection
-	ADD CONSTRAINT fk_comp_coll_com_coll_type
-	FOREIGN KEY (company_collection_type) REFERENCES val_company_collection_type(company_collection_type);
-
--- TRIGGERS
-SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'company_colllection');
-SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'company_colllection');
--- DONE DEALING WITH TABLE company_colllection [1173087]
---------------------------------------------------------------------
---------------------------------------------------------------------
--- DEALING WITH TABLE department [1212163]
+-- DEALING WITH TABLE department [1883655]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'department', 'department');
 
@@ -6715,7 +4996,7 @@ CREATE TABLE department
 	is_active	character(1) NOT NULL,
 	dept_code	varchar(30)  NULL,
 	cost_center	varchar(10)  NULL,
-	cost_center_name	varchar(50) NULL,
+	cost_center_name	varchar(50)  NULL,
 	cost_center_number	integer  NULL,
 	default_badge_type_id	integer  NULL,
 	data_ins_user	varchar(255)  NULL,
@@ -6839,7 +5120,7 @@ SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'department');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'department');
 DROP TABLE IF EXISTS department_v64;
 DROP TABLE IF EXISTS audit.department_v64;
--- DONE DEALING WITH TABLE department [1173209]
+-- DONE DEALING WITH TABLE department [1873867]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE dns_domain_collection
@@ -6906,7 +5187,7 @@ SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'dns_domain_collection'
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'dns_domain_collection');
 ALTER SEQUENCE dns_domain_collection_dns_domain_collection_id_seq
 	 OWNED BY dns_domain_collection.dns_domain_collection_id;
--- DONE DEALING WITH TABLE dns_domain_collection [1173449]
+-- DONE DEALING WITH TABLE dns_domain_collection [1874107]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE dns_domain_collection_dns_dom
@@ -6946,7 +5227,7 @@ ALTER TABLE dns_domain_collection_dns_dom
 -- TRIGGERS
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'dns_domain_collection_dns_dom');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'dns_domain_collection_dns_dom');
--- DONE DEALING WITH TABLE dns_domain_collection_dns_dom [1173461]
+-- DONE DEALING WITH TABLE dns_domain_collection_dns_dom [1874119]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE dns_domain_collection_hier
@@ -6986,7 +5267,7 @@ ALTER TABLE dns_domain_collection_hier
 -- TRIGGERS
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'dns_domain_collection_hier');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'dns_domain_collection_hier');
--- DONE DEALING WITH TABLE dns_domain_collection_hier [1173471]
+-- DONE DEALING WITH TABLE dns_domain_collection_hier [1874129]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE l2_network_coll_l2_network
@@ -7030,9 +5311,58 @@ ALTER TABLE l2_network_coll_l2_network
 	FOREIGN KEY (layer2_network_id) REFERENCES layer2_network(layer2_network_id);
 
 -- TRIGGERS
+-- consider NEW oid 1882951
+CREATE OR REPLACE FUNCTION jazzhands.layer2_network_collection_member_enforce()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+DECLARE
+	act	val_layer2_network_coll_type%ROWTYPE;
+	tally integer;
+BEGIN
+	SELECT *
+	INTO	act
+	FROM	val_layer2_network_coll_type
+	WHERE	layer2_network_collection_type =
+		(select layer2_network_collection_type from layer2_network_collection
+			where layer2_network_collection_id = NEW.layer2_network_collection_id);
+
+	IF act.MAX_NUM_MEMBERS IS NOT NULL THEN
+		select count(*)
+		  into tally
+		  from l2_network_coll_l2_network
+		  where layer2_network_collection_id = NEW.layer2_network_collection_id;
+		IF tally > act.MAX_NUM_MEMBERS THEN
+			RAISE EXCEPTION 'Too many members'
+				USING ERRCODE = 'unique_violation';
+		END IF;
+	END IF;
+
+	IF act.MAX_NUM_COLLECTIONS IS NOT NULL THEN
+		select count(*)
+		  into tally
+		  from l2_network_coll_l2_network
+		  		inner join layer2_network_collection using (layer2_network_collection_id)
+		  where layer2_network_id = NEW.layer2_network_id
+		  and	layer2_network_collection_type = act.layer2_network_collection_type;
+		IF tally > act.MAX_NUM_COLLECTIONS THEN
+			RAISE EXCEPTION 'Device may not be a member of more than % collections of type %',
+				act.MAX_NUM_COLLECTIONS, act.layer2_network_collection_type
+				USING ERRCODE = 'unique_violation';
+		END IF;
+	END IF;
+
+	RETURN NEW;
+END;
+$function$
+;
+CREATE CONSTRAINT TRIGGER trigger_layer2_network_collection_member_enforce AFTER INSERT OR UPDATE ON l2_network_coll_l2_network DEFERRABLE INITIALLY IMMEDIATE FOR EACH ROW EXECUTE PROCEDURE layer2_network_collection_member_enforce();
+
+-- XXX - may need to include trigger function
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'l2_network_coll_l2_network');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'l2_network_coll_l2_network');
--- DONE DEALING WITH TABLE l2_network_coll_l2_network [1173630]
+-- DONE DEALING WITH TABLE l2_network_coll_l2_network [1874288]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE l3_network_coll_l3_network
@@ -7076,9 +5406,58 @@ ALTER TABLE l3_network_coll_l3_network
 	FOREIGN KEY (layer3_network_id) REFERENCES layer3_network(layer3_network_id);
 
 -- TRIGGERS
+-- consider NEW oid 1882957
+CREATE OR REPLACE FUNCTION jazzhands.layer3_network_collection_member_enforce()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+DECLARE
+	act	val_layer3_network_coll_type%ROWTYPE;
+	tally integer;
+BEGIN
+	SELECT *
+	INTO	act
+	FROM	val_layer3_network_coll_type
+	WHERE	layer3_network_collection_type =
+		(select layer3_network_collection_type from layer3_network_collection
+			where layer3_network_collection_id = NEW.layer3_network_collection_id);
+
+	IF act.MAX_NUM_MEMBERS IS NOT NULL THEN
+		select count(*)
+		  into tally
+		  from l3_network_coll_l3_network
+		  where layer3_network_collection_id = NEW.layer3_network_collection_id;
+		IF tally > act.MAX_NUM_MEMBERS THEN
+			RAISE EXCEPTION 'Too many members'
+				USING ERRCODE = 'unique_violation';
+		END IF;
+	END IF;
+
+	IF act.MAX_NUM_COLLECTIONS IS NOT NULL THEN
+		select count(*)
+		  into tally
+		  from l3_network_coll_l3_network
+		  		inner join layer3_network_collection using (layer3_network_collection_id)
+		  where layer3_network_id = NEW.layer3_network_id
+		  and	layer3_network_collection_type = act.layer3_network_collection_type;
+		IF tally > act.MAX_NUM_COLLECTIONS THEN
+			RAISE EXCEPTION 'Device may not be a member of more than % collections of type %',
+				act.MAX_NUM_COLLECTIONS, act.layer3_network_collection_type
+				USING ERRCODE = 'unique_violation';
+		END IF;
+	END IF;
+
+	RETURN NEW;
+END;
+$function$
+;
+CREATE CONSTRAINT TRIGGER trigger_layer3_network_collection_member_enforce AFTER INSERT OR UPDATE ON l3_network_coll_l3_network DEFERRABLE INITIALLY IMMEDIATE FOR EACH ROW EXECUTE PROCEDURE layer3_network_collection_member_enforce();
+
+-- XXX - may need to include trigger function
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'l3_network_coll_l3_network');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'l3_network_coll_l3_network');
--- DONE DEALING WITH TABLE l3_network_coll_l3_network [1173642]
+-- DONE DEALING WITH TABLE l3_network_coll_l3_network [1874300]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE layer2_network_collection
@@ -7143,7 +5522,7 @@ SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'layer2_network_collect
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'layer2_network_collection');
 ALTER SEQUENCE layer2_network_collection_layer2_network_collection_id_seq
 	 OWNED BY layer2_network_collection.layer2_network_collection_id;
--- DONE DEALING WITH TABLE layer2_network_collection [1173697]
+-- DONE DEALING WITH TABLE layer2_network_collection [1874355]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE layer2_network_collection_hier
@@ -7181,9 +5560,37 @@ ALTER TABLE layer2_network_collection_hier
 	FOREIGN KEY (layer2_network_collection_id) REFERENCES layer2_network_collection(layer2_network_collection_id);
 
 -- TRIGGERS
+-- consider NEW oid 1882948
+CREATE OR REPLACE FUNCTION jazzhands.layer2_network_collection_hier_enforce()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+DECLARE
+	act	val_layer2_network_coll_type%ROWTYPE;
+BEGIN
+	SELECT *
+	INTO	act
+	FROM	val_layer2_network_coll_type
+	WHERE	layer2_network_collection_type =
+		(select layer2_network_collection_type from layer2_network_collection
+			where layer2_network_collection_id = NEW.layer2_network_collection_id);
+
+	IF act.can_have_hierarchy = 'N' THEN
+		RAISE EXCEPTION 'Device Collections of type % may not be hierarcical',
+			act.layer2_network_collection_type
+			USING ERRCODE= 'unique_violation';
+	END IF;
+	RETURN NEW;
+END;
+$function$
+;
+CREATE CONSTRAINT TRIGGER trigger_layer2_network_collection_hier_enforce AFTER INSERT OR UPDATE ON layer2_network_collection_hier DEFERRABLE INITIALLY IMMEDIATE FOR EACH ROW EXECUTE PROCEDURE layer2_network_collection_hier_enforce();
+
+-- XXX - may need to include trigger function
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'layer2_network_collection_hier');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'layer2_network_collection_hier');
--- DONE DEALING WITH TABLE layer2_network_collection_hier [1173709]
+-- DONE DEALING WITH TABLE layer2_network_collection_hier [1874367]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE layer3_network_collection
@@ -7248,7 +5655,7 @@ SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'layer3_network_collect
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'layer3_network_collection');
 ALTER SEQUENCE layer3_network_collection_layer3_network_collection_id_seq
 	 OWNED BY layer3_network_collection.layer3_network_collection_id;
--- DONE DEALING WITH TABLE layer3_network_collection [1173737]
+-- DONE DEALING WITH TABLE layer3_network_collection [1874395]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE layer3_network_collection_hier
@@ -7286,12 +5693,40 @@ ALTER TABLE layer3_network_collection_hier
 	FOREIGN KEY (layer3_network_collection_id) REFERENCES layer3_network_collection(layer3_network_collection_id);
 
 -- TRIGGERS
+-- consider NEW oid 1882954
+CREATE OR REPLACE FUNCTION jazzhands.layer3_network_collection_hier_enforce()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+DECLARE
+	act	val_layer3_network_coll_type%ROWTYPE;
+BEGIN
+	SELECT *
+	INTO	act
+	FROM	val_layer3_network_coll_type
+	WHERE	layer3_network_collection_type =
+		(select layer3_network_collection_type from layer3_network_collection
+			where layer3_network_collection_id = NEW.layer3_network_collection_id);
+
+	IF act.can_have_hierarchy = 'N' THEN
+		RAISE EXCEPTION 'Device Collections of type % may not be hierarcical',
+			act.layer3_network_collection_type
+			USING ERRCODE= 'unique_violation';
+	END IF;
+	RETURN NEW;
+END;
+$function$
+;
+CREATE CONSTRAINT TRIGGER trigger_layer3_network_collection_hier_enforce AFTER INSERT OR UPDATE ON layer3_network_collection_hier DEFERRABLE INITIALLY IMMEDIATE FOR EACH ROW EXECUTE PROCEDURE layer3_network_collection_hier_enforce();
+
+-- XXX - may need to include trigger function
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'layer3_network_collection_hier');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'layer3_network_collection_hier');
--- DONE DEALING WITH TABLE layer3_network_collection_hier [1173749]
+-- DONE DEALING WITH TABLE layer3_network_collection_hier [1874407]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE logical_port [1212609]
+-- DEALING WITH TABLE logical_port [1884101]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'logical_port', 'logical_port');
 
@@ -7458,10 +5893,10 @@ ALTER SEQUENCE logical_port_logical_port_id_seq
 	 OWNED BY logical_port.logical_port_id;
 DROP TABLE IF EXISTS logical_port_v64;
 DROP TABLE IF EXISTS audit.logical_port_v64;
--- DONE DEALING WITH TABLE logical_port [1173761]
+-- DONE DEALING WITH TABLE logical_port [1874419]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE logical_volume [1212632]
+-- DEALING WITH TABLE logical_volume [1884124]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'logical_volume', 'logical_volume');
 
@@ -7656,10 +6091,10 @@ ALTER SEQUENCE logical_volume_logical_volume_id_seq
 	 OWNED BY logical_volume.logical_volume_id;
 DROP TABLE IF EXISTS logical_volume_v64;
 DROP TABLE IF EXISTS audit.logical_volume_v64;
--- DONE DEALING WITH TABLE logical_volume [1173784]
+-- DONE DEALING WITH TABLE logical_volume [1874442]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE logical_volume_property [1212652]
+-- DEALING WITH TABLE logical_volume_property [1884144]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'logical_volume_property', 'logical_volume_property');
 
@@ -7809,7 +6244,7 @@ ALTER SEQUENCE logical_volume_property_logical_volume_property_id_seq
 	 OWNED BY logical_volume_property.logical_volume_property_id;
 DROP TABLE IF EXISTS logical_volume_property_v64;
 DROP TABLE IF EXISTS audit.logical_volume_property_v64;
--- DONE DEALING WITH TABLE logical_volume_property [1173805]
+-- DONE DEALING WITH TABLE logical_volume_property [1874463]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE person_company_attr
@@ -7859,10 +6294,10 @@ ALTER TABLE person_company_attr
 -- TRIGGERS
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'person_company_attr');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'person_company_attr');
--- DONE DEALING WITH TABLE person_company_attr [1174082]
+-- DONE DEALING WITH TABLE person_company_attr [1874739]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE property [1213082]
+-- DEALING WITH TABLE property [1884575]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'property', 'property');
 
@@ -8250,10 +6685,10 @@ ALTER TABLE property ADD CONSTRAINT ckc_prop_isenbld
 -- FOREIGN KEYS FROM
 
 -- FOREIGN KEYS TO
--- consider FK property and company_colllection
+-- consider FK property and company_collection
 ALTER TABLE property
 	ADD CONSTRAINT fk_prop_compcoll_id
-	FOREIGN KEY (company_collection_id) REFERENCES company_colllection(company_collection_id);
+	FOREIGN KEY (company_collection_id) REFERENCES company_collection(company_collection_id);
 -- consider FK property and layer2_network_collection
 ALTER TABLE property
 	ADD CONSTRAINT fk_prop_l2_netcollid
@@ -8356,6 +6791,769 @@ ALTER TABLE property
 	FOREIGN KEY (property_value_person_id) REFERENCES person(person_id);
 
 -- TRIGGERS
+-- consider NEW oid 1882843
+CREATE OR REPLACE FUNCTION jazzhands.validate_property()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	tally				integer;
+	v_prop				VAL_Property%ROWTYPE;
+	v_proptype			VAL_Property_Type%ROWTYPE;
+	v_account_collection		account_collection%ROWTYPE;
+	v_company_collection		company_collection%ROWTYPE;
+	v_device_collection		device_collection%ROWTYPE;
+	v_dns_domain_collection		dns_domain_collection%ROWTYPE;
+	v_layer2_network_collection	layer2_network_collection%ROWTYPE;
+	v_layer3_network_collection	layer3_network_collection%ROWTYPE;
+	v_netblock_collection		netblock_collection%ROWTYPE;
+	v_property_collection		property_collection%ROWTYPE;
+	v_service_env_collection	service_environment_collection%ROWTYPE;
+	v_num				integer;
+	v_listvalue			Property.Property_Value%TYPE;
+BEGIN
+
+	-- Pull in the data from the property and property_type so we can
+	-- figure out what is and is not valid
+
+	BEGIN
+		SELECT * INTO STRICT v_prop FROM VAL_Property WHERE
+			Property_Name = NEW.Property_Name AND
+			Property_Type = NEW.Property_Type;
+
+		SELECT * INTO STRICT v_proptype FROM VAL_Property_Type WHERE
+			Property_Type = NEW.Property_Type;
+	EXCEPTION
+		WHEN NO_DATA_FOUND THEN
+			RAISE EXCEPTION 
+				'Property name or type does not exist'
+				USING ERRCODE = 'foreign_key_violation';
+			RETURN NULL;
+	END;
+
+	-- Check to see if the property itself is multivalue.  That is, if only
+	-- one value can be set for this property for a specific property LHS
+
+	IF (v_prop.is_multivalue = 'N') THEN
+		PERFORM 1 FROM Property WHERE
+			Property_Id != NEW.Property_Id AND
+			Property_Name = NEW.Property_Name AND
+			Property_Type = NEW.Property_Type AND
+			((Company_Id IS NULL AND NEW.Company_Id IS NULL) OR
+				(Company_Id = NEW.Company_Id)) AND
+			((Company_Collection_Id IS NULL AND NEW.Company_Collection_Id IS NULL) OR
+				(Company_Collection_Id = NEW.Company_Collection_Id)) AND
+			((Device_Collection_Id IS NULL AND NEW.Device_Collection_Id IS NULL) OR
+				(Device_Collection_Id = NEW.Device_Collection_Id)) AND
+			((DNS_Domain_Id IS NULL AND NEW.DNS_Domain_Id IS NULL) OR
+				(DNS_Domain_Id = NEW.DNS_Domain_Id)) AND
+			((DNS_Domain_Collection_Id IS NULL AND NEW.DNS_Domain_Collection_Id IS NULL) OR
+				(DNS_Domain_Collection_Id = NEW.DNS_Domain_Collection_Id)) AND
+			((Operating_System_Id IS NULL AND NEW.Operating_System_Id IS NULL) OR
+				(Operating_System_Id = NEW.Operating_System_Id)) AND
+			((operating_system_snapshot_id IS NULL AND NEW.operating_system_snapshot_id IS NULL) OR
+				(operating_system_snapshot_id = NEW.operating_system_snapshot_id)) AND
+			((service_env_collection_id IS NULL AND NEW.service_env_collection_id IS NULL) OR
+				(service_env_collection_id = NEW.service_env_collection_id)) AND
+			((Site_Code IS NULL AND NEW.Site_Code IS NULL) OR
+				(Site_Code = NEW.Site_Code)) AND
+			((Account_Id IS NULL AND NEW.Account_Id IS NULL) OR
+				(Account_Id = NEW.Account_Id)) AND
+			((Account_Realm_Id IS NULL AND NEW.Account_Realm_Id IS NULL) OR
+				(Account_Realm_Id = NEW.Account_Realm_Id)) AND
+			((account_collection_Id IS NULL AND NEW.account_collection_Id IS NULL) OR
+				(account_collection_Id = NEW.account_collection_Id)) AND
+			((netblock_collection_Id IS NULL AND NEW.netblock_collection_Id IS NULL) OR
+				(netblock_collection_Id = NEW.netblock_collection_Id)) AND
+			((layer2_network_collection_id IS NULL AND NEW.layer2_network_collection_id IS NULL) OR
+				(layer2_network_collection_id = NEW.layer2_network_collection_id)) AND
+			((layer3_network_collection_id IS NULL AND NEW.layer3_network_collection_id IS NULL) OR
+				(layer3_network_collection_id = NEW.layer3_network_collection_id)) AND
+			((person_id IS NULL AND NEW.Person_id IS NULL) OR
+				(Person_Id = NEW.person_id)) AND
+			((property_collection_id IS NULL AND NEW.property_collection_id IS NULL) OR
+				(property_collection_id = NEW.property_collection_id))
+			;
+
+		IF FOUND THEN
+			RAISE EXCEPTION 
+				'Property of type % already exists for given LHS and property is not multivalue',
+				NEW.Property_Type
+				USING ERRCODE = 'unique_violation';
+			RETURN NULL;
+		END IF;
+	END IF;
+
+	-- Check to see if the property type is multivalue.  That is, if only
+	-- one property and value can be set for any properties with this type
+	-- for a specific property LHS
+
+	IF (v_proptype.is_multivalue = 'N') THEN
+		PERFORM 1 FROM Property WHERE
+			Property_Id != NEW.Property_Id AND
+			Property_Type = NEW.Property_Type AND
+			((Company_Collection_Id IS NULL AND NEW.Company_Collection_Id IS NULL) OR
+				(Company_Collection_Id = NEW.Company_Collection_Id)) AND
+			((Company_Id IS NULL AND NEW.Company_Id IS NULL) OR
+				(Company_Id = NEW.Company_Id)) AND
+			((Device_Collection_Id IS NULL AND NEW.Device_Collection_Id IS NULL) OR
+				(Device_Collection_Id = NEW.Device_Collection_Id)) AND
+			((DNS_Domain_Id IS NULL AND NEW.DNS_Domain_Id IS NULL) OR
+				(DNS_Domain_Id = NEW.DNS_Domain_Id)) AND
+			((DNS_Domain_Collection_Id IS NULL AND NEW.DNS_Domain_Collection_Id IS NULL) OR
+				(DNS_Domain_Collection_Id = NEW.DNS_Domain_Collection_Id)) AND
+			((Operating_System_Id IS NULL AND NEW.Operating_System_Id IS NULL) OR
+				(Operating_System_Id = NEW.Operating_System_Id)) AND
+			((operating_system_snapshot_id IS NULL AND NEW.operating_system_snapshot_id IS NULL) OR
+				(operating_system_snapshot_id = NEW.operating_system_snapshot_id)) AND
+			((service_env_collection_id IS NULL AND NEW.service_env_collection_id IS NULL) OR
+				(service_env_collection_id = NEW.service_env_collection_id)) AND
+			((Site_Code IS NULL AND NEW.Site_Code IS NULL) OR
+				(Site_Code = NEW.Site_Code)) AND
+			((Person_id IS NULL AND NEW.Person_id IS NULL) OR
+				(Person_Id = NEW.Person_Id)) AND
+			((Account_Id IS NULL AND NEW.Account_Id IS NULL) OR
+				(Account_Id = NEW.Account_Id)) AND
+			((Account_Id IS NULL AND NEW.Account_Id IS NULL) OR
+				(Account_Id = NEW.Account_Id)) AND
+			((Account_Realm_id IS NULL AND NEW.Account_Realm_id IS NULL) OR
+				(Account_Realm_id = NEW.Account_Realm_id)) AND
+			((account_collection_Id IS NULL AND NEW.account_collection_Id IS NULL) OR
+				(account_collection_Id = NEW.account_collection_Id)) AND
+			((layer2_network_collection_id IS NULL AND NEW.layer2_network_collection_id IS NULL) OR
+				(layer2_network_collection_id = NEW.layer2_network_collection_id)) AND
+			((layer3_network_collection_id IS NULL AND NEW.layer3_network_collection_id IS NULL) OR
+				(layer3_network_collection_id = NEW.layer3_network_collection_id)) AND
+			((netblock_collection_Id IS NULL AND NEW.netblock_collection_Id IS NULL) OR
+				(netblock_collection_Id = NEW.netblock_collection_Id)) AND
+			((property_collection_Id IS NULL AND NEW.property_collection_Id IS NULL) OR
+				(property_collection_Id = NEW.property_collection_Id))
+		;
+
+		IF FOUND THEN
+			RAISE EXCEPTION 
+				'Property % of type % already exists for given LHS and property type is not multivalue',
+				NEW.Property_Name, NEW.Property_Type
+				USING ERRCODE = 'unique_violation';
+			RETURN NULL;
+		END IF;
+	END IF;
+
+	-- now validate the property_value columns.
+	tally := 0;
+
+	--
+	-- first determine if the property_value is set properly.
+	--
+
+	-- iterate over each of fk PROPERTY_VALUE columns and if a valid
+	-- value is set, increment tally, otherwise raise an exception.
+	IF NEW.Property_Value_Company_Id IS NOT NULL THEN
+		IF v_prop.Property_Data_Type = 'company_id' THEN
+			tally := tally + 1;
+		ELSE
+			RAISE 'Property value may not be Company_Id' USING
+				ERRCODE = 'invalid_parameter_value';
+		END IF;
+	END IF;
+	IF NEW.Property_Value_Password_Type IS NOT NULL THEN
+		IF v_prop.Property_Data_Type = 'password_type' THEN
+			tally := tally + 1;
+		ELSE
+			RAISE 'Property value may not be Password_Type' USING
+				ERRCODE = 'invalid_parameter_value';
+		END IF;
+	END IF;
+	IF NEW.Property_Value_Token_Col_Id IS NOT NULL THEN
+		IF v_prop.Property_Data_Type = 'token_collection_id' THEN
+			tally := tally + 1;
+		ELSE
+			RAISE 'Property value may not be Token_Collection_Id' USING
+				ERRCODE = 'invalid_parameter_value';
+		END IF;
+	END IF;
+	IF NEW.Property_Value_SW_Package_Id IS NOT NULL THEN
+		IF v_prop.Property_Data_Type = 'sw_package_id' THEN
+			tally := tally + 1;
+		ELSE
+			RAISE 'Property value may not be SW_Package_Id' USING
+				ERRCODE = 'invalid_parameter_value';
+		END IF;
+	END IF;
+	IF NEW.Property_Value_Account_Coll_Id IS NOT NULL THEN
+		IF v_prop.Property_Data_Type = 'account_collection_id' THEN
+			tally := tally + 1;
+		ELSE
+			RAISE 'Property value may not be account_collection_id' USING
+				ERRCODE = 'invalid_parameter_value';
+		END IF;
+	END IF;
+	IF NEW.Property_Value_nblk_Coll_Id IS NOT NULL THEN
+		IF v_prop.Property_Data_Type = 'netblock_collection_id' THEN
+			tally := tally + 1;
+		ELSE
+			RAISE 'Property value may not be nblk_collection_id' USING
+				ERRCODE = 'invalid_parameter_value';
+		END IF;
+	END IF;
+	IF NEW.Property_Value_Timestamp IS NOT NULL THEN
+		IF v_prop.Property_Data_Type = 'timestamp' THEN
+			tally := tally + 1;
+		ELSE
+			RAISE 'Property value may not be Timestamp' USING
+				ERRCODE = 'invalid_parameter_value';
+		END IF;
+	END IF;
+	IF NEW.Property_Value_Person_Id IS NOT NULL THEN
+		IF v_prop.Property_Data_Type = 'person_id' THEN
+			tally := tally + 1;
+		ELSE
+			RAISE 'Property value may not be Person_Id' USING
+				ERRCODE = 'invalid_parameter_value';
+		END IF;
+	END IF;
+	IF NEW.Property_Value_Device_Coll_Id IS NOT NULL THEN
+		IF v_prop.Property_Data_Type = 'device_collection_id' THEN
+			tally := tally + 1;
+		ELSE
+			RAISE 'Property value may not be Device_Collection_Id' USING
+				ERRCODE = 'invalid_parameter_value';
+		END IF;
+	END IF;
+
+	-- at this point, tally will be set to 1 if one of the other property
+	-- values is set to something valid.  Now, check the various options for
+	-- PROPERTY_VALUE itself.  If a new type is added to the val table, this
+	-- trigger needs to be updated or it will be considered invalid.  If a
+	-- new PROPERTY_VALUE_* column is added, then it will pass through without
+	-- trigger modification.  This should be considered bad.
+
+	IF NEW.Property_Value IS NOT NULL THEN
+		tally := tally + 1;
+		IF v_prop.Property_Data_Type = 'boolean' THEN
+			IF NEW.Property_Value != 'Y' AND NEW.Property_Value != 'N' THEN
+				RAISE 'Boolean Property_Value must be Y or N' USING
+					ERRCODE = 'invalid_parameter_value';
+			END IF;
+		ELSIF v_prop.Property_Data_Type = 'number' THEN
+			BEGIN
+				v_num := to_number(NEW.property_value, '9');
+			EXCEPTION
+				WHEN OTHERS THEN
+					RAISE 'Property_Value must be numeric' USING
+						ERRCODE = 'invalid_parameter_value';
+			END;
+		ELSIF v_prop.Property_Data_Type = 'list' THEN
+			BEGIN
+				SELECT Valid_Property_Value INTO STRICT v_listvalue FROM 
+					VAL_Property_Value WHERE
+						Property_Name = NEW.Property_Name AND
+						Property_Type = NEW.Property_Type AND
+						Valid_Property_Value = NEW.Property_Value;
+			EXCEPTION
+				WHEN NO_DATA_FOUND THEN
+					RAISE 'Property_Value must be a valid value' USING
+						ERRCODE = 'invalid_parameter_value';
+			END;
+		ELSIF v_prop.Property_Data_Type != 'string' THEN
+			RAISE 'Property_Data_Type is not a known type' USING
+				ERRCODE = 'invalid_parameter_value';
+		END IF;
+	END IF;
+
+	IF v_prop.Property_Data_Type != 'none' AND tally = 0 THEN
+		RAISE 'One of the PROPERTY_VALUE fields must be set.' USING
+			ERRCODE = 'invalid_parameter_value';
+	END IF;
+
+	IF tally > 1 THEN
+		RAISE 'Only one of the PROPERTY_VALUE fields may be set.' USING
+			ERRCODE = 'invalid_parameter_value';
+	END IF;
+
+	-- If the LHS contains a account_collection_ID, check to see if it must be a
+	-- specific type (e.g. per-account), and verify that if so
+	IF NEW.account_collection_id IS NOT NULL THEN
+		IF v_prop.account_collection_type IS NOT NULL THEN
+			BEGIN
+				SELECT * INTO STRICT v_account_collection 
+					FROM account_collection WHERE
+					account_collection_Id = NEW.account_collection_id;
+				IF v_account_collection.account_collection_Type != v_prop.account_collection_type
+				THEN
+					RAISE 'account_collection_id must be of type %',
+					v_prop.prop_val_acct_coll_type_rstrct
+					USING ERRCODE = 'invalid_parameter_value';
+				END IF;
+			EXCEPTION
+				WHEN NO_DATA_FOUND THEN
+					-- let the database deal with the fk exception later
+					NULL;
+			END;
+		END IF;
+	END IF;
+
+	-- If the LHS contains a account_collection_ID, check to see if it must be a
+	-- specific type (e.g. per-account), and verify that if so
+	IF NEW.account_collection_id IS NOT NULL THEN
+		IF v_prop.account_collection_type IS NOT NULL THEN
+			BEGIN
+				SELECT * INTO STRICT v_account_collection 
+					FROM account_collection WHERE
+					account_collection_Id = NEW.account_collection_id;
+				IF v_account_collection.account_collection_Type != v_prop.account_collection_type
+				THEN
+					RAISE 'account_collection_id must be of type %',
+					v_prop.prop_val_acct_coll_type_rstrct
+					USING ERRCODE = 'invalid_parameter_value';
+				END IF;
+			EXCEPTION
+				WHEN NO_DATA_FOUND THEN
+					-- let the database deal with the fk exception later
+					NULL;
+			END;
+		END IF;
+	END IF;
+
+	-- If the LHS contains a device_collection_ID, check to see if it must be a
+	-- specific type (e.g. per-device), and verify that if so
+	IF NEW.device_collection_id IS NOT NULL THEN
+		IF v_prop.device_collection_type IS NOT NULL THEN
+			BEGIN
+				SELECT * INTO STRICT v_device_collection 
+					FROM device_collection WHERE
+					device_collection_Id = NEW.device_collection_id;
+				IF v_device_collection.device_collection_Type != v_prop.device_collection_type
+				THEN
+					RAISE 'device_collection_id must be of type %',
+					v_prop.prop_val_acct_coll_type_rstrct
+					USING ERRCODE = 'invalid_parameter_value';
+				END IF;
+			EXCEPTION
+				WHEN NO_DATA_FOUND THEN
+					-- let the database deal with the fk exception later
+					NULL;
+			END;
+		END IF;
+	END IF;
+
+	-- If the LHS contains a dns_domain_collection_ID, check to see if it must be a
+	-- specific type (e.g. per-dns_domain), and verify that if so
+	IF NEW.dns_domain_collection_id IS NOT NULL THEN
+		IF v_prop.dns_domain_collection_type IS NOT NULL THEN
+			BEGIN
+				SELECT * INTO STRICT v_dns_domain_collection 
+					FROM dns_domain_collection WHERE
+					dns_domain_collection_Id = NEW.dns_domain_collection_id;
+				IF v_dns_domain_collection.dns_domain_collection_Type != v_prop.dns_domain_collection_type
+				THEN
+					RAISE 'dns_domain_collection_id must be of type %',
+					v_prop.prop_val_acct_coll_type_rstrct
+					USING ERRCODE = 'invalid_parameter_value';
+				END IF;
+			EXCEPTION
+				WHEN NO_DATA_FOUND THEN
+					-- let the database deal with the fk exception later
+					NULL;
+			END;
+		END IF;
+	END IF;
+
+	-- If the LHS contains a layer2_network_collection_ID, check to see if it must be a
+	-- specific type (e.g. per-layer2_network), and verify that if so
+	IF NEW.layer2_network_collection_id IS NOT NULL THEN
+		IF v_prop.layer2_network_collection_type IS NOT NULL THEN
+			BEGIN
+				SELECT * INTO STRICT v_layer2_network_collection 
+					FROM layer2_network_collection WHERE
+					layer2_network_collection_Id = NEW.layer2_network_collection_id;
+				IF v_layer2_network_collection.layer2_network_collection_Type != v_prop.layer2_network_collection_type
+				THEN
+					RAISE 'layer2_network_collection_id must be of type %',
+					v_prop.prop_val_acct_coll_type_rstrct
+					USING ERRCODE = 'invalid_parameter_value';
+				END IF;
+			EXCEPTION
+				WHEN NO_DATA_FOUND THEN
+					-- let the database deal with the fk exception later
+					NULL;
+			END;
+		END IF;
+	END IF;
+
+	-- If the LHS contains a layer3_network_collection_ID, check to see if it must be a
+	-- specific type (e.g. per-layer3_network), and verify that if so
+	IF NEW.layer3_network_collection_id IS NOT NULL THEN
+		IF v_prop.layer3_network_collection_type IS NOT NULL THEN
+			BEGIN
+				SELECT * INTO STRICT v_layer3_network_collection 
+					FROM layer3_network_collection WHERE
+					layer3_network_collection_Id = NEW.layer3_network_collection_id;
+				IF v_layer3_network_collection.layer3_network_collection_Type != v_prop.layer3_network_collection_type
+				THEN
+					RAISE 'layer3_network_collection_id must be of type %',
+					v_prop.prop_val_acct_coll_type_rstrct
+					USING ERRCODE = 'invalid_parameter_value';
+				END IF;
+			EXCEPTION
+				WHEN NO_DATA_FOUND THEN
+					-- let the database deal with the fk exception later
+					NULL;
+			END;
+		END IF;
+	END IF;
+
+	-- If the LHS contains a netblock_collection_ID, check to see if it must be a
+	-- specific type (e.g. per-netblock), and verify that if so
+	IF NEW.netblock_collection_id IS NOT NULL THEN
+		IF v_prop.netblock_collection_type IS NOT NULL THEN
+			BEGIN
+				SELECT * INTO STRICT v_netblock_collection 
+					FROM netblock_collection WHERE
+					netblock_collection_Id = NEW.netblock_collection_id;
+				IF v_netblock_collection.netblock_collection_Type != v_prop.netblock_collection_type
+				THEN
+					RAISE 'netblock_collection_id must be of type %',
+					v_prop.prop_val_acct_coll_type_rstrct
+					USING ERRCODE = 'invalid_parameter_value';
+				END IF;
+			EXCEPTION
+				WHEN NO_DATA_FOUND THEN
+					-- let the database deal with the fk exception later
+					NULL;
+			END;
+		END IF;
+	END IF;
+
+	-- If the LHS contains a property_collection_ID, check to see if it must be a
+	-- specific type (e.g. per-property), and verify that if so
+	IF NEW.property_collection_id IS NOT NULL THEN
+		IF v_prop.property_collection_type IS NOT NULL THEN
+			BEGIN
+				SELECT * INTO STRICT v_property_collection 
+					FROM property_collection WHERE
+					property_collection_Id = NEW.property_collection_id;
+				IF v_property_collection.property_collection_Type != v_prop.property_collection_type
+				THEN
+					RAISE 'property_collection_id must be of type %',
+					v_prop.prop_val_acct_coll_type_rstrct
+					USING ERRCODE = 'invalid_parameter_value';
+				END IF;
+			EXCEPTION
+				WHEN NO_DATA_FOUND THEN
+					-- let the database deal with the fk exception later
+					NULL;
+			END;
+		END IF;
+	END IF;
+
+	-- If the LHS contains a service_env_collection_ID, check to see if it must be a
+	-- specific type (e.g. per-service_env), and verify that if so
+	IF NEW.service_env_collection_id IS NOT NULL THEN
+		IF v_prop.service_env_collection_type IS NOT NULL THEN
+			BEGIN
+				SELECT * INTO STRICT v_service_env_collection 
+					FROM service_env_collection WHERE
+					service_env_collection_Id = NEW.service_env_collection_id;
+				IF v_service_env_collection.service_env_collection_Type != v_prop.service_env_collection_type
+				THEN
+					RAISE 'service_env_collection_id must be of type %',
+					v_prop.prop_val_acct_coll_type_rstrct
+					USING ERRCODE = 'invalid_parameter_value';
+				END IF;
+			EXCEPTION
+				WHEN NO_DATA_FOUND THEN
+					-- let the database deal with the fk exception later
+					NULL;
+			END;
+		END IF;
+	END IF;
+
+	-- If the RHS contains a account_collection_ID, check to see if it must be a
+	-- specific type (e.g. per-account), and verify that if so
+	IF NEW.Property_Value_Account_Coll_Id IS NOT NULL THEN
+		IF v_prop.prop_val_acct_coll_type_rstrct IS NOT NULL THEN
+			BEGIN
+				SELECT * INTO STRICT v_account_collection 
+					FROM account_collection WHERE
+					account_collection_Id = NEW.Property_Value_Account_Coll_Id;
+				IF v_account_collection.account_collection_Type != v_prop.prop_val_acct_coll_type_rstrct
+				THEN
+					RAISE 'Property_Value_Account_Coll_Id must be of type %',
+					v_prop.prop_val_acct_coll_type_rstrct
+					USING ERRCODE = 'invalid_parameter_value';
+				END IF;
+			EXCEPTION
+				WHEN NO_DATA_FOUND THEN
+					-- let the database deal with the fk exception later
+					NULL;
+			END;
+		END IF;
+	END IF;
+
+	-- If the RHS contains a netblock_collection_ID, check to see if it must be a
+	-- specific type and verify that if so
+	IF NEW.Property_Value_nblk_Coll_Id IS NOT NULL THEN
+		IF v_prop.prop_val_acct_coll_type_rstrct IS NOT NULL THEN
+			BEGIN
+				SELECT * INTO STRICT v_netblock_collection 
+					FROM netblock_collection WHERE
+					netblock_collection_Id = NEW.Property_Value_nblk_Coll_Id;
+				IF v_netblock_collection.netblock_collection_Type != v_prop.prop_val_acct_coll_type_rstrct
+				THEN
+					RAISE 'Property_Value_nblk_Coll_Id must be of type %',
+					v_prop.prop_val_acct_coll_type_rstrct
+					USING ERRCODE = 'invalid_parameter_value';
+				END IF;
+			EXCEPTION
+				WHEN NO_DATA_FOUND THEN
+					-- let the database deal with the fk exception later
+					NULL;
+			END;
+		END IF;
+	END IF;
+
+	-- If the RHS contains a device_collection_id, check to see if it must be a
+	-- specific type and verify that if so
+	IF NEW.Property_Value_Device_Coll_Id IS NOT NULL THEN
+		IF v_prop.prop_val_dev_coll_type_rstrct IS NOT NULL THEN
+			BEGIN
+				SELECT * INTO STRICT v_device_collection 
+					FROM device_collection WHERE
+					device_collection_id = NEW.Property_Value_Device_Coll_Id;
+				IF v_device_collection.device_collection_type != 
+					v_prop.prop_val_dev_coll_type_rstrct
+				THEN
+					RAISE 'Property_Value_Device_Coll_Id must be of type %',
+					v_prop.prop_val_dev_coll_type_rstrct
+					USING ERRCODE = 'invalid_parameter_value';
+				END IF;
+			EXCEPTION
+				WHEN NO_DATA_FOUND THEN
+					-- let the database deal with the fk exception later
+					NULL;
+			END;
+		END IF;
+	END IF;
+
+	-- At this point, the RHS has been checked, so now we verify data
+	-- set on the LHS
+
+	-- There needs to be a stanza here for every "lhs".  If a new column is
+	-- added to the property table, a new stanza needs to be added here,
+	-- otherwise it will not be validated.  This should be considered bad.
+
+	IF v_prop.Permit_Company_Id = 'REQUIRED' THEN
+			IF NEW.Company_Id IS NULL THEN
+				RAISE 'Company_Id is required.'
+					USING ERRCODE = 'invalid_parameter_value';
+			END IF;
+	ELSIF v_prop.Permit_Company_Id = 'PROHIBITED' THEN
+			IF NEW.Company_Id IS NOT NULL THEN
+				RAISE 'Company_Id is prohibited.'
+					USING ERRCODE = 'invalid_parameter_value';
+			END IF;
+	END IF;
+
+	IF v_prop.Permit_Company_Collection_Id = 'REQUIRED' THEN
+			IF NEW.Company_Collection_Id IS NULL THEN
+				RAISE 'Company_Collection_Id is required.'
+					USING ERRCODE = 'invalid_parameter_value';
+			END IF;
+	ELSIF v_prop.Permit_Company_Collection_Id = 'PROHIBITED' THEN
+			IF NEW.Company_Collection_Id IS NOT NULL THEN
+				RAISE 'Company_Collection_Id is prohibited.'
+					USING ERRCODE = 'invalid_parameter_value';
+			END IF;
+	END IF;
+
+	IF v_prop.Permit_Device_Collection_Id = 'REQUIRED' THEN
+			IF NEW.Device_Collection_Id IS NULL THEN
+				RAISE 'Device_Collection_Id is required.'
+					USING ERRCODE = 'invalid_parameter_value';
+			END IF;
+
+	ELSIF v_prop.Permit_Device_Collection_Id = 'PROHIBITED' THEN
+			IF NEW.Device_Collection_Id IS NOT NULL THEN
+				RAISE 'Device_Collection_Id is prohibited.'
+					USING ERRCODE = 'invalid_parameter_value';
+			END IF;
+	END IF;
+
+	IF v_prop.Permit_DNS_Domain_Id = 'REQUIRED' THEN
+			IF NEW.DNS_Domain_Id IS NULL THEN
+				RAISE 'DNS_Domain_Id is required.'
+					USING ERRCODE = 'invalid_parameter_value';
+			END IF;
+	ELSIF v_prop.Permit_DNS_Domain_Id = 'PROHIBITED' THEN
+			IF NEW.DNS_Domain_Id IS NOT NULL THEN
+				RAISE 'DNS_Domain_Id is prohibited.'
+					USING ERRCODE = 'invalid_parameter_value';
+			END IF;
+	END IF;
+
+	IF v_prop.permit_service_env_collection = 'REQUIRED' THEN
+			IF NEW.service_env_collection_id IS NULL THEN
+				RAISE 'service_env_collection_id is required.'
+					USING ERRCODE = 'invalid_parameter_value';
+			END IF;
+	ELSIF v_prop.permit_service_env_collection = 'PROHIBITED' THEN
+			IF NEW.service_env_collection_id IS NOT NULL THEN
+				RAISE 'service_environment is prohibited.'
+					USING ERRCODE = 'invalid_parameter_value';
+			END IF;
+	END IF;
+
+	IF v_prop.Permit_Operating_System_Id = 'REQUIRED' THEN
+			IF NEW.Operating_System_Id IS NULL THEN
+				RAISE 'Operating_System_Id is required.'
+					USING ERRCODE = 'invalid_parameter_value';
+			END IF;
+	ELSIF v_prop.Permit_Operating_System_Id = 'PROHIBITED' THEN
+			IF NEW.Operating_System_Id IS NOT NULL THEN
+				RAISE 'Operating_System_Id is prohibited.'
+					USING ERRCODE = 'invalid_parameter_value';
+			END IF;
+	END IF;
+
+	IF v_prop.permit_os_snapshot_id = 'REQUIRED' THEN
+			IF NEW.operating_system_snapshot_id IS NULL THEN
+				RAISE 'operating_system_snapshot_id is required.'
+					USING ERRCODE = 'invalid_parameter_value';
+			END IF;
+	ELSIF v_prop.permit_os_snapshot_id = 'PROHIBITED' THEN
+			IF NEW.operating_system_snapshot_id IS NOT NULL THEN
+				RAISE 'operating_system_snapshot_id is prohibited.'
+					USING ERRCODE = 'invalid_parameter_value';
+			END IF;
+	END IF;
+
+	IF v_prop.Permit_Site_Code = 'REQUIRED' THEN
+			IF NEW.Site_Code IS NULL THEN
+				RAISE 'Site_Code is required.'
+					USING ERRCODE = 'invalid_parameter_value';
+			END IF;
+	ELSIF v_prop.Permit_Site_Code = 'PROHIBITED' THEN
+			IF NEW.Site_Code IS NOT NULL THEN
+				RAISE 'Site_Code is prohibited.'
+					USING ERRCODE = 'invalid_parameter_value';
+			END IF;
+	END IF;
+
+	IF v_prop.Permit_Account_Id = 'REQUIRED' THEN
+			IF NEW.Account_Id IS NULL THEN
+				RAISE 'Account_Id is required.'
+					USING ERRCODE = 'invalid_parameter_value';
+			END IF;
+	ELSIF v_prop.Permit_Account_Id = 'PROHIBITED' THEN
+			IF NEW.Account_Id IS NOT NULL THEN
+				RAISE 'Account_Id is prohibited.'
+					USING ERRCODE = 'invalid_parameter_value';
+			END IF;
+	END IF;
+
+	IF v_prop.Permit_Account_Realm_Id = 'REQUIRED' THEN
+			IF NEW.Account_Realm_Id IS NULL THEN
+				RAISE 'Account_Realm_Id is required.'
+					USING ERRCODE = 'invalid_parameter_value';
+			END IF;
+	ELSIF v_prop.Permit_Account_Realm_Id = 'PROHIBITED' THEN
+			IF NEW.Account_Realm_Id IS NOT NULL THEN
+				RAISE 'Account_Realm_Id is prohibited.'
+					USING ERRCODE = 'invalid_parameter_value';
+			END IF;
+	END IF;
+
+	IF v_prop.Permit_account_collection_Id = 'REQUIRED' THEN
+			IF NEW.account_collection_Id IS NULL THEN
+				RAISE 'account_collection_Id is required.'
+					USING ERRCODE = 'invalid_parameter_value';
+			END IF;
+	ELSIF v_prop.Permit_account_collection_Id = 'PROHIBITED' THEN
+			IF NEW.account_collection_Id IS NOT NULL THEN
+				RAISE 'account_collection_Id is prohibited.'
+					USING ERRCODE = 'invalid_parameter_value';
+			END IF;
+	END IF;
+
+	IF v_prop.permit_layer2_network_coll_id = 'REQUIRED' THEN
+			IF NEW.layer2_network_collection_id IS NULL THEN
+				RAISE 'layer2_network_collection_id is required.'
+					USING ERRCODE = 'invalid_parameter_value';
+			END IF;
+	ELSIF v_prop.permit_layer2_network_coll_id = 'PROHIBITED' THEN
+			IF NEW.layer2_network_collection_id IS NOT NULL THEN
+				RAISE 'layer2_network_collection_id is prohibited.'
+					USING ERRCODE = 'invalid_parameter_value';
+			END IF;
+	END IF;
+
+	IF v_prop.permit_layer3_network_coll_id = 'REQUIRED' THEN
+			IF NEW.layer3_network_collection_id IS NULL THEN
+				RAISE 'layer3_network_collection_id is required.'
+					USING ERRCODE = 'invalid_parameter_value';
+			END IF;
+	ELSIF v_prop.permit_layer3_network_coll_id = 'PROHIBITED' THEN
+			IF NEW.layer3_network_collection_id IS NOT NULL THEN
+				RAISE 'layer3_network_collection_id is prohibited.'
+					USING ERRCODE = 'invalid_parameter_value';
+			END IF;
+	END IF;
+
+	IF v_prop.Permit_netblock_collection_Id = 'REQUIRED' THEN
+			IF NEW.netblock_collection_Id IS NULL THEN
+				RAISE 'netblock_collection_Id is required.'
+					USING ERRCODE = 'invalid_parameter_value';
+			END IF;
+	ELSIF v_prop.Permit_netblock_collection_Id = 'PROHIBITED' THEN
+			IF NEW.netblock_collection_Id IS NOT NULL THEN
+				RAISE 'netblock_collection_Id is prohibited.'
+					USING ERRCODE = 'invalid_parameter_value';
+			END IF;
+	END IF;
+
+	IF v_prop.Permit_property_collection_Id = 'REQUIRED' THEN
+			IF NEW.property_collection_Id IS NULL THEN
+				RAISE 'property_collection_Id is required.'
+					USING ERRCODE = 'invalid_parameter_value';
+			END IF;
+	ELSIF v_prop.Permit_property_collection_Id = 'PROHIBITED' THEN
+			IF NEW.property_collection_Id IS NOT NULL THEN
+				RAISE 'property_collection_Id is prohibited.'
+					USING ERRCODE = 'invalid_parameter_value';
+			END IF;
+	END IF;
+
+	IF v_prop.Permit_Person_Id = 'REQUIRED' THEN
+			IF NEW.Person_Id IS NULL THEN
+				RAISE 'Person_Id is required.'
+					USING ERRCODE = 'invalid_parameter_value';
+			END IF;
+	ELSIF v_prop.Permit_Person_Id = 'PROHIBITED' THEN
+			IF NEW.Person_Id IS NOT NULL THEN
+				RAISE 'Person_Id is prohibited.'
+					USING ERRCODE = 'invalid_parameter_value';
+			END IF;
+	END IF;
+
+	IF v_prop.Permit_Property_Rank = 'REQUIRED' THEN
+			IF NEW.property_rank IS NULL THEN
+				RAISE 'property_rank is required.'
+					USING ERRCODE = 'invalid_parameter_value';
+			END IF;
+	ELSIF v_prop.Permit_Property_Rank = 'PROHIBITED' THEN
+			IF NEW.property_rank IS NOT NULL THEN
+				RAISE 'property_rank is prohibited.'
+					USING ERRCODE = 'invalid_parameter_value';
+			END IF;
+	END IF;
+
+	RETURN NEW;
+END;
+$function$
+;
 CREATE TRIGGER trigger_validate_property BEFORE INSERT OR UPDATE ON property FOR EACH ROW EXECUTE PROCEDURE validate_property();
 
 -- XXX - may need to include trigger function
@@ -8365,10 +7563,10 @@ ALTER SEQUENCE property_property_id_seq
 	 OWNED BY property.property_id;
 DROP TABLE IF EXISTS property_v64;
 DROP TABLE IF EXISTS audit.property_v64;
--- DONE DEALING WITH TABLE property [1174249]
+-- DONE DEALING WITH TABLE property [1874906]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE slot [1213254]
+-- DEALING WITH TABLE slot [1884747]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'slot', 'slot');
 
@@ -8638,10 +7836,10 @@ ALTER SEQUENCE slot_slot_id_seq
 	 OWNED BY slot.slot_id;
 DROP TABLE IF EXISTS slot_v64;
 DROP TABLE IF EXISTS audit.slot_v64;
--- DONE DEALING WITH TABLE slot [1174422]
+-- DONE DEALING WITH TABLE slot [1875079]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE token [1213461]
+-- DEALING WITH TABLE token [1884954]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'token', 'token');
 
@@ -8869,10 +8067,10 @@ ALTER SEQUENCE token_token_id_seq
 	 OWNED BY token.token_id;
 DROP TABLE IF EXISTS token_v64;
 DROP TABLE IF EXISTS audit.token_v64;
--- DONE DEALING WITH TABLE token [1174629]
+-- DONE DEALING WITH TABLE token [1875286]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE volume_group [1214411]
+-- DEALING WITH TABLE volume_group [1885904]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'volume_group', 'volume_group');
 
@@ -9068,10 +8266,10 @@ ALTER SEQUENCE volume_group_volume_group_id_seq
 	 OWNED BY volume_group.volume_group_id;
 DROP TABLE IF EXISTS volume_group_v64;
 DROP TABLE IF EXISTS audit.volume_group_v64;
--- DONE DEALING WITH TABLE volume_group [1175682]
+-- DONE DEALING WITH TABLE volume_group [1876339]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE volume_group_physicalish_vol [1214429]
+-- DEALING WITH TABLE volume_group_physicalish_vol [1885922]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'volume_group_physicalish_vol', 'volume_group_physicalish_vol');
 
@@ -9244,10 +8442,10 @@ SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'volume_group_physicali
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'volume_group_physicalish_vol');
 DROP TABLE IF EXISTS volume_group_physicalish_vol_v64;
 DROP TABLE IF EXISTS audit.volume_group_physicalish_vol_v64;
--- DONE DEALING WITH TABLE volume_group_physicalish_vol [1175701]
+-- DONE DEALING WITH TABLE volume_group_physicalish_vol [1876358]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE x509_certificate [1214458]
+-- DEALING WITH TABLE x509_certificate [1885951]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'x509_certificate', 'x509_certificate');
 
@@ -9512,10 +8710,10 @@ ALTER SEQUENCE x509_certificate_x509_cert_id_seq
 	 OWNED BY x509_certificate.x509_cert_id;
 DROP TABLE IF EXISTS x509_certificate_v64;
 DROP TABLE IF EXISTS audit.x509_certificate_v64;
--- DONE DEALING WITH TABLE x509_certificate [1175730]
+-- DONE DEALING WITH TABLE x509_certificate [1876387]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE v_property [1219998]
+-- DEALING WITH TABLE v_property [1891491]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'v_property', 'v_property');
 SELECT schema_support.save_dependant_objects_for_replay('jazzhands', 'v_property');
@@ -9563,10 +8761,10 @@ CREATE VIEW jazzhands.v_property AS
   WHERE property.is_enabled = 'Y'::bpchar AND (property.start_date IS NULL AND property.finish_date IS NULL OR property.start_date IS NULL AND now() <= property.finish_date OR property.start_date <= now() AND property.finish_date IS NULL OR property.start_date <= now() AND now() <= property.finish_date);
 
 delete from __recreate where type = 'view' and object = 'v_property';
--- DONE DEALING WITH TABLE v_property [1181774]
+-- DONE DEALING WITH TABLE v_property [1882435]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE v_acct_coll_prop_expanded [1220096]
+-- DEALING WITH TABLE v_acct_coll_prop_expanded [1891589]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'v_acct_coll_prop_expanded', 'v_acct_coll_prop_expanded');
 SELECT schema_support.save_dependant_objects_for_replay('jazzhands', 'v_acct_coll_prop_expanded');
@@ -9612,7 +8810,7 @@ CREATE VIEW jazzhands.v_acct_coll_prop_expanded AS
      JOIN val_property USING (property_name, property_type);
 
 delete from __recreate where type = 'view' and object = 'v_acct_coll_prop_expanded';
--- DONE DEALING WITH TABLE v_acct_coll_prop_expanded [1181872]
+-- DONE DEALING WITH TABLE v_acct_coll_prop_expanded [1882533]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE v_approval_instance_step_expanded
@@ -9660,10 +8858,10 @@ CREATE VIEW jazzhands.v_approval_instance_step_expanded AS
    FROM q;
 
 delete from __recreate where type = 'view' and object = 'v_approval_instance_step_expanded';
--- DONE DEALING WITH TABLE v_approval_instance_step_expanded [1182013]
+-- DONE DEALING WITH TABLE v_approval_instance_step_expanded [1882674]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE v_property [1219998]
+-- DEALING WITH TABLE v_property [1891491]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'v_property', 'v_property');
 SELECT schema_support.save_dependant_objects_for_replay('jazzhands', 'v_property');
@@ -9711,10 +8909,10 @@ CREATE VIEW jazzhands.v_property AS
   WHERE property.is_enabled = 'Y'::bpchar AND (property.start_date IS NULL AND property.finish_date IS NULL OR property.start_date IS NULL AND now() <= property.finish_date OR property.start_date <= now() AND property.finish_date IS NULL OR property.start_date <= now() AND now() <= property.finish_date);
 
 delete from __recreate where type = 'view' and object = 'v_property';
--- DONE DEALING WITH TABLE v_property [1181774]
+-- DONE DEALING WITH TABLE v_property [1882435]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE v_token [1220018]
+-- DEALING WITH TABLE v_token [1891511]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'v_token', 'v_token');
 SELECT schema_support.save_dependant_objects_for_replay('jazzhands', 'v_token');
@@ -9742,10 +8940,10 @@ CREATE VIEW jazzhands.v_token AS
      LEFT JOIN account_token ta USING (token_id);
 
 delete from __recreate where type = 'view' and object = 'v_token';
--- DONE DEALING WITH TABLE v_token [1181794]
+-- DONE DEALING WITH TABLE v_token [1882455]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE v_approval_matrix [1220212]
+-- DEALING WITH TABLE v_approval_matrix [1891705]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'v_approval_matrix', 'v_approval_matrix');
 SELECT schema_support.save_dependant_objects_for_replay('approval_utils', 'v_approval_matrix');
@@ -9789,10 +8987,10 @@ CREATE VIEW approval_utils.v_approval_matrix AS
   WHERE ap.approval_process_name::text = 'ReportingAttest'::text AND ap.approval_process_type::text = 'attestation'::text;
 
 delete from __recreate where type = 'view' and object = 'v_approval_matrix';
--- DONE DEALING WITH TABLE v_approval_matrix [1181988]
+-- DONE DEALING WITH TABLE v_approval_matrix [1882649]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE v_account_collection_approval_process [1220232]
+-- DEALING WITH TABLE v_account_collection_approval_process [1891725]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'v_account_collection_approval_process', 'v_account_collection_approval_process');
 SELECT schema_support.save_dependant_objects_for_replay('approval_utils', 'v_account_collection_approval_process');
@@ -9957,8 +9155,11 @@ CREATE VIEW approval_utils.v_account_collection_approval_process AS
   ORDER BY combo.manager_login, combo.account_id, combo.approval_label;
 
 delete from __recreate where type = 'view' and object = 'v_account_collection_approval_process';
--- DONE DEALING WITH TABLE v_account_collection_approval_process [1182008]
+-- DONE DEALING WITH TABLE v_account_collection_approval_process [1882669]
 --------------------------------------------------------------------
+--
+-- Process trigger procs in jazzhands
+--
 -- Changed function
 SELECT schema_support.save_grants_for_replay('jazzhands', 'account_automated_reporting_ac');
 CREATE OR REPLACE FUNCTION jazzhands.account_automated_reporting_ac()
@@ -10370,14 +9571,20 @@ CREATE OR REPLACE FUNCTION jazzhands.validate_property()
  SET search_path TO jazzhands
 AS $function$
 DECLARE
-	tally			integer;
-	v_prop			VAL_Property%ROWTYPE;
-	v_proptype		VAL_Property_Type%ROWTYPE;
-	v_account_collection	account_collection%ROWTYPE;
+	tally				integer;
+	v_prop				VAL_Property%ROWTYPE;
+	v_proptype			VAL_Property_Type%ROWTYPE;
+	v_account_collection		account_collection%ROWTYPE;
+	v_company_collection		company_collection%ROWTYPE;
 	v_device_collection		device_collection%ROWTYPE;
-	v_netblock_collection	netblock_collection%ROWTYPE;
-	v_num			integer;
-	v_listvalue		Property.Property_Value%TYPE;
+	v_dns_domain_collection		dns_domain_collection%ROWTYPE;
+	v_layer2_network_collection	layer2_network_collection%ROWTYPE;
+	v_layer3_network_collection	layer3_network_collection%ROWTYPE;
+	v_netblock_collection		netblock_collection%ROWTYPE;
+	v_property_collection		property_collection%ROWTYPE;
+	v_service_env_collection	service_environment_collection%ROWTYPE;
+	v_num				integer;
+	v_listvalue			Property.Property_Value%TYPE;
 BEGIN
 
 	-- Pull in the data from the property and property_type so we can
@@ -10408,10 +9615,14 @@ BEGIN
 			Property_Type = NEW.Property_Type AND
 			((Company_Id IS NULL AND NEW.Company_Id IS NULL) OR
 				(Company_Id = NEW.Company_Id)) AND
+			((Company_Collection_Id IS NULL AND NEW.Company_Collection_Id IS NULL) OR
+				(Company_Collection_Id = NEW.Company_Collection_Id)) AND
 			((Device_Collection_Id IS NULL AND NEW.Device_Collection_Id IS NULL) OR
 				(Device_Collection_Id = NEW.Device_Collection_Id)) AND
 			((DNS_Domain_Id IS NULL AND NEW.DNS_Domain_Id IS NULL) OR
 				(DNS_Domain_Id = NEW.DNS_Domain_Id)) AND
+			((DNS_Domain_Collection_Id IS NULL AND NEW.DNS_Domain_Collection_Id IS NULL) OR
+				(DNS_Domain_Collection_Id = NEW.DNS_Domain_Collection_Id)) AND
 			((Operating_System_Id IS NULL AND NEW.Operating_System_Id IS NULL) OR
 				(Operating_System_Id = NEW.Operating_System_Id)) AND
 			((operating_system_snapshot_id IS NULL AND NEW.operating_system_snapshot_id IS NULL) OR
@@ -10455,12 +9666,16 @@ BEGIN
 		PERFORM 1 FROM Property WHERE
 			Property_Id != NEW.Property_Id AND
 			Property_Type = NEW.Property_Type AND
+			((Company_Collection_Id IS NULL AND NEW.Company_Collection_Id IS NULL) OR
+				(Company_Collection_Id = NEW.Company_Collection_Id)) AND
 			((Company_Id IS NULL AND NEW.Company_Id IS NULL) OR
 				(Company_Id = NEW.Company_Id)) AND
 			((Device_Collection_Id IS NULL AND NEW.Device_Collection_Id IS NULL) OR
 				(Device_Collection_Id = NEW.Device_Collection_Id)) AND
 			((DNS_Domain_Id IS NULL AND NEW.DNS_Domain_Id IS NULL) OR
 				(DNS_Domain_Id = NEW.DNS_Domain_Id)) AND
+			((DNS_Domain_Collection_Id IS NULL AND NEW.DNS_Domain_Collection_Id IS NULL) OR
+				(DNS_Domain_Collection_Id = NEW.DNS_Domain_Collection_Id)) AND
 			((Operating_System_Id IS NULL AND NEW.Operating_System_Id IS NULL) OR
 				(Operating_System_Id = NEW.Operating_System_Id)) AND
 			((operating_system_snapshot_id IS NULL AND NEW.operating_system_snapshot_id IS NULL) OR
@@ -10630,8 +9845,206 @@ BEGIN
 			ERRCODE = 'invalid_parameter_value';
 	END IF;
 
+	-- If the LHS contains a account_collection_ID, check to see if it must be a
+	-- specific type (e.g. per-account), and verify that if so
+	IF NEW.account_collection_id IS NOT NULL THEN
+		IF v_prop.account_collection_type IS NOT NULL THEN
+			BEGIN
+				SELECT * INTO STRICT v_account_collection 
+					FROM account_collection WHERE
+					account_collection_Id = NEW.account_collection_id;
+				IF v_account_collection.account_collection_Type != v_prop.account_collection_type
+				THEN
+					RAISE 'account_collection_id must be of type %',
+					v_prop.prop_val_acct_coll_type_rstrct
+					USING ERRCODE = 'invalid_parameter_value';
+				END IF;
+			EXCEPTION
+				WHEN NO_DATA_FOUND THEN
+					-- let the database deal with the fk exception later
+					NULL;
+			END;
+		END IF;
+	END IF;
+
+	-- If the LHS contains a account_collection_ID, check to see if it must be a
+	-- specific type (e.g. per-account), and verify that if so
+	IF NEW.account_collection_id IS NOT NULL THEN
+		IF v_prop.account_collection_type IS NOT NULL THEN
+			BEGIN
+				SELECT * INTO STRICT v_account_collection 
+					FROM account_collection WHERE
+					account_collection_Id = NEW.account_collection_id;
+				IF v_account_collection.account_collection_Type != v_prop.account_collection_type
+				THEN
+					RAISE 'account_collection_id must be of type %',
+					v_prop.prop_val_acct_coll_type_rstrct
+					USING ERRCODE = 'invalid_parameter_value';
+				END IF;
+			EXCEPTION
+				WHEN NO_DATA_FOUND THEN
+					-- let the database deal with the fk exception later
+					NULL;
+			END;
+		END IF;
+	END IF;
+
+	-- If the LHS contains a device_collection_ID, check to see if it must be a
+	-- specific type (e.g. per-device), and verify that if so
+	IF NEW.device_collection_id IS NOT NULL THEN
+		IF v_prop.device_collection_type IS NOT NULL THEN
+			BEGIN
+				SELECT * INTO STRICT v_device_collection 
+					FROM device_collection WHERE
+					device_collection_Id = NEW.device_collection_id;
+				IF v_device_collection.device_collection_Type != v_prop.device_collection_type
+				THEN
+					RAISE 'device_collection_id must be of type %',
+					v_prop.prop_val_acct_coll_type_rstrct
+					USING ERRCODE = 'invalid_parameter_value';
+				END IF;
+			EXCEPTION
+				WHEN NO_DATA_FOUND THEN
+					-- let the database deal with the fk exception later
+					NULL;
+			END;
+		END IF;
+	END IF;
+
+	-- If the LHS contains a dns_domain_collection_ID, check to see if it must be a
+	-- specific type (e.g. per-dns_domain), and verify that if so
+	IF NEW.dns_domain_collection_id IS NOT NULL THEN
+		IF v_prop.dns_domain_collection_type IS NOT NULL THEN
+			BEGIN
+				SELECT * INTO STRICT v_dns_domain_collection 
+					FROM dns_domain_collection WHERE
+					dns_domain_collection_Id = NEW.dns_domain_collection_id;
+				IF v_dns_domain_collection.dns_domain_collection_Type != v_prop.dns_domain_collection_type
+				THEN
+					RAISE 'dns_domain_collection_id must be of type %',
+					v_prop.prop_val_acct_coll_type_rstrct
+					USING ERRCODE = 'invalid_parameter_value';
+				END IF;
+			EXCEPTION
+				WHEN NO_DATA_FOUND THEN
+					-- let the database deal with the fk exception later
+					NULL;
+			END;
+		END IF;
+	END IF;
+
+	-- If the LHS contains a layer2_network_collection_ID, check to see if it must be a
+	-- specific type (e.g. per-layer2_network), and verify that if so
+	IF NEW.layer2_network_collection_id IS NOT NULL THEN
+		IF v_prop.layer2_network_collection_type IS NOT NULL THEN
+			BEGIN
+				SELECT * INTO STRICT v_layer2_network_collection 
+					FROM layer2_network_collection WHERE
+					layer2_network_collection_Id = NEW.layer2_network_collection_id;
+				IF v_layer2_network_collection.layer2_network_collection_Type != v_prop.layer2_network_collection_type
+				THEN
+					RAISE 'layer2_network_collection_id must be of type %',
+					v_prop.prop_val_acct_coll_type_rstrct
+					USING ERRCODE = 'invalid_parameter_value';
+				END IF;
+			EXCEPTION
+				WHEN NO_DATA_FOUND THEN
+					-- let the database deal with the fk exception later
+					NULL;
+			END;
+		END IF;
+	END IF;
+
+	-- If the LHS contains a layer3_network_collection_ID, check to see if it must be a
+	-- specific type (e.g. per-layer3_network), and verify that if so
+	IF NEW.layer3_network_collection_id IS NOT NULL THEN
+		IF v_prop.layer3_network_collection_type IS NOT NULL THEN
+			BEGIN
+				SELECT * INTO STRICT v_layer3_network_collection 
+					FROM layer3_network_collection WHERE
+					layer3_network_collection_Id = NEW.layer3_network_collection_id;
+				IF v_layer3_network_collection.layer3_network_collection_Type != v_prop.layer3_network_collection_type
+				THEN
+					RAISE 'layer3_network_collection_id must be of type %',
+					v_prop.prop_val_acct_coll_type_rstrct
+					USING ERRCODE = 'invalid_parameter_value';
+				END IF;
+			EXCEPTION
+				WHEN NO_DATA_FOUND THEN
+					-- let the database deal with the fk exception later
+					NULL;
+			END;
+		END IF;
+	END IF;
+
+	-- If the LHS contains a netblock_collection_ID, check to see if it must be a
+	-- specific type (e.g. per-netblock), and verify that if so
+	IF NEW.netblock_collection_id IS NOT NULL THEN
+		IF v_prop.netblock_collection_type IS NOT NULL THEN
+			BEGIN
+				SELECT * INTO STRICT v_netblock_collection 
+					FROM netblock_collection WHERE
+					netblock_collection_Id = NEW.netblock_collection_id;
+				IF v_netblock_collection.netblock_collection_Type != v_prop.netblock_collection_type
+				THEN
+					RAISE 'netblock_collection_id must be of type %',
+					v_prop.prop_val_acct_coll_type_rstrct
+					USING ERRCODE = 'invalid_parameter_value';
+				END IF;
+			EXCEPTION
+				WHEN NO_DATA_FOUND THEN
+					-- let the database deal with the fk exception later
+					NULL;
+			END;
+		END IF;
+	END IF;
+
+	-- If the LHS contains a property_collection_ID, check to see if it must be a
+	-- specific type (e.g. per-property), and verify that if so
+	IF NEW.property_collection_id IS NOT NULL THEN
+		IF v_prop.property_collection_type IS NOT NULL THEN
+			BEGIN
+				SELECT * INTO STRICT v_property_collection 
+					FROM property_collection WHERE
+					property_collection_Id = NEW.property_collection_id;
+				IF v_property_collection.property_collection_Type != v_prop.property_collection_type
+				THEN
+					RAISE 'property_collection_id must be of type %',
+					v_prop.prop_val_acct_coll_type_rstrct
+					USING ERRCODE = 'invalid_parameter_value';
+				END IF;
+			EXCEPTION
+				WHEN NO_DATA_FOUND THEN
+					-- let the database deal with the fk exception later
+					NULL;
+			END;
+		END IF;
+	END IF;
+
+	-- If the LHS contains a service_env_collection_ID, check to see if it must be a
+	-- specific type (e.g. per-service_env), and verify that if so
+	IF NEW.service_env_collection_id IS NOT NULL THEN
+		IF v_prop.service_env_collection_type IS NOT NULL THEN
+			BEGIN
+				SELECT * INTO STRICT v_service_env_collection 
+					FROM service_env_collection WHERE
+					service_env_collection_Id = NEW.service_env_collection_id;
+				IF v_service_env_collection.service_env_collection_Type != v_prop.service_env_collection_type
+				THEN
+					RAISE 'service_env_collection_id must be of type %',
+					v_prop.prop_val_acct_coll_type_rstrct
+					USING ERRCODE = 'invalid_parameter_value';
+				END IF;
+			EXCEPTION
+				WHEN NO_DATA_FOUND THEN
+					-- let the database deal with the fk exception later
+					NULL;
+			END;
+		END IF;
+	END IF;
+
 	-- If the RHS contains a account_collection_ID, check to see if it must be a
-	-- specific type (e.g. per-user), and verify that if so
+	-- specific type (e.g. per-account), and verify that if so
 	IF NEW.Property_Value_Account_Coll_Id IS NOT NULL THEN
 		IF v_prop.prop_val_acct_coll_type_rstrct IS NOT NULL THEN
 			BEGIN
@@ -10712,6 +10125,18 @@ BEGIN
 	ELSIF v_prop.Permit_Company_Id = 'PROHIBITED' THEN
 			IF NEW.Company_Id IS NOT NULL THEN
 				RAISE 'Company_Id is prohibited.'
+					USING ERRCODE = 'invalid_parameter_value';
+			END IF;
+	END IF;
+
+	IF v_prop.Permit_Company_Collection_Id = 'REQUIRED' THEN
+			IF NEW.Company_Collection_Id IS NULL THEN
+				RAISE 'Company_Collection_Id is required.'
+					USING ERRCODE = 'invalid_parameter_value';
+			END IF;
+	ELSIF v_prop.Permit_Company_Collection_Id = 'PROHIBITED' THEN
+			IF NEW.Company_Collection_Id IS NOT NULL THEN
+				RAISE 'Company_Collection_Id is prohibited.'
 					USING ERRCODE = 'invalid_parameter_value';
 			END IF;
 	END IF;
@@ -11023,1926 +10448,225 @@ $function$
 ;
 
 -- New function
-CREATE OR REPLACE FUNCTION jazzhands.perform_audit_company_collection_company()
+CREATE OR REPLACE FUNCTION jazzhands.layer2_network_collection_hier_enforce()
  RETURNS trigger
  LANGUAGE plpgsql
  SECURITY DEFINER
-AS $function$
-	    DECLARE
-		appuser VARCHAR;
-	    BEGIN
-		BEGIN
-		    appuser := session_user
-			|| '/' || current_setting('jazzhands.appuser');
-		EXCEPTION WHEN OTHERS THEN
-		    appuser := session_user;
-		END;
-
-    		appuser = substr(appuser, 1, 255);
-
-		IF TG_OP = 'DELETE' THEN
-		    INSERT INTO audit.company_collection_company
-		    VALUES ( OLD.*, 'DEL', now(), appuser );
-		    RETURN OLD;
-		ELSIF TG_OP = 'UPDATE' THEN
-		    INSERT INTO audit.company_collection_company
-		    VALUES ( NEW.*, 'UPD', now(), appuser );
-		    RETURN NEW;
-		ELSIF TG_OP = 'INSERT' THEN
-		    INSERT INTO audit.company_collection_company
-		    VALUES ( NEW.*, 'INS', now(), appuser );
-		    RETURN NEW;
-		END IF;
-		RETURN NULL;
-	    END;
-	$function$
-;
-
--- New function
-CREATE OR REPLACE FUNCTION jazzhands.perform_audit_company_collection_hier()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
-AS $function$
-	    DECLARE
-		appuser VARCHAR;
-	    BEGIN
-		BEGIN
-		    appuser := session_user
-			|| '/' || current_setting('jazzhands.appuser');
-		EXCEPTION WHEN OTHERS THEN
-		    appuser := session_user;
-		END;
-
-    		appuser = substr(appuser, 1, 255);
-
-		IF TG_OP = 'DELETE' THEN
-		    INSERT INTO audit.company_collection_hier
-		    VALUES ( OLD.*, 'DEL', now(), appuser );
-		    RETURN OLD;
-		ELSIF TG_OP = 'UPDATE' THEN
-		    INSERT INTO audit.company_collection_hier
-		    VALUES ( NEW.*, 'UPD', now(), appuser );
-		    RETURN NEW;
-		ELSIF TG_OP = 'INSERT' THEN
-		    INSERT INTO audit.company_collection_hier
-		    VALUES ( NEW.*, 'INS', now(), appuser );
-		    RETURN NEW;
-		END IF;
-		RETURN NULL;
-	    END;
-	$function$
-;
-
--- New function
-CREATE OR REPLACE FUNCTION jazzhands.perform_audit_company_colllection()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
-AS $function$
-	    DECLARE
-		appuser VARCHAR;
-	    BEGIN
-		BEGIN
-		    appuser := session_user
-			|| '/' || current_setting('jazzhands.appuser');
-		EXCEPTION WHEN OTHERS THEN
-		    appuser := session_user;
-		END;
-
-    		appuser = substr(appuser, 1, 255);
-
-		IF TG_OP = 'DELETE' THEN
-		    INSERT INTO audit.company_colllection
-		    VALUES ( OLD.*, 'DEL', now(), appuser );
-		    RETURN OLD;
-		ELSIF TG_OP = 'UPDATE' THEN
-		    INSERT INTO audit.company_colllection
-		    VALUES ( NEW.*, 'UPD', now(), appuser );
-		    RETURN NEW;
-		ELSIF TG_OP = 'INSERT' THEN
-		    INSERT INTO audit.company_colllection
-		    VALUES ( NEW.*, 'INS', now(), appuser );
-		    RETURN NEW;
-		END IF;
-		RETURN NULL;
-	    END;
-	$function$
-;
-
--- New function
-CREATE OR REPLACE FUNCTION jazzhands.perform_audit_dns_domain_collection()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
-AS $function$
-	    DECLARE
-		appuser VARCHAR;
-	    BEGIN
-		BEGIN
-		    appuser := session_user
-			|| '/' || current_setting('jazzhands.appuser');
-		EXCEPTION WHEN OTHERS THEN
-		    appuser := session_user;
-		END;
-
-    		appuser = substr(appuser, 1, 255);
-
-		IF TG_OP = 'DELETE' THEN
-		    INSERT INTO audit.dns_domain_collection
-		    VALUES ( OLD.*, 'DEL', now(), appuser );
-		    RETURN OLD;
-		ELSIF TG_OP = 'UPDATE' THEN
-		    INSERT INTO audit.dns_domain_collection
-		    VALUES ( NEW.*, 'UPD', now(), appuser );
-		    RETURN NEW;
-		ELSIF TG_OP = 'INSERT' THEN
-		    INSERT INTO audit.dns_domain_collection
-		    VALUES ( NEW.*, 'INS', now(), appuser );
-		    RETURN NEW;
-		END IF;
-		RETURN NULL;
-	    END;
-	$function$
-;
-
--- New function
-CREATE OR REPLACE FUNCTION jazzhands.perform_audit_dns_domain_collection_dns_dom()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
-AS $function$
-	    DECLARE
-		appuser VARCHAR;
-	    BEGIN
-		BEGIN
-		    appuser := session_user
-			|| '/' || current_setting('jazzhands.appuser');
-		EXCEPTION WHEN OTHERS THEN
-		    appuser := session_user;
-		END;
-
-    		appuser = substr(appuser, 1, 255);
-
-		IF TG_OP = 'DELETE' THEN
-		    INSERT INTO audit.dns_domain_collection_dns_dom
-		    VALUES ( OLD.*, 'DEL', now(), appuser );
-		    RETURN OLD;
-		ELSIF TG_OP = 'UPDATE' THEN
-		    INSERT INTO audit.dns_domain_collection_dns_dom
-		    VALUES ( NEW.*, 'UPD', now(), appuser );
-		    RETURN NEW;
-		ELSIF TG_OP = 'INSERT' THEN
-		    INSERT INTO audit.dns_domain_collection_dns_dom
-		    VALUES ( NEW.*, 'INS', now(), appuser );
-		    RETURN NEW;
-		END IF;
-		RETURN NULL;
-	    END;
-	$function$
-;
-
--- New function
-CREATE OR REPLACE FUNCTION jazzhands.perform_audit_dns_domain_collection_hier()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
-AS $function$
-	    DECLARE
-		appuser VARCHAR;
-	    BEGIN
-		BEGIN
-		    appuser := session_user
-			|| '/' || current_setting('jazzhands.appuser');
-		EXCEPTION WHEN OTHERS THEN
-		    appuser := session_user;
-		END;
-
-    		appuser = substr(appuser, 1, 255);
-
-		IF TG_OP = 'DELETE' THEN
-		    INSERT INTO audit.dns_domain_collection_hier
-		    VALUES ( OLD.*, 'DEL', now(), appuser );
-		    RETURN OLD;
-		ELSIF TG_OP = 'UPDATE' THEN
-		    INSERT INTO audit.dns_domain_collection_hier
-		    VALUES ( NEW.*, 'UPD', now(), appuser );
-		    RETURN NEW;
-		ELSIF TG_OP = 'INSERT' THEN
-		    INSERT INTO audit.dns_domain_collection_hier
-		    VALUES ( NEW.*, 'INS', now(), appuser );
-		    RETURN NEW;
-		END IF;
-		RETURN NULL;
-	    END;
-	$function$
-;
-
--- New function
-CREATE OR REPLACE FUNCTION jazzhands.perform_audit_l2_network_coll_l2_network()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
-AS $function$
-	    DECLARE
-		appuser VARCHAR;
-	    BEGIN
-		BEGIN
-		    appuser := session_user
-			|| '/' || current_setting('jazzhands.appuser');
-		EXCEPTION WHEN OTHERS THEN
-		    appuser := session_user;
-		END;
-
-    		appuser = substr(appuser, 1, 255);
-
-		IF TG_OP = 'DELETE' THEN
-		    INSERT INTO audit.l2_network_coll_l2_network
-		    VALUES ( OLD.*, 'DEL', now(), appuser );
-		    RETURN OLD;
-		ELSIF TG_OP = 'UPDATE' THEN
-		    INSERT INTO audit.l2_network_coll_l2_network
-		    VALUES ( NEW.*, 'UPD', now(), appuser );
-		    RETURN NEW;
-		ELSIF TG_OP = 'INSERT' THEN
-		    INSERT INTO audit.l2_network_coll_l2_network
-		    VALUES ( NEW.*, 'INS', now(), appuser );
-		    RETURN NEW;
-		END IF;
-		RETURN NULL;
-	    END;
-	$function$
-;
-
--- New function
-CREATE OR REPLACE FUNCTION jazzhands.perform_audit_l3_network_coll_l3_network()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
-AS $function$
-	    DECLARE
-		appuser VARCHAR;
-	    BEGIN
-		BEGIN
-		    appuser := session_user
-			|| '/' || current_setting('jazzhands.appuser');
-		EXCEPTION WHEN OTHERS THEN
-		    appuser := session_user;
-		END;
-
-    		appuser = substr(appuser, 1, 255);
-
-		IF TG_OP = 'DELETE' THEN
-		    INSERT INTO audit.l3_network_coll_l3_network
-		    VALUES ( OLD.*, 'DEL', now(), appuser );
-		    RETURN OLD;
-		ELSIF TG_OP = 'UPDATE' THEN
-		    INSERT INTO audit.l3_network_coll_l3_network
-		    VALUES ( NEW.*, 'UPD', now(), appuser );
-		    RETURN NEW;
-		ELSIF TG_OP = 'INSERT' THEN
-		    INSERT INTO audit.l3_network_coll_l3_network
-		    VALUES ( NEW.*, 'INS', now(), appuser );
-		    RETURN NEW;
-		END IF;
-		RETURN NULL;
-	    END;
-	$function$
-;
-
--- New function
-CREATE OR REPLACE FUNCTION jazzhands.perform_audit_layer2_network_collection()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
-AS $function$
-	    DECLARE
-		appuser VARCHAR;
-	    BEGIN
-		BEGIN
-		    appuser := session_user
-			|| '/' || current_setting('jazzhands.appuser');
-		EXCEPTION WHEN OTHERS THEN
-		    appuser := session_user;
-		END;
-
-    		appuser = substr(appuser, 1, 255);
-
-		IF TG_OP = 'DELETE' THEN
-		    INSERT INTO audit.layer2_network_collection
-		    VALUES ( OLD.*, 'DEL', now(), appuser );
-		    RETURN OLD;
-		ELSIF TG_OP = 'UPDATE' THEN
-		    INSERT INTO audit.layer2_network_collection
-		    VALUES ( NEW.*, 'UPD', now(), appuser );
-		    RETURN NEW;
-		ELSIF TG_OP = 'INSERT' THEN
-		    INSERT INTO audit.layer2_network_collection
-		    VALUES ( NEW.*, 'INS', now(), appuser );
-		    RETURN NEW;
-		END IF;
-		RETURN NULL;
-	    END;
-	$function$
-;
-
--- New function
-CREATE OR REPLACE FUNCTION jazzhands.perform_audit_layer2_network_collection_hier()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
-AS $function$
-	    DECLARE
-		appuser VARCHAR;
-	    BEGIN
-		BEGIN
-		    appuser := session_user
-			|| '/' || current_setting('jazzhands.appuser');
-		EXCEPTION WHEN OTHERS THEN
-		    appuser := session_user;
-		END;
-
-    		appuser = substr(appuser, 1, 255);
-
-		IF TG_OP = 'DELETE' THEN
-		    INSERT INTO audit.layer2_network_collection_hier
-		    VALUES ( OLD.*, 'DEL', now(), appuser );
-		    RETURN OLD;
-		ELSIF TG_OP = 'UPDATE' THEN
-		    INSERT INTO audit.layer2_network_collection_hier
-		    VALUES ( NEW.*, 'UPD', now(), appuser );
-		    RETURN NEW;
-		ELSIF TG_OP = 'INSERT' THEN
-		    INSERT INTO audit.layer2_network_collection_hier
-		    VALUES ( NEW.*, 'INS', now(), appuser );
-		    RETURN NEW;
-		END IF;
-		RETURN NULL;
-	    END;
-	$function$
-;
-
--- New function
-CREATE OR REPLACE FUNCTION jazzhands.perform_audit_layer3_network_collection()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
-AS $function$
-	    DECLARE
-		appuser VARCHAR;
-	    BEGIN
-		BEGIN
-		    appuser := session_user
-			|| '/' || current_setting('jazzhands.appuser');
-		EXCEPTION WHEN OTHERS THEN
-		    appuser := session_user;
-		END;
-
-    		appuser = substr(appuser, 1, 255);
-
-		IF TG_OP = 'DELETE' THEN
-		    INSERT INTO audit.layer3_network_collection
-		    VALUES ( OLD.*, 'DEL', now(), appuser );
-		    RETURN OLD;
-		ELSIF TG_OP = 'UPDATE' THEN
-		    INSERT INTO audit.layer3_network_collection
-		    VALUES ( NEW.*, 'UPD', now(), appuser );
-		    RETURN NEW;
-		ELSIF TG_OP = 'INSERT' THEN
-		    INSERT INTO audit.layer3_network_collection
-		    VALUES ( NEW.*, 'INS', now(), appuser );
-		    RETURN NEW;
-		END IF;
-		RETURN NULL;
-	    END;
-	$function$
-;
-
--- New function
-CREATE OR REPLACE FUNCTION jazzhands.perform_audit_layer3_network_collection_hier()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
-AS $function$
-	    DECLARE
-		appuser VARCHAR;
-	    BEGIN
-		BEGIN
-		    appuser := session_user
-			|| '/' || current_setting('jazzhands.appuser');
-		EXCEPTION WHEN OTHERS THEN
-		    appuser := session_user;
-		END;
-
-    		appuser = substr(appuser, 1, 255);
-
-		IF TG_OP = 'DELETE' THEN
-		    INSERT INTO audit.layer3_network_collection_hier
-		    VALUES ( OLD.*, 'DEL', now(), appuser );
-		    RETURN OLD;
-		ELSIF TG_OP = 'UPDATE' THEN
-		    INSERT INTO audit.layer3_network_collection_hier
-		    VALUES ( NEW.*, 'UPD', now(), appuser );
-		    RETURN NEW;
-		ELSIF TG_OP = 'INSERT' THEN
-		    INSERT INTO audit.layer3_network_collection_hier
-		    VALUES ( NEW.*, 'INS', now(), appuser );
-		    RETURN NEW;
-		END IF;
-		RETURN NULL;
-	    END;
-	$function$
-;
-
--- New function
-CREATE OR REPLACE FUNCTION jazzhands.perform_audit_person_company_attr()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
-AS $function$
-	    DECLARE
-		appuser VARCHAR;
-	    BEGIN
-		BEGIN
-		    appuser := session_user
-			|| '/' || current_setting('jazzhands.appuser');
-		EXCEPTION WHEN OTHERS THEN
-		    appuser := session_user;
-		END;
-
-    		appuser = substr(appuser, 1, 255);
-
-		IF TG_OP = 'DELETE' THEN
-		    INSERT INTO audit.person_company_attr
-		    VALUES ( OLD.*, 'DEL', now(), appuser );
-		    RETURN OLD;
-		ELSIF TG_OP = 'UPDATE' THEN
-		    INSERT INTO audit.person_company_attr
-		    VALUES ( NEW.*, 'UPD', now(), appuser );
-		    RETURN NEW;
-		ELSIF TG_OP = 'INSERT' THEN
-		    INSERT INTO audit.person_company_attr
-		    VALUES ( NEW.*, 'INS', now(), appuser );
-		    RETURN NEW;
-		END IF;
-		RETURN NULL;
-	    END;
-	$function$
-;
-
--- New function
-CREATE OR REPLACE FUNCTION jazzhands.perform_audit_val_appaal_group_name()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
-AS $function$
-	    DECLARE
-		appuser VARCHAR;
-	    BEGIN
-		BEGIN
-		    appuser := session_user
-			|| '/' || current_setting('jazzhands.appuser');
-		EXCEPTION WHEN OTHERS THEN
-		    appuser := session_user;
-		END;
-
-    		appuser = substr(appuser, 1, 255);
-
-		IF TG_OP = 'DELETE' THEN
-		    INSERT INTO audit.val_appaal_group_name
-		    VALUES ( OLD.*, 'DEL', now(), appuser );
-		    RETURN OLD;
-		ELSIF TG_OP = 'UPDATE' THEN
-		    INSERT INTO audit.val_appaal_group_name
-		    VALUES ( NEW.*, 'UPD', now(), appuser );
-		    RETURN NEW;
-		ELSIF TG_OP = 'INSERT' THEN
-		    INSERT INTO audit.val_appaal_group_name
-		    VALUES ( NEW.*, 'INS', now(), appuser );
-		    RETURN NEW;
-		END IF;
-		RETURN NULL;
-	    END;
-	$function$
-;
-
--- New function
-CREATE OR REPLACE FUNCTION jazzhands.perform_audit_val_company_collection_type()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
-AS $function$
-	    DECLARE
-		appuser VARCHAR;
-	    BEGIN
-		BEGIN
-		    appuser := session_user
-			|| '/' || current_setting('jazzhands.appuser');
-		EXCEPTION WHEN OTHERS THEN
-		    appuser := session_user;
-		END;
-
-    		appuser = substr(appuser, 1, 255);
-
-		IF TG_OP = 'DELETE' THEN
-		    INSERT INTO audit.val_company_collection_type
-		    VALUES ( OLD.*, 'DEL', now(), appuser );
-		    RETURN OLD;
-		ELSIF TG_OP = 'UPDATE' THEN
-		    INSERT INTO audit.val_company_collection_type
-		    VALUES ( NEW.*, 'UPD', now(), appuser );
-		    RETURN NEW;
-		ELSIF TG_OP = 'INSERT' THEN
-		    INSERT INTO audit.val_company_collection_type
-		    VALUES ( NEW.*, 'INS', now(), appuser );
-		    RETURN NEW;
-		END IF;
-		RETURN NULL;
-	    END;
-	$function$
-;
-
--- New function
-CREATE OR REPLACE FUNCTION jazzhands.perform_audit_val_dns_domain_collection_type()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
-AS $function$
-	    DECLARE
-		appuser VARCHAR;
-	    BEGIN
-		BEGIN
-		    appuser := session_user
-			|| '/' || current_setting('jazzhands.appuser');
-		EXCEPTION WHEN OTHERS THEN
-		    appuser := session_user;
-		END;
-
-    		appuser = substr(appuser, 1, 255);
-
-		IF TG_OP = 'DELETE' THEN
-		    INSERT INTO audit.val_dns_domain_collection_type
-		    VALUES ( OLD.*, 'DEL', now(), appuser );
-		    RETURN OLD;
-		ELSIF TG_OP = 'UPDATE' THEN
-		    INSERT INTO audit.val_dns_domain_collection_type
-		    VALUES ( NEW.*, 'UPD', now(), appuser );
-		    RETURN NEW;
-		ELSIF TG_OP = 'INSERT' THEN
-		    INSERT INTO audit.val_dns_domain_collection_type
-		    VALUES ( NEW.*, 'INS', now(), appuser );
-		    RETURN NEW;
-		END IF;
-		RETURN NULL;
-	    END;
-	$function$
-;
-
--- New function
-CREATE OR REPLACE FUNCTION jazzhands.perform_audit_val_layer2_network_coll_type()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
-AS $function$
-	    DECLARE
-		appuser VARCHAR;
-	    BEGIN
-		BEGIN
-		    appuser := session_user
-			|| '/' || current_setting('jazzhands.appuser');
-		EXCEPTION WHEN OTHERS THEN
-		    appuser := session_user;
-		END;
-
-    		appuser = substr(appuser, 1, 255);
-
-		IF TG_OP = 'DELETE' THEN
-		    INSERT INTO audit.val_layer2_network_coll_type
-		    VALUES ( OLD.*, 'DEL', now(), appuser );
-		    RETURN OLD;
-		ELSIF TG_OP = 'UPDATE' THEN
-		    INSERT INTO audit.val_layer2_network_coll_type
-		    VALUES ( NEW.*, 'UPD', now(), appuser );
-		    RETURN NEW;
-		ELSIF TG_OP = 'INSERT' THEN
-		    INSERT INTO audit.val_layer2_network_coll_type
-		    VALUES ( NEW.*, 'INS', now(), appuser );
-		    RETURN NEW;
-		END IF;
-		RETURN NULL;
-	    END;
-	$function$
-;
-
--- New function
-CREATE OR REPLACE FUNCTION jazzhands.perform_audit_val_layer3_network_coll_type()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
-AS $function$
-	    DECLARE
-		appuser VARCHAR;
-	    BEGIN
-		BEGIN
-		    appuser := session_user
-			|| '/' || current_setting('jazzhands.appuser');
-		EXCEPTION WHEN OTHERS THEN
-		    appuser := session_user;
-		END;
-
-    		appuser = substr(appuser, 1, 255);
-
-		IF TG_OP = 'DELETE' THEN
-		    INSERT INTO audit.val_layer3_network_coll_type
-		    VALUES ( OLD.*, 'DEL', now(), appuser );
-		    RETURN OLD;
-		ELSIF TG_OP = 'UPDATE' THEN
-		    INSERT INTO audit.val_layer3_network_coll_type
-		    VALUES ( NEW.*, 'UPD', now(), appuser );
-		    RETURN NEW;
-		ELSIF TG_OP = 'INSERT' THEN
-		    INSERT INTO audit.val_layer3_network_coll_type
-		    VALUES ( NEW.*, 'INS', now(), appuser );
-		    RETURN NEW;
-		END IF;
-		RETURN NULL;
-	    END;
-	$function$
-;
-
--- New function
-CREATE OR REPLACE FUNCTION jazzhands.perform_audit_val_logical_volume_type()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
-AS $function$
-	    DECLARE
-		appuser VARCHAR;
-	    BEGIN
-		BEGIN
-		    appuser := session_user
-			|| '/' || current_setting('jazzhands.appuser');
-		EXCEPTION WHEN OTHERS THEN
-		    appuser := session_user;
-		END;
-
-    		appuser = substr(appuser, 1, 255);
-
-		IF TG_OP = 'DELETE' THEN
-		    INSERT INTO audit.val_logical_volume_type
-		    VALUES ( OLD.*, 'DEL', now(), appuser );
-		    RETURN OLD;
-		ELSIF TG_OP = 'UPDATE' THEN
-		    INSERT INTO audit.val_logical_volume_type
-		    VALUES ( NEW.*, 'UPD', now(), appuser );
-		    RETURN NEW;
-		ELSIF TG_OP = 'INSERT' THEN
-		    INSERT INTO audit.val_logical_volume_type
-		    VALUES ( NEW.*, 'INS', now(), appuser );
-		    RETURN NEW;
-		END IF;
-		RETURN NULL;
-	    END;
-	$function$
-;
-
--- New function
-CREATE OR REPLACE FUNCTION jazzhands.perform_audit_val_person_company_attr_dtype()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
-AS $function$
-	    DECLARE
-		appuser VARCHAR;
-	    BEGIN
-		BEGIN
-		    appuser := session_user
-			|| '/' || current_setting('jazzhands.appuser');
-		EXCEPTION WHEN OTHERS THEN
-		    appuser := session_user;
-		END;
-
-    		appuser = substr(appuser, 1, 255);
-
-		IF TG_OP = 'DELETE' THEN
-		    INSERT INTO audit.val_person_company_attr_dtype
-		    VALUES ( OLD.*, 'DEL', now(), appuser );
-		    RETURN OLD;
-		ELSIF TG_OP = 'UPDATE' THEN
-		    INSERT INTO audit.val_person_company_attr_dtype
-		    VALUES ( NEW.*, 'UPD', now(), appuser );
-		    RETURN NEW;
-		ELSIF TG_OP = 'INSERT' THEN
-		    INSERT INTO audit.val_person_company_attr_dtype
-		    VALUES ( NEW.*, 'INS', now(), appuser );
-		    RETURN NEW;
-		END IF;
-		RETURN NULL;
-	    END;
-	$function$
-;
-
--- New function
-CREATE OR REPLACE FUNCTION jazzhands.perform_audit_val_person_company_attr_name()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
-AS $function$
-	    DECLARE
-		appuser VARCHAR;
-	    BEGIN
-		BEGIN
-		    appuser := session_user
-			|| '/' || current_setting('jazzhands.appuser');
-		EXCEPTION WHEN OTHERS THEN
-		    appuser := session_user;
-		END;
-
-    		appuser = substr(appuser, 1, 255);
-
-		IF TG_OP = 'DELETE' THEN
-		    INSERT INTO audit.val_person_company_attr_name
-		    VALUES ( OLD.*, 'DEL', now(), appuser );
-		    RETURN OLD;
-		ELSIF TG_OP = 'UPDATE' THEN
-		    INSERT INTO audit.val_person_company_attr_name
-		    VALUES ( NEW.*, 'UPD', now(), appuser );
-		    RETURN NEW;
-		ELSIF TG_OP = 'INSERT' THEN
-		    INSERT INTO audit.val_person_company_attr_name
-		    VALUES ( NEW.*, 'INS', now(), appuser );
-		    RETURN NEW;
-		END IF;
-		RETURN NULL;
-	    END;
-	$function$
-;
-
--- New function
-CREATE OR REPLACE FUNCTION jazzhands.perform_audit_val_person_company_attr_value()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
-AS $function$
-	    DECLARE
-		appuser VARCHAR;
-	    BEGIN
-		BEGIN
-		    appuser := session_user
-			|| '/' || current_setting('jazzhands.appuser');
-		EXCEPTION WHEN OTHERS THEN
-		    appuser := session_user;
-		END;
-
-    		appuser = substr(appuser, 1, 255);
-
-		IF TG_OP = 'DELETE' THEN
-		    INSERT INTO audit.val_person_company_attr_value
-		    VALUES ( OLD.*, 'DEL', now(), appuser );
-		    RETURN OLD;
-		ELSIF TG_OP = 'UPDATE' THEN
-		    INSERT INTO audit.val_person_company_attr_value
-		    VALUES ( NEW.*, 'UPD', now(), appuser );
-		    RETURN NEW;
-		ELSIF TG_OP = 'INSERT' THEN
-		    INSERT INTO audit.val_person_company_attr_value
-		    VALUES ( NEW.*, 'INS', now(), appuser );
-		    RETURN NEW;
-		END IF;
-		RETURN NULL;
-	    END;
-	$function$
-;
-
--- Changed function
-SELECT schema_support.save_grants_for_replay('dns_utils', 'add_dns_domain');
--- Dropped in case type changes.
-DROP FUNCTION IF EXISTS dns_utils.add_dns_domain ( soa_name character varying, dns_domain_type character varying, add_nameservers boolean );
-CREATE OR REPLACE FUNCTION dns_utils.add_dns_domain(soa_name character varying, dns_domain_type character varying DEFAULT NULL::character varying, add_nameservers boolean DEFAULT true)
- RETURNS integer
- LANGUAGE plpgsql
- SET search_path TO jazzhands
 AS $function$
 DECLARE
-	elements		text[];
-	parent_zone		text;
-	parent_id		dns_domain.dns_domain_id%type;
-	domain_id		dns_domain.dns_domain_id%type;
-	elem			text;
-	sofar			text;
-	rvs_nblk_id		netblock.netblock_id%type;
+	act	val_layer2_network_coll_type%ROWTYPE;
 BEGIN
-	IF soa_name IS NULL THEN
-		RETURN NULL;
+	SELECT *
+	INTO	act
+	FROM	val_layer2_network_coll_type
+	WHERE	layer2_network_collection_type =
+		(select layer2_network_collection_type from layer2_network_collection
+			where layer2_network_collection_id = NEW.layer2_network_collection_id);
+
+	IF act.can_have_hierarchy = 'N' THEN
+		RAISE EXCEPTION 'Device Collections of type % may not be hierarcical',
+			act.layer2_network_collection_type
+			USING ERRCODE= 'unique_violation';
 	END IF;
-	elements := regexp_split_to_array(soa_name, '\.');
-	sofar := '';
-	FOREACH elem in ARRAY elements
-	LOOP
-		IF octet_length(sofar) > 0 THEN
-			sofar := sofar || '.';
-		END IF;
-		sofar := sofar || elem;
-		parent_zone := regexp_replace(soa_name, '^'||sofar||'.', '');
-		EXECUTE 'SELECT dns_domain_id FROM dns_domain 
-			WHERE soa_name = $1' INTO parent_id USING soa_name;
-		IF parent_id IS NOT NULL THEN
-			EXIT;
-		END IF;
-	END LOOP;
-
-	IF dns_domain_type IS NULL THEN
-		IF soa_name ~ '^.*(in-addr|ip6)\.arpa$' THEN
-			dns_domain_type := 'reverse';
-		END IF;
-	END IF;
-
-	IF dns_domain_type IS NULL THEN
-		RAISE EXCEPTION 'Unable to guess dns_domain_type for %',
-			soa_name USING ERRCODE = 'not_null_violation'; 
-	END IF;
-
-	EXECUTE '
-		INSERT INTO dns_domain (
-			soa_name,
-			soa_class,
-			soa_mname,
-			soa_rname,
-			parent_dns_domain_id,
-			should_generate,
-			dns_domain_type
-		) VALUES (
-			$1,
-			$2,
-			$3,
-			$4,
-			$5,
-			$6,
-			$7
-		) RETURNING dns_domain_id' INTO domain_id 
-		USING soa_name, 
-			'IN',
-			(select property_value from property where property_type = 'Defaults'
-				and property_name = '_dnsmname'),
-			(select property_value from property where property_type = 'Defaults'
-				and property_name = '_dnsrname'),
-			parent_id,
-			'Y',
-			dns_domain_type
-	;
-
-	IF dns_domain_type = 'reverse' THEN
-		rvs_nblk_id := dns_utils.get_or_create_rvs_netblock_link(
-			soa_name, domain_id);
-	END IF;
-
-	IF add_nameservers THEN
-		PERFORM dns_utils.add_ns_records(domain_id);
-	END IF;
-
-	RETURN domain_id;
+	RETURN NEW;
 END;
 $function$
 ;
 
--- Changed function
-SELECT schema_support.save_grants_for_replay('dns_utils', 'add_domains_from_netblock');
--- Dropped in case type changes.
-DROP FUNCTION IF EXISTS dns_utils.add_domains_from_netblock ( netblock_id integer );
-CREATE OR REPLACE FUNCTION dns_utils.add_domains_from_netblock(netblock_id integer)
- RETURNS TABLE(dns_domain_id integer, soa_name text)
+-- New function
+CREATE OR REPLACE FUNCTION jazzhands.layer2_network_collection_member_enforce()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+DECLARE
+	act	val_layer2_network_coll_type%ROWTYPE;
+	tally integer;
+BEGIN
+	SELECT *
+	INTO	act
+	FROM	val_layer2_network_coll_type
+	WHERE	layer2_network_collection_type =
+		(select layer2_network_collection_type from layer2_network_collection
+			where layer2_network_collection_id = NEW.layer2_network_collection_id);
+
+	IF act.MAX_NUM_MEMBERS IS NOT NULL THEN
+		select count(*)
+		  into tally
+		  from l2_network_coll_l2_network
+		  where layer2_network_collection_id = NEW.layer2_network_collection_id;
+		IF tally > act.MAX_NUM_MEMBERS THEN
+			RAISE EXCEPTION 'Too many members'
+				USING ERRCODE = 'unique_violation';
+		END IF;
+	END IF;
+
+	IF act.MAX_NUM_COLLECTIONS IS NOT NULL THEN
+		select count(*)
+		  into tally
+		  from l2_network_coll_l2_network
+		  		inner join layer2_network_collection using (layer2_network_collection_id)
+		  where layer2_network_id = NEW.layer2_network_id
+		  and	layer2_network_collection_type = act.layer2_network_collection_type;
+		IF tally > act.MAX_NUM_COLLECTIONS THEN
+			RAISE EXCEPTION 'Device may not be a member of more than % collections of type %',
+				act.MAX_NUM_COLLECTIONS, act.layer2_network_collection_type
+				USING ERRCODE = 'unique_violation';
+		END IF;
+	END IF;
+
+	RETURN NEW;
+END;
+$function$
+;
+
+-- New function
+CREATE OR REPLACE FUNCTION jazzhands.layer3_network_collection_hier_enforce()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+DECLARE
+	act	val_layer3_network_coll_type%ROWTYPE;
+BEGIN
+	SELECT *
+	INTO	act
+	FROM	val_layer3_network_coll_type
+	WHERE	layer3_network_collection_type =
+		(select layer3_network_collection_type from layer3_network_collection
+			where layer3_network_collection_id = NEW.layer3_network_collection_id);
+
+	IF act.can_have_hierarchy = 'N' THEN
+		RAISE EXCEPTION 'Device Collections of type % may not be hierarcical',
+			act.layer3_network_collection_type
+			USING ERRCODE= 'unique_violation';
+	END IF;
+	RETURN NEW;
+END;
+$function$
+;
+
+-- New function
+CREATE OR REPLACE FUNCTION jazzhands.layer3_network_collection_member_enforce()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+DECLARE
+	act	val_layer3_network_coll_type%ROWTYPE;
+	tally integer;
+BEGIN
+	SELECT *
+	INTO	act
+	FROM	val_layer3_network_coll_type
+	WHERE	layer3_network_collection_type =
+		(select layer3_network_collection_type from layer3_network_collection
+			where layer3_network_collection_id = NEW.layer3_network_collection_id);
+
+	IF act.MAX_NUM_MEMBERS IS NOT NULL THEN
+		select count(*)
+		  into tally
+		  from l3_network_coll_l3_network
+		  where layer3_network_collection_id = NEW.layer3_network_collection_id;
+		IF tally > act.MAX_NUM_MEMBERS THEN
+			RAISE EXCEPTION 'Too many members'
+				USING ERRCODE = 'unique_violation';
+		END IF;
+	END IF;
+
+	IF act.MAX_NUM_COLLECTIONS IS NOT NULL THEN
+		select count(*)
+		  into tally
+		  from l3_network_coll_l3_network
+		  		inner join layer3_network_collection using (layer3_network_collection_id)
+		  where layer3_network_id = NEW.layer3_network_id
+		  and	layer3_network_collection_type = act.layer3_network_collection_type;
+		IF tally > act.MAX_NUM_COLLECTIONS THEN
+			RAISE EXCEPTION 'Device may not be a member of more than % collections of type %',
+				act.MAX_NUM_COLLECTIONS, act.layer3_network_collection_type
+				USING ERRCODE = 'unique_violation';
+		END IF;
+	END IF;
+
+	RETURN NEW;
+END;
+$function$
+;
+
+-- New function
+CREATE OR REPLACE FUNCTION jazzhands.legacy_approval_instance_step_notify_account()
+ RETURNS trigger
  LANGUAGE plpgsql
  SECURITY DEFINER
  SET search_path TO jazzhands
 AS $function$
-DECLARE
-	block		inet;
-	domain		text;
-	domain_id	dns_domain.dns_domain_id%TYPE;
-	nid			ALIAS FOR netblock_id;
 BEGIN
-	SELECT ip_address INTO block FROM netblock n WHERE n.netblock_id = nid; 
-
-	RAISE DEBUG 'Createing inverse DNS zones for %s', block;
-
-	RETURN QUERY SELECT
-		dns_utils.add_dns_domain(
-			soa_name := x.soa_name,
-			dns_domain_type := 'reverse'
-			),
-		x.soa_name::text
-	FROM
-		dns_utils.get_all_domain_rows_for_cidr(block) x LEFT JOIN
-		dns_domain d USING (soa_name)
-	WHERE
-		d.dns_domain_id IS NULL;
-
+	IF NEW.account_id IS NULL THEN
+		SELECT	approver_account_id
+		INTO	NEW.account_id
+		FROM	legacy_approval_instance_step
+		WHERE	legacy_approval_instance_step_id = NEW.legacy_approval_instance_step_id;
+	END IF;
+	RETURN NEW;
 END;
 $function$
 ;
 
--- Changed function
-SELECT schema_support.save_grants_for_replay('dns_utils', 'get_all_domains_for_cidr');
--- Dropped in case type changes.
-DROP FUNCTION IF EXISTS dns_utils.get_all_domains_for_cidr ( block inet );
-CREATE OR REPLACE FUNCTION dns_utils.get_all_domains_for_cidr(block inet)
- RETURNS text[]
- LANGUAGE plpgsql
- SET search_path TO jazzhands
-AS $function$
-DECLARE
-	cur			inet;
-	rv			text[];
-BEGIN
-	IF family(block) = 4 THEN
-		IF (masklen(block) >= 24) THEN
-			rv = rv || dns_utils.get_domain_from_cidr(set_masklen(block, 24));
-		ELSE
-			FOR cur IN SELECT set_masklen((block + o), 24) 
-						FROM generate_series(0, (256 * (2 ^ (24 - 
-							masklen(block))) - 1)::integer, 256) as x(o)
-			LOOP
-				rv = rv || dns_utils.get_domain_from_cidr(cur);
-			END LOOP;
-		END IF;
-	ELSIF family(block) = 6 THEN
-			-- note sure if we should do this or not, but we are..
-			cur := set_masklen(block, 64);
-			rv = rv || dns_utils.get_domain_from_cidr(cur);
-	ELSE
-		RAISE EXCEPTION 'Not IPv% aware.', family(block);
-	END IF;
-    return rv;
-END;
-$function$
-;
-
--- New function
-CREATE OR REPLACE FUNCTION dns_utils.get_all_domain_rows_for_cidr(block inet)
- RETURNS TABLE(soa_name text)
- LANGUAGE plpgsql
- SET search_path TO jazzhands
-AS $function$
-DECLARE
-	cur			inet;
-BEGIN
-	IF family(block) = 4 THEN
-		IF (masklen(block) >= 24) THEN
-			soa_name := dns_utils.get_domain_from_cidr(set_masklen(block, 24));
-			RETURN NEXT;
-		ELSE
-			FOR cur IN 
-				SELECT 
-					set_masklen((block + o), 24) 
-				FROM
-					generate_series(
-						0, 
-						(256 * (2 ^ (24 - masklen(block))) - 1)::integer,
-						256)
-					AS x(o)
-			LOOP
-				soa_name := dns_utils.get_domain_from_cidr(cur);
-				RETURN NEXT;
-			END LOOP;
-		END IF;
-	ELSIF family(block) = 6 THEN
-			-- note sure if we should do this or not, but we are..
-			cur := set_masklen(block, 64);
-			soa_name := dns_utils.get_domain_from_cidr(cur);
-			RETURN NEXT;
-	ELSE
-		RAISE EXCEPTION 'Not IPv% aware.', family(block);
-	END IF;
-    return;
-END;
-$function$
-;
-
--- Changed function
-SELECT schema_support.save_grants_for_replay('person_manip', 'pick_login');
--- Dropped in case type changes.
-DROP FUNCTION IF EXISTS person_manip.pick_login ( in_account_realm_id integer, in_first_name character varying, in_middle_name character varying, in_last_name character varying );
-CREATE OR REPLACE FUNCTION person_manip.pick_login(in_account_realm_id integer, in_first_name character varying DEFAULT NULL::character varying, in_middle_name character varying DEFAULT NULL::character varying, in_last_name character varying DEFAULT NULL::character varying)
- RETURNS character varying
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO jazzhands
-AS $function$
-DECLARE
-	_acctrealmid	integer;
-	_login			varchar;
-	_trylogin		varchar;
-	_trunclen		integer;
-    id				account.account_id%TYPE;
-	fn		text;
-	ln		text;
-BEGIN
-	SELECT	property_value::int
-	INTO	_trunclen
-	FROM	property
-	WHERE	property_type = 'Defaults'
-	AND	 	property_name = '_max_default_login_length';
-
-	IF NOT FOUND THEN
-		_trunclen := 15;
-	END IF;
-
-	-- remove special characters
-	fn = regexp_replace(lower(in_first_name), '[^a-z]', '', 'g');
-	ln = regexp_replace(lower(in_last_name), '[^a-z]', '', 'g');
-	_acctrealmid := in_account_realm_id;
-	-- Try first initial, last name
-	_login = lpad(lower(fn), 1) || lower(ln);
-
-	IF _trunclen IS NOT NULL AND _trunclen > 0 THEN
-		_login := left(_login, _trunclen);
-	END IF;
-
-	SELECT account_id into id FROM account where account_realm_id = _acctrealmid
-		AND login = _login;
-
-	IF id IS NULL THEN
-		RETURN _login;
-	END IF;
-
-	-- Try first initial, middle initial, last name
-	if in_middle_name IS NOT NULL THEN
-		_login = lpad(lower(fn), 1) || lpad(lower(in_middle_name), 1) || lower(ln);
-
-		IF _trunclen IS NOT NULL AND _trunclen > 0 THEN
-			_login := left(_login, _trunclen);
-		END IF;
-		SELECT account_id into id FROM account where account_realm_id = _acctrealmid
-			AND login = _login;
-		IF id IS NULL THEN
-			RETURN _login;
-		END IF;
-	END IF;
-
-	-- if length of first+last is <= 10 then try that.
-	_login = lower(fn) || lower(ln);
-	IF _trunclen IS NOT NULL AND _trunclen > 0 THEN
-		_login := left(_login, _trunclen);
-	END IF;
-	IF char_length(_login) < 10 THEN
-		SELECT account_id into id FROM account where account_realm_id = _acctrealmid
-			AND login = _login;
-		IF id IS NULL THEN
-			RETURN _login;
-		END IF;
-	END IF;
-
-	-- ok, keep trying to add a number to first initial, last
-	_login = lpad(lower(fn), 1) || lower(ln);
-	FOR i in 1..500 LOOP
-		IF _trunclen IS NOT NULL AND _trunclen > 0 THEN
-			_login := left(_login, _trunclen - 2);
-		END IF;
-		_trylogin := _login || i;
-		SELECT account_id into id FROM account where account_realm_id = _acctrealmid
-			AND login = _trylogin;
-		IF id IS NULL THEN
-			RETURN _trylogin;
-		END IF;
-	END LOOP;
-
-	-- wtf. this should never happen
-	RETURN NULL;
-END;
-$function$
-;
-
--- Changed function
-SELECT schema_support.save_grants_for_replay('auto_ac_manip', 'destroy_report_account_collections');
--- Dropped in case type changes.
-DROP FUNCTION IF EXISTS auto_ac_manip.destroy_report_account_collections ( account_id integer, account_realm_id integer, numrpt integer, numrlup integer );
-CREATE OR REPLACE FUNCTION auto_ac_manip.destroy_report_account_collections(account_id integer, account_realm_id integer DEFAULT NULL::integer, numrpt integer DEFAULT NULL::integer, numrlup integer DEFAULT NULL::integer)
- RETURNS void
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO jazzhands
-AS $function$
-DECLARE
-	_account	account%ROWTYPE;
-	_directac	account_collection.account_collection_id%TYPE;
-	_rollupac	account_collection.account_collection_id%TYPE;
-BEGIN
-	IF account_realm_id IS NULL THEN
-		EXECUTE '
-			SELECT account_realm_id
-			FROM	account
-			WHERE	account_id = $1
-		' INTO account_realm_id USING account_id;
-	END IF;
-
-	IF numrpt IS NULL THEN
-		numrpt := auto_ac_manip.get_num_direct_reports(account_id, account_realm_id);
-	END IF;
-	IF numrpt = 0 THEN
-		PERFORM auto_ac_manip.purge_report_account_collection(
-			account_id := account_id, 
-			account_realm_id := account_realm_id,
-			ac_type := 'AutomatedDirectsAC');
-		RETURN;
-	END IF;
-
-	IF numrlup IS NULL THEN
-		numrlup := auto_ac_manip.get_num_reports_with_reports(account_id, account_realm_id);
-	END IF;
-	IF numrlup = 0 THEN 
-		PERFORM auto_ac_manip.purge_report_account_collection(
-			account_id := account_id, 
-			account_realm_id := account_realm_id,
-			ac_type := 'AutomatedRollupsAC');
-		RETURN;
-	END IF;
-
-END;
-$function$
-;
-
--- Changed function
-SELECT schema_support.save_grants_for_replay('netblock_manip', 'allocate_netblock');
--- Dropped in case type changes.
-DROP FUNCTION IF EXISTS netblock_manip.allocate_netblock ( parent_netblock_list integer[], netmask_bits integer, address_type text, can_subnet boolean, allocation_method text, rnd_masklen_threshold integer, rnd_max_count integer, ip_address inet, description character varying, netblock_status character varying );
-CREATE OR REPLACE FUNCTION netblock_manip.allocate_netblock(parent_netblock_list integer[], netmask_bits integer DEFAULT NULL::integer, address_type text DEFAULT 'netblock'::text, can_subnet boolean DEFAULT true, allocation_method text DEFAULT NULL::text, rnd_masklen_threshold integer DEFAULT 110, rnd_max_count integer DEFAULT 1024, ip_address inet DEFAULT NULL::inet, description character varying DEFAULT NULL::character varying, netblock_status character varying DEFAULT 'Allocated'::character varying)
- RETURNS netblock
- LANGUAGE plpgsql
- SET search_path TO jazzhands
-AS $function$
-DECLARE
-	parent_rec		RECORD;
-	netblock_rec	RECORD;
-	inet_rec		RECORD;
-	loopback_bits	integer;
-	inet_family		integer;
-	ip_addr			ALIAS FOR ip_address;
-BEGIN
-	IF parent_netblock_list IS NULL THEN
-		RAISE 'parent_netblock_list must be specified'
-		USING ERRCODE = 'null_value_not_allowed';
-	END IF;
-
-	IF address_type NOT IN ('netblock', 'single', 'loopback') THEN
-		RAISE 'address_type must be one of netblock, single, or loopback'
-		USING ERRCODE = 'invalid_parameter_value';
-	END IF;
-
-	IF netmask_bits IS NULL AND address_type = 'netblock' THEN
-		RAISE EXCEPTION
-			'You must specify a netmask when address_type is netblock'
-			USING ERRCODE = 'invalid_parameter_value';
-	END IF;
-
-	IF ip_address IS NOT NULL THEN
-		SELECT 
-			array_agg(netblock_id)
-		INTO
-			parent_netblock_list
-		FROM
-			netblock n
-		WHERE
-			ip_addr <<= n.ip_address AND
-			netblock_id = ANY(parent_netblock_list);
-
-		IF parent_netblock_list IS NULL THEN
-			RETURN NULL;
-		END IF;
-	END IF;
-
-	-- Lock the parent row, which should keep parallel processes from
-	-- trying to obtain the same address
-
-	FOR parent_rec IN SELECT * FROM jazzhands.netblock WHERE netblock_id = 
-			ANY(allocate_netblock.parent_netblock_list) ORDER BY netblock_id
-			FOR UPDATE LOOP
-
-		IF parent_rec.is_single_address = 'Y' THEN
-			RAISE EXCEPTION 'parent_netblock_id refers to a single_address netblock'
-				USING ERRCODE = 'invalid_parameter_value';
-		END IF;
-
-		IF inet_family IS NULL THEN
-			inet_family := family(parent_rec.ip_address);
-		ELSIF inet_family != family(parent_rec.ip_address) 
-				AND ip_address IS NULL THEN
-			RAISE EXCEPTION 'Allocation may not mix IPv4 and IPv6 addresses'
-			USING ERRCODE = 'JH10F';
-		END IF;
-
-		IF address_type = 'loopback' THEN
-			loopback_bits := 
-				CASE WHEN 
-					family(parent_rec.ip_address) = 4 THEN 32 ELSE 128 END;
-
-			IF parent_rec.can_subnet = 'N' THEN
-				RAISE EXCEPTION 'parent subnet must have can_subnet set to Y'
-					USING ERRCODE = 'JH10B';
-			END IF;
-		ELSIF address_type = 'single' THEN
-			IF parent_rec.can_subnet = 'Y' THEN
-				RAISE EXCEPTION
-					'parent subnet for single address must have can_subnet set to N'
-					USING ERRCODE = 'JH10B';
-			END IF;
-		ELSIF address_type = 'netblock' THEN
-			IF parent_rec.can_subnet = 'N' THEN
-				RAISE EXCEPTION 'parent subnet must have can_subnet set to Y'
-					USING ERRCODE = 'JH10B';
-			END IF;
-		END IF;
-	END LOOP;
-
- 	IF NOT FOUND THEN
- 		RETURN NULL;
- 	END IF;
-
-	IF address_type = 'loopback' THEN
-		-- If we're allocating a loopback address, then we need to create
-		-- a new parent to hold the single loopback address
-
-		SELECT * INTO inet_rec FROM netblock_utils.find_free_netblocks(
-			parent_netblock_list := parent_netblock_list,
-			netmask_bits := loopback_bits,
-			single_address := false,
-			allocation_method := allocation_method,
-			desired_ip_address := ip_address,
-			max_addresses := 1
-			);
-
-		IF NOT FOUND THEN
-			RETURN NULL;
-		END IF;
-
-		INSERT INTO jazzhands.netblock (
-			ip_address,
-			netblock_type,
-			is_single_address,
-			can_subnet,
-			ip_universe_id,
-			description,
-			netblock_status
-		) VALUES (
-			inet_rec.ip_address,
-			inet_rec.netblock_type,
-			'N',
-			'N',
-			inet_rec.ip_universe_id,
-			allocate_netblock.description,
-			allocate_netblock.netblock_status
-		) RETURNING * INTO parent_rec;
-
-		INSERT INTO jazzhands.netblock (
-			ip_address,
-			netblock_type,
-			is_single_address,
-			can_subnet,
-			ip_universe_id,
-			description,
-			netblock_status
-		) VALUES (
-			inet_rec.ip_address,
-			parent_rec.netblock_type,
-			'Y',
-			'N',
-			inet_rec.ip_universe_id,
-			allocate_netblock.description,
-			allocate_netblock.netblock_status
-		) RETURNING * INTO netblock_rec;
-
-		PERFORM dns_utils.add_domains_from_netblock(
-			netblock_id := netblock_rec.netblock_id);
-
-		RETURN netblock_rec;
-	END IF;
-
-	IF address_type = 'single' THEN
-		SELECT * INTO inet_rec FROM netblock_utils.find_free_netblocks(
-			parent_netblock_list := parent_netblock_list,
-			single_address := true,
-			allocation_method := allocation_method,
-			desired_ip_address := ip_address,
-			rnd_masklen_threshold := rnd_masklen_threshold,
-			rnd_max_count := rnd_max_count,
-			max_addresses := 1
-			);
-
-		IF NOT FOUND THEN
-			RETURN NULL;
-		END IF;
-
-		RAISE DEBUG 'ip_address is %', inet_rec.ip_address;
-
-		INSERT INTO jazzhands.netblock (
-			ip_address,
-			netblock_type,
-			is_single_address,
-			can_subnet,
-			ip_universe_id,
-			description,
-			netblock_status
-		) VALUES (
-			inet_rec.ip_address,
-			inet_rec.netblock_type,
-			'Y',
-			'N',
-			inet_rec.ip_universe_id,
-			allocate_netblock.description,
-			allocate_netblock.netblock_status
-		) RETURNING * INTO netblock_rec;
-
-		RETURN netblock_rec;
-	END IF;
-	IF address_type = 'netblock' THEN
-		SELECT * INTO inet_rec FROM netblock_utils.find_free_netblocks(
-			parent_netblock_list := parent_netblock_list,
-			netmask_bits := netmask_bits,
-			single_address := false,
-			allocation_method := allocation_method,
-			desired_ip_address := ip_address,
-			max_addresses := 1);
-
-		IF NOT FOUND THEN
-			RETURN NULL;
-		END IF;
-
-		INSERT INTO jazzhands.netblock (
-			ip_address,
-			netblock_type,
-			is_single_address,
-			can_subnet,
-			ip_universe_id,
-			description,
-			netblock_status
-		) VALUES (
-			inet_rec.ip_address,
-			inet_rec.netblock_type,
-			'N',
-			CASE WHEN can_subnet THEN 'Y' ELSE 'N' END,
-			inet_rec.ip_universe_id,
-			allocate_netblock.description,
-			allocate_netblock.netblock_status
-		) RETURNING * INTO netblock_rec;
-		
-		RAISE DEBUG 'Allocated netblock_id % for %',
-			netblock_rec.netblock_id,
-			netblock_re.ip_address;
-
-		PERFORM dns_utils.add_domains_from_netblock(
-			netblock_id := netblock_rec.netblock_id);
-
-		RETURN netblock_rec;
-	END IF;
-END;
-$function$
-;
-
--- Changed function
-SELECT schema_support.save_grants_for_replay('approval_utils', 'approve');
--- Dropped in case type changes.
-DROP FUNCTION IF EXISTS approval_utils.approve ( approval_instance_item_id integer, approved character, approving_account_id integer, new_value text );
-CREATE OR REPLACE FUNCTION approval_utils.approve(approval_instance_item_id integer, approved character, approving_account_id integer, new_value text DEFAULT NULL::text)
- RETURNS boolean
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO approval_utils, jazzhands
-AS $function$
-DECLARE
-	_r		RECORD;
-	_aii	approval_instance_item%ROWTYPE;	
-	_new	approval_instance_item.approval_instance_item_id%TYPE;	
-	_chid	approval_process_chain.approval_process_chain_id%TYPE;
-	_tally	INTEGER;
-BEGIN
-	EXECUTE '
-		SELECT 	aii.approval_instance_item_id,
-			ais.approval_instance_step_id,
-			ais.approval_instance_id,
-			ais.approver_account_id,
-			ais.approval_type,
-			aii.is_approved,
-			ais.is_completed,
-			aic.accept_app_process_chain_id,
-			aic.reject_app_process_chain_id
-   	     FROM    approval_instance ai
-   		     INNER JOIN approval_instance_step ais
-   			 USING (approval_instance_id)
-   		     INNER JOIN approval_instance_item aii
-   			 USING (approval_instance_step_id)
-   		     INNER JOIN approval_instance_link ail
-   			 USING (approval_instance_link_id)
-			INNER JOIN approval_process_chain aic
-				USING (approval_process_chain_id)
-		WHERE approval_instance_item_id = $1
-	' USING approval_instance_item_id INTO 	_r;
-
-	--
-	-- Ensure that only the person or their management chain can approve
-	-- others; this may want to be a property on val_approval_type rather
-	-- than hard coded on account...
-	IF (_r.approval_type = 'account' AND _r.approver_account_id != approving_account_id ) THEN
-		EXECUTE '
-			WITH RECURSIVE rec (
-					root_account_id,
-					account_id,
-					manager_account_id,
-					apath, cycle
-	    			) as (
-		    			SELECT  account_id as root_account_id,
-			    			account_id, manager_account_id,
-			    			ARRAY[account_id] as apath, false as cycle
-		    			FROM    v_account_manager_map
-					UNION ALL
-		    			SELECT a.root_account_id, m.account_id, m.manager_account_id,
-						a.apath || m.account_id, m.account_id=ANY(a.apath)
-		    			FROM rec a join v_account_manager_map m
-						ON a.manager_account_id = m.account_id
-		    			WHERE not a.cycle
-			) SELECT count(*) from rec where root_account_id = $1
-				and manager_account_id = $2
-		' INTO _tally USING _r.approver_account_id, approving_account_id;
-
-		IF _tally = 0 THEN
-			EXECUTE '
-				SELECT	count(*)
-				FROM	property
-						INNER JOIN v_acct_coll_acct_expanded e
-						USING (account_collection_id)
-				WHERE	property_type = ''Defaults''
-				AND		property_name = ''_can_approve_all''
-				AND		e.account_id = $1
-			' INTO _tally USING approving_account_id;
-
-			IF _tally = 0 THEN
-				RAISE EXCEPTION 'Only a person and their management chain may approve others';
-			END IF;
-		END IF;
-
-	END IF;
-
-	IF _r.approval_instance_item_id IS NULL THEN
-		RAISE EXCEPTION 'Unknown approval_instance_item_id %',
-			approval_instance_item_id;
-	END IF;
-
-	IF _r.is_approved IS NOT NULL THEN
-		RAISE EXCEPTION 'Approval is already completed.';
-	END IF;
-
-	EXECUTE '
-		UPDATE approval_instance_item
-		SET is_approved = $2,
-		approved_account_id = $3
-		WHERE approval_instance_item_id = $1
-	' USING approval_instance_item_id, approved, approving_account_id;
-
-	IF approved = 'N' THEN
-		IF _r.reject_app_process_chain_id IS NOT NULL THEN
-			_chid := _r.reject_app_process_chain_id;	
-		END IF;
-	ELSIF approved = 'Y' THEN
-		IF _r.accept_app_process_chain_id IS NOT NULL THEN
-			_chid := _r.accept_app_process_chain_id;
-		END IF;
-	ELSE
-		RAISE EXCEPTION 'Approved must be Y or N';
-	END IF;
-
-	IF _chid IS NOT NULL THEN
-		_new := approval_utils.build_next_approval_item(
-			approval_instance_item_id, _chid,
-			_r.approval_instance_id, approved,
-			approving_account_id, new_value);
-
-		EXECUTE '
-			UPDATE approval_instance_item
-			SET next_approval_instance_item_id = $2
-			WHERE approval_instance_item_id = $1
-		' USING approval_instance_item_id, _new;
-	END IF;
-
-	RETURN true;
-END;
-$function$
-;
-
+--
+-- Process trigger procs in net_manip
+--
+--
+-- Process trigger procs in network_strings
+--
+--
+-- Process trigger procs in time_util
+--
+--
+-- Process trigger procs in dns_utils
+--
+--
+-- Process trigger procs in person_manip
+--
+--
+-- Process trigger procs in auto_ac_manip
+--
+--
+-- Process trigger procs in company_manip
+--
+--
+-- Process trigger procs in port_support
+--
+--
+-- Process trigger procs in port_utils
+--
+--
+-- Process trigger procs in device_utils
+--
+--
+-- Process trigger procs in netblock_utils
+--
+--
+-- Process trigger procs in netblock_manip
+--
+--
+-- Process trigger procs in physical_address_utils
+--
+--
+-- Process trigger procs in component_utils
+--
+--
+-- Process trigger procs in snapshot_manip
+--
+--
+-- Process trigger procs in lv_manip
+--
+--
+-- Process trigger procs in schema_support
+--
+--
+-- Process trigger procs in approval_utils
+--
 DROP FUNCTION IF EXISTS approval_utils.build_attest (  );
--- Changed function
-SELECT schema_support.save_grants_for_replay('approval_utils', 'build_next_approval_item');
--- Dropped in case type changes.
-DROP FUNCTION IF EXISTS approval_utils.build_next_approval_item ( approval_instance_item_id integer, approval_process_chain_id integer, approval_instance_id integer, approved character, approving_account_id integer, new_value text );
-CREATE OR REPLACE FUNCTION approval_utils.build_next_approval_item(approval_instance_item_id integer, approval_process_chain_id integer, approval_instance_id integer, approved character, approving_account_id integer, new_value text DEFAULT NULL::text)
- RETURNS integer
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO approval_utils, jazzhands
-AS $function$
-DECLARE
-	_r		RECORD;
-	_apc	approval_process_chain%ROWTYPE;	
-	_new	approval_instance_item%ROWTYPE;	
-	_acid	account.account_id%TYPE;
-	_step	approval_instance_step.approval_instance_step_id%TYPE;
-	_l		approval_instance_link.approval_instance_link_id%TYPE;
-	apptype	text;
-	_v			approval_utils.v_account_collection_approval_process%ROWTYPE;
-BEGIN
-	EXECUTE '
-		SELECT apc.*
-		FROM approval_process_chain apc
-		WHERE approval_process_chain_id=$1
-	' INTO _apc USING approval_process_chain_id;
-
-	IF _apc.approval_process_chain_id is NULL THEN
-		RAISE EXCEPTION 'Unable to follow this chain: %',
-			approval_process_chain_id;
-	END IF;
-
-	EXECUTE '
-		SELECT aii.*, ais.approver_account_id
-		FROM approval_instance_item  aii
-			INNER JOIN approval_instance_step ais
-				USING (approval_instance_step_id)
-		WHERE approval_instance_item_id=$1
-	' INTO _r USING approval_instance_item_id;
-
-	IF _apc.approving_entity = 'manager' THEN
-		apptype := 'account';
-		_acid := NULL;
-		EXECUTE '
-			SELECT manager_account_id
-			FROM	v_account_manager_map
-			WHERE	account_id = $1
-		' INTO _acid USING approving_account_id;
-		--
-		-- return NULL because there is no manager for the person
-		--
-		IF _acid IS NULL THEN
-			RETURN NULL;
-		END IF;
-	ELSIF _apc.approving_entity = 'jira-hr' THEN
-		apptype := 'jira-hr';
-		_acid :=  _r.approver_account_id;
-	ELSIF _apc.approving_entity = 'rt-hr' THEN
-		apptype := 'rt-hr';
-		_acid :=  _r.approver_account_id;
-	ELSIF _apc.approving_entity = 'recertify' THEN
-		apptype := 'account';
-		EXECUTE '
-			SELECT approver_account_id
-			FROM approval_instance_item  aii
-				INNER JOIN approval_instance_step ais
-					USING (approval_instance_step_id)
-			WHERE approval_instance_item_id IN (
-				SELECT	approval_instance_item_id
-				FROM	approval_instance_item
-				WHERE	next_approval_instance_item_id = $1
-			)
-		' INTO _acid USING approval_instance_item_id;
-	ELSE
-		RAISE EXCEPTION 'Can not handle approving entity %',
-			_apc.approving_entity;
-	END IF;
-
-	IF _acid IS NULL THEN
-		RAISE EXCEPTION 'This whould not happen:  Unable to discern approving account.';
-	END IF;
-
-	EXECUTE '
-		SELECT	approval_instance_step_id
-		FROM	approval_instance_step
-		WHERE	approval_process_chain_id = $1
-		AND		approval_instance_id = $2
-		AND		approver_account_id = $3
-		AND		is_completed = ''N''
-	' INTO _step USING approval_process_chain_id,
-		approval_instance_id, _acid;
-
-	--
-	-- _new gets built out for all the fields that should get inserted,
-	-- and then at the end is stomped on by what actually gets inserted.
-	--
-
-	IF _step IS NULL THEN
-		EXECUTE '
-			INSERT INTO approval_instance_step (
-				approval_instance_id, approval_process_chain_id,
-				approval_instance_step_name,
-				approver_account_id, approval_type, 
-				approval_instance_step_due,
-				description
-			) VALUES (
-				$1, $2, $3, $4, $5, approval_utils.calculate_due_date($6), $7
-			) RETURNING approval_instance_step_id
-		' INTO _step USING 
-			approval_instance_id, approval_process_chain_id,
-			_apc.approval_process_chain_name,
-			_acid, apptype, 
-			_apc.approval_chain_response_period::interval,
-			concat(_apc.description, ' for ', _r.approver_account_id, ' by ',
-			approving_account_id);
-	END IF;
-
-	IF _apc.refresh_all_data = 'Y' THEN
-		-- this is called twice, should rethink how to not
-		_v := approval_utils.refresh_approval_instance_item(approval_instance_item_id);
-		_l := approval_utils.get_or_create_correct_approval_instance_link(
-			approval_instance_item_id,
-			_r.approval_instance_link_id
-		);
-		_new.approval_instance_link_id := _l;
-		_new.approved_label := _v.approval_label;
-		_new.approved_category := _v.approval_category;
-		_new.approved_lhs := _v.approval_lhs;
-		_new.approved_rhs := _v.approval_rhs;
-	ELSE
-		_new.approval_instance_link_id := _r.approval_instance_link_id;
-		_new.approved_label := _r.approved_label;
-		_new.approved_category := _r.approved_category;
-		_new.approved_lhs := _r.approved_lhs;
-		IF new_value IS NULL THEN
-			_new.approved_rhs := _r.approved_rhs;
-		ELSE
-			_new.approved_rhs := new_value;
-		END IF;
-	END IF;
-
-	-- RAISE NOTICE 'step is %', _step;
-	-- RAISE NOTICE 'acid is %', _acid;
-
-	EXECUTE '
-		INSERT INTO approval_instance_item
-			(approval_instance_link_id, approved_label, approved_category,
-				approved_lhs, approved_rhs, approval_instance_step_id
-			) SELECT $2, $3, $4,
-				$5, $6, $7
-			FROM approval_instance_item
-			WHERE approval_instance_item_id = $1
-			RETURNING *
-	' INTO _new USING approval_instance_item_id, 
-		_new.approval_instance_link_id, _new.approved_label, _new.approved_category,
-		_new.approved_lhs, _new.approved_rhs,
-		_step;
-
-	-- RAISE NOTICE 'returning %', _new.approval_instance_item_id;
-	RETURN _new.approval_instance_item_id;
-END;
-$function$
-;
-
--- Changed function
-SELECT schema_support.save_grants_for_replay('approval_utils', 'refresh_approval_instance_item');
--- Dropped in case type changes.
-DROP FUNCTION IF EXISTS approval_utils.refresh_approval_instance_item ( approval_instance_item_id integer );
-CREATE OR REPLACE FUNCTION approval_utils.refresh_approval_instance_item(approval_instance_item_id integer)
- RETURNS approval_utils.v_account_collection_approval_process
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO approval_utils, jazzhands
-AS $function$
-DECLARE
-	_i	approval_instance_item.approval_instance_item_id%TYPE;
-	_r	approval_utils.v_account_collection_approval_process%ROWTYPE;
-BEGIN
-	--
-	-- XXX p comes out of one of the three clauses in 
-	-- v_account_collection_approval_process .  It is likely that that view
-	-- needs to be broken into 2 or 3 views joined together so there is no
-	-- code redundancy.  This is almost certainly true because it is a pain
-	-- to keep column lists in syn everywhere
-	EXECUTE '
-		WITH p AS (
-		SELECT  login,
-			account_id,
-			person_id,
-			mm.company_id,
-			manager_account_id,
-			manager_login,
-			''person_company''::text as audit_table,
-			audit_seq_id,
-			approval_process_id,
-			approval_process_chain_id,
-			approving_entity,
-				approval_process_description,
-				approval_chain_description,
-				approval_response_period,
-				approval_expiration_action,
-				attestation_frequency,
-				current_attestation_name,
-				current_attestation_begins,
-				attestation_offset,
-				approval_process_chain_name,
-				property_val_rhs AS approval_category,
-				CASE
-					WHEN property_val_rhs = ''position_title''
-						THEN ''Verify Position Title''
-					END as approval_label,
-			human_readable AS approval_lhs,
-			CASE
-			    WHEN property_val_rhs = ''position_title'' THEN pcm.position_title
-			END as approval_rhs
-		FROM    v_account_manager_map mm
-			INNER JOIN v_person_company_audit_map pcm
-			    USING (person_id)
-			INNER JOIN v_approval_matrix am
-			    ON property_val_lhs = ''person_company''
-			    AND property_val_rhs = ''position_title''
-		), x AS ( select i.approval_instance_item_id, p.*
-		from	approval_instance_item i
-			inner join approval_instance_step s
-				using (approval_instance_step_id)
-			inner join approval_instance_link l
-				using (approval_instance_link_id)
-			inner join audit.account_collection_account res
-				on res."aud#seq" = l.acct_collection_acct_seq_id
-			 inner join v_account_collection_approval_process p
-				on i.approved_label = p.approval_label
-				and res.account_id = p.account_id
-		UNION
-		select i.approval_instance_item_id, p.*
-		from	approval_instance_item i
-			inner join approval_instance_step s
-				using (approval_instance_step_id)
-			inner join approval_instance_link l
-				using (approval_instance_link_id)
-			inner join audit.person_company res
-				on res."aud#seq" = l.person_company_seq_id
-			 inner join p
-				on i.approved_label = p.approval_label
-				and res.person_id = p.person_id
-		) SELECT 
-			login,
-			account_id,
-			person_id,
-					company_id,
-					manager_account_id,
-					manager_login,
-					audit_table,
-					audit_seq_id,
-					approval_process_id,
-					approval_process_chain_id,
-					approving_entity,
-					approval_process_description,
-					approval_chain_description,
-					approval_response_period,
-					approval_expiration_action,
-					attestation_frequency,
-					current_attestation_name,
-					current_attestation_begins,
-					attestation_offset,
-					approval_process_chain_name,
-					approval_category,
-					approval_label,
-					approval_lhs,
-					approval_rhs
-				FROM x where	approval_instance_item_id = $1
-			' INTO _r USING approval_instance_item_id;
-			RETURN _r;
-		END;
-		$function$
-;
-
--- New function
-CREATE OR REPLACE FUNCTION approval_utils.build_attest(nowish timestamp without time zone DEFAULT now())
- RETURNS integer
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO approval_utils, jazzhands
-AS $function$
-DECLARE
-	_r			RECORD;
-	ai			approval_instance%ROWTYPE;
-	ail			approval_instance_link%ROWTYPE;
-	ais			approval_instance_step%ROWTYPE;
-	aii			approval_instance_item%ROWTYPE;
-	tally		INTEGER;
-	_acaid		INTEGER;
-	_pcid		INTEGER;
-BEGIN
-	tally := 0;
-
-	-- XXX need to add magic for entering after the right day of the period.
-	FOR _r IN SELECT * 
-				FROM v_account_collection_approval_process
-				WHERE (approval_process_id, current_attestation_name) NOT IN
-					(SELECT approval_process_id, approval_instance_name 
-					 FROM approval_instance
-					)
-				AND current_attestation_begins < nowish
-	LOOP
-		IF _r.approving_entity != 'manager' THEN
-			RAISE EXCEPTION 'Do not know how to process approving entity %',
-				_r.approving_entity;
-		END IF;
-
-		IF (ai.approval_process_id IS NULL OR
-				ai.approval_process_id != _r.approval_process_id) THEN
-
-			INSERT INTO approval_instance ( 
-				approval_process_id, description, approval_instance_name
-			) VALUES ( 
-				_r.approval_process_id, 
-				_r.approval_process_description, _r.current_attestation_name
-			) RETURNING * INTO ai;
-		END IF;
-
-		IF ais.approver_account_id IS NULL OR
-				ais.approver_account_id != _r.manager_account_id THEN
-
-			INSERT INTO approval_instance_step (
-				approval_process_chain_id, approver_account_id, 
-				approval_instance_id, approval_type,  
-				approval_instance_step_name,
-				approval_instance_step_due, 
-				description
-			) VALUES (
-				_r.approval_process_chain_id, _r.manager_account_id,
-				ai.approval_instance_id, 'account',
-				_r.approval_process_chain_name,
-				approval_utils.calculate_due_date(_r.approval_response_period::interval),
-				concat(_r.approval_chain_description, ' - ', _r.manager_login)
-			) RETURNING * INTO ais;
-		END IF;
-
-		IF _r.audit_table = 'account_collection_account' THEN
-			_acaid := _r.audit_seq_id;
-			_pcid := NULL;
-		ELSIF _R.audit_table = 'person_company' THEN
-			_acaid := NULL;
-			_pcid := _r.audit_seq_id;
-		END IF;
-
-		INSERT INTO approval_instance_link ( 
-			acct_collection_acct_seq_id, person_company_seq_id
-		) VALUES ( 
-			_acaid, _pcid
-		) RETURNING * INTO ail;
-
-		--
-		-- need to create or find the correct step to insert someone into;
-		-- probably need a val table that says if every approvers stuff should
-		-- be aggregated into one step or ifs a step per underling.
-		--
-
-		INSERT INTO approval_instance_item (
-			approval_instance_link_id, approval_instance_step_id,
-			approved_category, approved_label, approved_lhs, approved_rhs
-		) VALUES ( 
-			ail.approval_instance_link_id, ais.approval_instance_step_id,
-			_r.approval_category, _r.approval_label, _r.approval_lhs, _r.approval_rhs
-		) RETURNING * INTO aii;
-
-		UPDATE approval_instance_step 
-		SET approval_instance_id = ai.approval_instance_id
-		WHERE approval_instance_step_id = ais.approval_instance_step_id;
-		tally := tally + 1;
-	END LOOP;
-	RETURN tally;
-END;
-$function$
-;
-
--- New function
-CREATE OR REPLACE FUNCTION approval_utils.message_replace(message text, start_time timestamp without time zone DEFAULT NULL::timestamp without time zone, due_time timestamp without time zone DEFAULT NULL::timestamp without time zone)
- RETURNS text
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO approval_utils, jazzhands
-AS $function$
-DECLARE
-	rv	text;
-	stabroot	text;
-	faqurl	text;
-BEGIN
-	SELECT property_value
-	INTO stabroot
-	FROM property
-	WHERE property_name = '_stab_root'
-	AND property_type = 'Defaults'
-	ORDER BY property_id
-	LIMIT 1;
-
-	SELECT property_value
-	INTO faqurl
-	FROM property
-	WHERE property_name = '_approval_faq_site'
-	AND property_type = 'Defaults'
-	ORDER BY property_id
-	LIMIT 1;
-
-	rv := message;
-	rv := regexp_replace(rv, '%\{effective_date\}', start_time::date::text, 'g');
-	rv := regexp_replace(rv, '%\{due_date\}', due_time::date::text, 'g');
-	rv := regexp_replace(rv, '%\{stab_url\}', stabroot, 'g');
-	rv := regexp_replace(rv, '%\{faq_url\}', faqurl, 'g');
-
-	-- There is also due_threat, which is processed in approval-email.pl
-
-	return rv;
-END;
-$function$
-;
-
 -- Dropping obsoleted sequences....
 
 
@@ -12963,7 +10687,7 @@ ALTER TABLE physicalish_volume
 	UNIQUE (device_id, physicalish_volume_name, physicalish_volume_type) DEFERRABLE;
 
 -- index
-DROP INDEX IF EXISTS idx_dns_record_lower_dns_name;
+DROP INDEX IF EXISTS "jazzhands"."idx_dns_record_lower_dns_name";
 CREATE INDEX idx_dns_record_lower_dns_name ON dns_record USING btree (lower(dns_name::text));
 -- triggers
 
