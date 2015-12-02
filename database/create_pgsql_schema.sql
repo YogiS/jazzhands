@@ -37,21 +37,15 @@ COMMENT ON SCHEMA audit IS 'part of jazzhands project';
 SELECT schema_support.rebuild_stamp_triggers('jazzhands');
 SELECT schema_support.build_audit_tables('audit', 'jazzhands');
 
-\cd pkg/pgsql
-\i create_early_packages.sql
-\cd ../..
+\ir pkg/pgsql/create_early_packages.sql
 
-\cd ddl/views
-\i create_extra_views_pgsql.sql
-\cd ../..
+\ir ddl/views/create_extra_views_pgsql.sql
 
 -- NEED TO PORT: @@ddl/schema/plpgsql/create_audit_indexes.sql
 
 \i ddl/schema/pgsql/create_extra_objects.sql
 
-\cd pkg/pgsql
-\i create_all_packages.sql
-\cd ../..
+\ir pkg/pgsql/create_all_packages.sql
 
 \i ddl/schema/pgsql/create_triggers.sql
 \i ddl/schema/pgsql/create_collection_loop_triggers.sql
@@ -73,6 +67,8 @@ SELECT schema_support.build_audit_tables('audit', 'jazzhands');
 \i ddl/schema/pgsql/create_account_coll_hier_triggers.sql
 \i ddl/schema/pgsql/create_netblock_coll_hier_triggers.sql
 \i ddl/schema/pgsql/create_token_coll_hier_triggers.sql
+\i ddl/schema/pgsql/create_l2network_coll_hier_triggers.sql
+\i ddl/schema/pgsql/create_l3network_coll_hier_triggers.sql
 \i ddl/schema/pgsql/create_svcenv_coll_hier_triggers.sql
 \i ddl/schema/pgsql/create_v_corp_family_account_triggers.sql
 \i ddl/schema/pgsql/create_component_triggers.sql
