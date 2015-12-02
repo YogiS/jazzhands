@@ -958,6 +958,21 @@ BEGIN
 			raise error_in_assignment;
 	END;
 
+	RAISE NOTICE 'Inserting an identical multi-valued property';
+	BEGIN
+		INSERT INTO Property (Property_Name, Property_Type,
+			Company_Id, Account_Collection_Id, Property_Value
+			) VALUES (
+			'Multivalue', 'test', v_company_id, v_account_collection_id, 'test'
+			);
+		RAISE NOTICE '... Succeeded.  THIS IS A PROBLEM';
+		raise error_in_assignment;
+	EXCEPTION
+		WHEN unique_violation THEN
+			RAISE NOTICE '... Failed correctly';
+	END;
+
+
 	--
 	-- Insert two different properties for a property type that is 
 	-- not multivalue.  The second should fail
@@ -1067,7 +1082,7 @@ BEGIN
 		RAISE NOTICE '... Succeeded';
 	EXCEPTION
 		WHEN invalid_parameter_value THEN
-			RAISE NOTICE '... Failed.  THIS IS A PROBLEM';
+			RAISE NOTICE '... Failed.  THIS IS A PROBLEM (%)', SQLERRM;
 			raise error_in_assignment;
 	END;
 
