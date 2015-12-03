@@ -1553,3 +1553,12 @@ INSERT INTO val_logical_volume_type (
 -- END logical volumes
 -------------------------------------------------------------------------
 -- logical volumes
+
+insert into val_company_collection_type 
+	(company_collection_type,
+	max_num_members, can_have_hierarchy
+	) 
+values 
+	('per-company', 
+	1, 'N'
+	);
