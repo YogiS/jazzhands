@@ -882,11 +882,29 @@ insert into val_diet (diet) values ( 'Pescatarian');
 
 --  XXX - need to insert these for the default companies!!
 -- consider renaming to company_relation
+
+insert into val_company_type_purpose (company_type_purpose) values ('default');
+
 insert into val_company_type(company_type) values  ('corporate family');
 insert into val_company_type(company_type) values  ('vendor');
 insert into val_company_type(company_type) values  ('consultant provider');
 insert into val_company_type(company_type) values  ('hardware provider');
 insert into val_company_type(company_type) values  ('software provider');
+
+insert into val_physical_address_type
+	(physical_address_type, description)
+values
+	('location', 'physical location');
+
+insert into val_physical_address_type
+	(physical_address_type, description)
+values
+	('mailing', 'physical location');
+
+insert into val_physical_address_type
+	(physical_address_type, description)
+values
+	('legal', 'physical location');
 
 --- XXX these may be optional
 INSERT INTO Device_Type (
