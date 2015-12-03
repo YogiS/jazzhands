@@ -825,8 +825,8 @@ values
 	);
 
 -- XXX need to auto-create a Account_Collection all_company_XX
-INSERT INTO Company(Company_ID, Company_Name, Is_Corporate_Family)
-	VALUES (0, 'none', 'N');
+INSERT INTO Company(Company_ID, Company_Name)
+	VALUES (0, 'none');
 
 INSERT INTO Person(Person_Id, first_name, last_name)
 	VALUES (0, 'Non', 'Person');
