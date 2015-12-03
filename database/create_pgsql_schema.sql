@@ -75,6 +75,12 @@ SELECT schema_support.build_audit_tables('audit', 'jazzhands');
 \i ddl/schema/pgsql/create_approval_triggers.sql
 \i ddl/schema/pgsql/create_legacy_port_triggers_RETIRE.sql
 \i ddl/schema/pgsql/create_physical_conection_triggers.sql
+\i ddl/schema/pgsql/create_collection_type_property_triggers.sql
+\i ddl/schema/pgsql/create_l2network_coll_hier_triggers.sql
+\i ddl/schema/pgsql/create_l3network_coll_hier_triggers.sql
+\i ddl/schema/pgsql/create_company_coll_hier_triggers.sql
+\i ddl/schema/pgsql/create_dns_domain_coll_hier_triggers.sql
+
 \i ddl/schema/pgsql/create_physical_conection_triggers_RETIRE.sql
 
 -- This could be done for backwards compatibility but is not.

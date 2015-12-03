@@ -886,6 +886,23 @@ BEGIN
 	RAISE NOTICE 'v_password_type is %', v_password_type;
 	RAISE NOTICE 'v_token_collection_id is %', v_token_collection_id;
 
+	INSERT INTO VAL_Property (
+		Property_Name,
+		Property_Type,
+		Is_Multivalue,
+		account_collection_type,
+		Property_Data_Type,
+		Permit_Account_Collection_id
+	) VALUES (
+		'actype',
+		'test',
+		'Y',
+		(select account_collection_type from account_collection
+			where account_collection_id = v_account_collection_id),
+		'string',
+		'REQUIRED'
+	);
+
 	--
 	-- Check for multivalue stuff
 	--
@@ -3049,6 +3066,44 @@ BEGIN
 			RAISE NOTICE '... Failed correctly';
 	END;
 	DELETE FROM Property WHERE Property_ID = v_property_id;
+
+	RAISE NOTICE 'Checking for account_collection_type mismatch';
+	BEGIN
+		INSERT INTO Property (Property_Name, Property_Type,
+			Property_Value, account_collection_id
+			) VALUES (
+			'actype', 'test',
+			'Vv', v_account_collection_id2
+			) RETURNING Property_ID INTO v_property_id;
+		RAISE NOTICE '... Success.  THIS IS A PROBLEM % %', 
+			v_account_collection_id, v_account_collection_id2;
+		raise error_in_assignment;
+	EXCEPTION
+		WHEN invalid_parameter_value THEN
+			RAISE NOTICE '... Failed correctly';
+	END;
+	DELETE FROM Property WHERE Property_ID = v_property_id;
+
+	RAISE NOTICE 'Checking for account_collection_type match';
+	BEGIN
+		INSERT INTO Property (Property_Name, Property_Type,
+			Property_Value, account_collection_id
+			) VALUES (
+			'actype', 'test',
+			'Vv', v_account_collection_id2
+			) RETURNING Property_ID INTO v_property_id;
+		RAISE NOTICE '... Success.  THIS IS A PROBLEM';
+		raise error_in_assignment;
+	EXCEPTION
+		WHEN invalid_parameter_value THEN
+			RAISE NOTICE '... Failed correctly';
+	END;
+	DELETE FROM Property WHERE Property_ID = v_property_id;
+
+
+	--
+	-- Checking to see if a property value restricted account_collection
+	-- 
 
 	RAISE NOTICE 'ALL TESTS PASSED';
 	--
