@@ -815,6 +815,15 @@ VALUES (
 	'REQUIRED'
 );
 
+insert into val_company_collection_type 
+	(company_collection_type,
+	max_num_members, can_have_hierarchy
+	) 
+values 
+	('per-company', 
+	1, 'N'
+	);
+
 -- XXX need to auto-create a Account_Collection all_company_XX
 INSERT INTO Company(Company_ID, Company_Name, Is_Corporate_Family)
 	VALUES (0, 'none', 'N');
@@ -1553,12 +1562,3 @@ INSERT INTO val_logical_volume_type (
 -- END logical volumes
 -------------------------------------------------------------------------
 -- logical volumes
-
-insert into val_company_collection_type 
-	(company_collection_type,
-	max_num_members, can_have_hierarchy
-	) 
-values 
-	('per-company', 
-	1, 'N'
-	);
