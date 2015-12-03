@@ -1522,3 +1522,16 @@ values
 	
 -- END certificate
 -------------------------------------------------------------------------
+
+-------------------------------------------------------------------------
+-- logical volumes
+
+INSERT INTO val_logical_volume_type (
+	logical_volume_type, description
+) VALUES (
+	'legacy', 'data that predates existance of this table'
+);
+
+-- END logical volumes
+-------------------------------------------------------------------------
+-- logical volumes
