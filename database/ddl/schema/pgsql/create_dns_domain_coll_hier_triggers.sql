@@ -31,10 +31,10 @@ BEGIN
 	FROM	val_dns_domain_collection_type
 	WHERE	dns_domain_collection_type =
 		(select dns_domain_collection_type from dns_domain_collection
-			where dns_domain_collection_id = NEW.parent_dns_domain_collection_id);
+			where dns_domain_collection_id = NEW.dns_domain_collection_id);
 
 	IF dct.can_have_hierarchy = 'N' THEN
-		RAISE EXCEPTION 'Device Collections of type % may not be hierarcical',
+		RAISE EXCEPTION 'DNS Domain Collections of type % may not be hierarcical',
 			dct.dns_domain_collection_type
 			USING ERRCODE= 'unique_violation';
 	END IF;
@@ -87,7 +87,7 @@ BEGIN
 		  where dns_domain_id = NEW.dns_domain_id
 		  and	dns_domain_collection_type = dct.dns_domain_collection_type;
 		IF tally > dct.MAX_NUM_COLLECTIONS THEN
-			RAISE EXCEPTION 'Device may not be a member of more than % collections of type %',
+			RAISE EXCEPTION 'DNS Domain may not be a member of more than % collections of type %',
 				dct.MAX_NUM_COLLECTIONS, dct.dns_domain_collection_type
 				USING ERRCODE = 'unique_violation';
 		END IF;

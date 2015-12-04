@@ -37,7 +37,7 @@ DECLARE
 	_pers1			person%ROWTYPE;
 	_pers2			person%ROWTYPE;
 BEGIN
-	RAISE NOTICE 'AcctCollHier: Cleanup Records from Previous Tests';
+	RAISE NOTICE 'account_coll_hier_regression: Cleanup Records from Previous Tests';
 	delete from account_unix_info where
 		account_id in (
 			select account_id from account
@@ -255,7 +255,7 @@ BEGIN
 	delete from company where company_name like 'JHTEST%';
 	delete from account_realm where account_realm_name like 'JHTEST%';
 
-	RAISE NOTICE 'AcctCollHier: DONE';
+	RAISE NOTICE 'account_coll_hier_regression: DONE';
 	RETURN true;
 END;
 $$ LANGUAGE plpgsql;

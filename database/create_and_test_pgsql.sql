@@ -81,11 +81,18 @@ begin;
 \i tests/pgsql/property_regression_test.sql
 \i tests/pgsql/device_ticket_regression.sql
 \i tests/pgsql/device_power_regression.sql
-\i tests/pgsql/device_coll_hier_regression.sql
+
 \i tests/pgsql/account_coll_hier_regression.sql
+\i tests/pgsql/company_coll_hier_regression.sql
+\i tests/pgsql/device_coll_hier_regression.sql
+\i tests/pgsql/dns_domain_coll_hier_regression.sql
+\i tests/pgsql/layer2_network_coll_hier_regression.sql
+\i tests/pgsql/layer3_network_coll_hier_regression.sql
 \i tests/pgsql/netblock_coll_hier_regression.sql
--- \i tests/pgsql/token_coll_hier_regression.sql
+\i tests/pgsql/property_coll_hier_regression.sql
 \i tests/pgsql/svcenv_coll_hier_regression.sql
+\i tests/pgsql/token_coll_hier_regression.sql
+
 \i tests/pgsql/account_enabled_test.sql
 -- \i tests/pgsql/v_corp_family_account_trigger.sql
 

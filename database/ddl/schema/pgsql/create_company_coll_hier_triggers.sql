@@ -31,10 +31,10 @@ BEGIN
 	FROM	val_company_collection_type
 	WHERE	company_collection_type =
 		(select company_collection_type from company_collection
-			where company_collection_id = NEW.parent_company_collection_id);
+			where company_collection_id = NEW.company_collection_id);
 
 	IF dct.can_have_hierarchy = 'N' THEN
-		RAISE EXCEPTION 'Device Collections of type % may not be hierarcical',
+		RAISE EXCEPTION 'Company Collections of type % may not be hierarcical',
 			dct.company_collection_type
 			USING ERRCODE= 'unique_violation';
 	END IF;
@@ -87,7 +87,7 @@ BEGIN
 		  where company_id = NEW.company_id
 		  and	company_collection_type = dct.company_collection_type;
 		IF tally > dct.MAX_NUM_COLLECTIONS THEN
-			RAISE EXCEPTION 'Device may not be a member of more than % collections of type %',
+			RAISE EXCEPTION 'Company may not be a member of more than % collections of type %',
 				dct.MAX_NUM_COLLECTIONS, dct.company_collection_type
 				USING ERRCODE = 'unique_violation';
 		END IF;
