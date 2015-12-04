@@ -82,6 +82,7 @@ begin;
 \i tests/pgsql/device_ticket_regression.sql
 \i tests/pgsql/device_power_regression.sql
 
+
 \i tests/pgsql/account_coll_hier_regression.sql
 \i tests/pgsql/company_coll_hier_regression.sql
 \i tests/pgsql/device_coll_hier_regression.sql

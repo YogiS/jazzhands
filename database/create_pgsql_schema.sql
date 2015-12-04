@@ -82,6 +82,8 @@ SELECT schema_support.build_audit_tables('audit', 'jazzhands');
 \i ddl/schema/pgsql/create_company_coll_hier_triggers.sql
 \i ddl/schema/pgsql/create_dns_domain_coll_hier_triggers.sql
 
+\i ddl/schema/pgsql/create_network_range_triggers.sql
+
 \i ddl/schema/pgsql/create_physical_conection_triggers_RETIRE.sql
 
 -- This could be done for backwards compatibility but is not.
