@@ -36,7 +36,7 @@ BEGIN
 			where layer3_network_collection_id = NEW.layer3_network_collection_id);
 
 	IF act.can_have_hierarchy = 'N' THEN
-		RAISE EXCEPTION 'Device Collections of type % may not be hierarcical',
+		RAISE EXCEPTION 'Layer3 Network Collections of type % may not be hierarcical',
 			act.layer3_network_collection_type
 			USING ERRCODE= 'unique_violation';
 	END IF;
@@ -89,7 +89,7 @@ BEGIN
 		  where layer3_network_id = NEW.layer3_network_id
 		  and	layer3_network_collection_type = act.layer3_network_collection_type;
 		IF tally > act.MAX_NUM_COLLECTIONS THEN
-			RAISE EXCEPTION 'Device may not be a member of more than % collections of type %',
+			RAISE EXCEPTION 'Layer3 Network may not be a member of more than % collections of type %',
 				act.MAX_NUM_COLLECTIONS, act.layer3_network_collection_type
 				USING ERRCODE = 'unique_violation';
 		END IF;
