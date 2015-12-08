@@ -37,8 +37,13 @@ BEGIN
 	FROM	val_network_range_type
 	WHERE	network_range_type = NEW.network_range_type;
 
-	IF NEW.dns_domain_id IS NULL AND v_nrt.dns_domain_required = 'Y' THEN
+	IF NEW.dns_domain_id IS NULL AND v_nrt.dns_domain_required = 'REQUIRED' THEN
 		RAISE EXCEPTION 'For type %, dns_domain_id is required.',
+			NEW.network_range_type
+			USING ERRCODE = 'not_null_violation';
+	ELSIF NEW.dns_domain_id IS NOT NULL AND
+			v_nrt.dns_domain_required = 'PROHIBITED' THEN
+		RAISE EXCEPTION 'For type %, dns_domain_id is prohibited.',
 			NEW.network_range_type
 			USING ERRCODE = 'not_null_violation';
 	END IF;
@@ -48,7 +53,7 @@ SET search_path=jazzhands
 LANGUAGE plpgsql
 SECURITY DEFINER;
 
-DROP TRIGGER IF EXISTS trigger_validate_network_range 
+DROP TRIGGER IF EXISTS trigger_validate_network_range
 	ON network_range;
 CREATE TRIGGER trigger_validate_network_range
 	BEFORE INSERT OR UPDATE OF dns_domain_id
@@ -65,7 +70,7 @@ CREATE OR REPLACE FUNCTION validate_val_network_range_type()
 RETURNS TRIGGER
 AS $$
 BEGIN
-	IF NEW.dns_domain_required = 'Y' THEN
+	IF NEW.dns_domain_required = 'REQUIRED' THEN
 		PERFORM
 		FROM	network_range
 		WHERE	network_range_type = NEW.network_range_type
@@ -75,6 +80,16 @@ BEGIN
 			RAISE EXCEPTION 'dns_domain_id is not set on some ranges'
 				USING ERRCODE = 'not_null_violation';
 		END IF;
+	ELSIF NEW.dns_domain_required = 'PROHIBITED' THEN
+		PERFORM
+		FROM	network_range
+		WHERE	network_range_type = NEW.network_range_type
+		AND		dns_domain_id IS NOT NULL;
+
+		IF FOUND THEN
+			RAISE EXCEPTION 'dns_domain_id is set on some ranges'
+				USING ERRCODE = 'not_null_violation';
+		END IF;
 	END IF;
 
 END; $$
@@ -82,7 +97,7 @@ SET search_path=jazzhands
 LANGUAGE plpgsql
 SECURITY DEFINER;
 
-DROP TRIGGER IF EXISTS trigger_validate_val_network_range_type 
+DROP TRIGGER IF EXISTS trigger_validate_val_network_range_type
 	ON val_network_range_type;
 CREATE TRIGGER trigger_validate_val_network_range_type
 	BEFORE UPDATE OF dns_domain_required
