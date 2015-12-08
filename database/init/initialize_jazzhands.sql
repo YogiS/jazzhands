@@ -451,26 +451,29 @@ insert into val_network_interface_purpose
 
 insert into val_property_data_type (PROPERTY_DATA_TYPE, DESCRIPTION)
 	values ('none', 'No value should be set');
-insert into val_property_data_type (PROPERTY_DATA_TYPE) values ('boolean');
-insert into val_property_data_type (PROPERTY_DATA_TYPE) values ('number');
-insert into val_property_data_type (PROPERTY_DATA_TYPE) values ('string');
-insert into val_property_data_type (PROPERTY_DATA_TYPE) values ('list');
-insert into val_property_data_type (PROPERTY_DATA_TYPE) values ('timestamp');
-insert into val_property_data_type (PROPERTY_DATA_TYPE) values ('company_id');
-insert into val_property_data_type (PROPERTY_DATA_TYPE) 
-	values ('device_collection_id');
-insert into val_property_data_type (PROPERTY_DATA_TYPE) 
-	values ('netblock_collection_id');
-insert into val_property_data_type (PROPERTY_DATA_TYPE)
-	values ('password_type');
-insert into val_property_data_type (PROPERTY_DATA_TYPE)
-	values ('person_id');
-insert into val_property_data_type (PROPERTY_DATA_TYPE)
-	values ('token_collection_id');
 insert into val_property_data_type (PROPERTY_DATA_TYPE) values 
-	('account_collection_id');
-insert into val_property_data_type (PROPERTY_DATA_TYPE)
-	values ('sw_package_id');
+	('boolean'),
+	('number'),
+	('string'),
+	('list'),
+	('timestamp'),
+	('company_id'),
+	('dns_domain_id'),
+	('device_collection_id'),
+	('netblock_collection_id'),
+	('password_type'),
+	('person_id'),
+	('token_collection_id'),
+	('account_collection_id'),
+	('sw_package_id');
+
+insert into val_person_company_attr_dtype (person_company_attr_data_type) values 
+	('boolean'),
+	('number'),
+	('string'),
+	('list'),
+	('timestamp'),
+	('person_id');
 
 insert into val_property_type (property_type, description,is_multivalue) 
 	values (
