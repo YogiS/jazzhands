@@ -1266,7 +1266,7 @@ CREATE SEQUENCE layer3_network_collection_layer3_network_collection_id_seq;
 
 
 --------------------------------------------------------------------
--- DEALING WITH TABLE layer2_network [3427068]
+-- DEALING WITH TABLE layer2_network [3720821]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'layer2_network', 'layer2_network');
 
@@ -1457,10 +1457,10 @@ ALTER SEQUENCE layer2_network_layer2_network_id_seq
 	 OWNED BY layer2_network.layer2_network_id;
 DROP TABLE IF EXISTS layer2_network_v64;
 DROP TABLE IF EXISTS audit.layer2_network_v64;
--- DONE DEALING WITH TABLE layer2_network [3485084]
+-- DONE DEALING WITH TABLE layer2_network [3729840]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE layer3_network [3427106]
+-- DEALING WITH TABLE layer3_network [3720840]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'layer3_network', 'layer3_network');
 
@@ -1634,7 +1634,7 @@ ALTER SEQUENCE layer3_network_layer3_network_id_seq
 	 OWNED BY layer3_network.layer3_network_id;
 DROP TABLE IF EXISTS layer3_network_v64;
 DROP TABLE IF EXISTS audit.layer3_network_v64;
--- DONE DEALING WITH TABLE layer3_network [3485127]
+-- DONE DEALING WITH TABLE layer3_network [3729883]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE company_collection
@@ -1699,7 +1699,7 @@ CREATE INDEX xifcomp_coll_com_coll_type ON company_collection USING btree (compa
 
 
 -- TRIGGERS
--- consider NEW oid 3493684
+-- consider NEW oid 3738441
 CREATE OR REPLACE FUNCTION jazzhands.validate_company_collection_type_change()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -1734,10 +1734,10 @@ SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'company_collection');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'company_collection');
 ALTER SEQUENCE company_collection_company_collection_id_seq
 	 OWNED BY company_collection.company_collection_id;
--- DONE DEALING WITH TABLE company_collection [3484471]
+-- DONE DEALING WITH TABLE company_collection [3729227]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE company [3426031]
+-- DEALING WITH TABLE company [3720285]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'company', 'company');
 
@@ -1967,7 +1967,7 @@ ALTER TABLE company
 	FOREIGN KEY (parent_company_id) REFERENCES company(company_id) DEFERRABLE;
 
 -- TRIGGERS
--- consider NEW oid 3493706
+-- consider NEW oid 3738463
 CREATE OR REPLACE FUNCTION jazzhands.delete_per_company_company_collection()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -2004,7 +2004,7 @@ $function$
 CREATE TRIGGER trigger_delete_per_company_company_collection BEFORE DELETE ON company FOR EACH ROW EXECUTE PROCEDURE delete_per_company_company_collection();
 
 -- XXX - may need to include trigger function
--- consider NEW oid 3493708
+-- consider NEW oid 3738465
 CREATE OR REPLACE FUNCTION jazzhands.update_per_company_company_collection()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -2055,10 +2055,10 @@ ALTER SEQUENCE company_company_id_seq
 	 OWNED BY company.company_id;
 DROP TABLE IF EXISTS company_v64;
 DROP TABLE IF EXISTS audit.company_v64;
--- DONE DEALING WITH TABLE company [3484458]
+-- DONE DEALING WITH TABLE company [3729214]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE val_app_key [3429043]
+-- DEALING WITH TABLE val_app_key [3721805]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'val_app_key', 'val_app_key');
 
@@ -2194,10 +2194,10 @@ SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_app_key');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_app_key');
 DROP TABLE IF EXISTS val_app_key_v64;
 DROP TABLE IF EXISTS audit.val_app_key_v64;
--- DONE DEALING WITH TABLE val_app_key [3486137]
+-- DONE DEALING WITH TABLE val_app_key [3730894]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE val_app_key_values [3429058]
+-- DEALING WITH TABLE val_app_key_values [3721813]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'val_app_key_values', 'val_app_key_values');
 
@@ -2317,7 +2317,7 @@ SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_app_key_values');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_app_key_values');
 DROP TABLE IF EXISTS val_app_key_values_v64;
 DROP TABLE IF EXISTS audit.val_app_key_values_v64;
--- DONE DEALING WITH TABLE val_app_key_values [3486146]
+-- DONE DEALING WITH TABLE val_app_key_values [3730903]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE val_appaal_group_name
@@ -2375,7 +2375,7 @@ ALTER TABLE val_app_key
 -- TRIGGERS
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_appaal_group_name');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_appaal_group_name');
--- DONE DEALING WITH TABLE val_appaal_group_name [3486154]
+-- DONE DEALING WITH TABLE val_appaal_group_name [3730911]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE val_company_collection_type
@@ -2442,10 +2442,10 @@ ALTER TABLE company_collection
 -- TRIGGERS
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_company_collection_type');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_company_collection_type');
--- DONE DEALING WITH TABLE val_company_collection_type [3486242]
+-- DONE DEALING WITH TABLE val_company_collection_type [3730999]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE val_company_type [3429219]
+-- DEALING WITH TABLE val_company_type [3721901]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'val_company_type', 'val_company_type');
 
@@ -2578,7 +2578,7 @@ SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_company_type');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_company_type');
 DROP TABLE IF EXISTS val_company_type_v64;
 DROP TABLE IF EXISTS audit.val_company_type_v64;
--- DONE DEALING WITH TABLE val_company_type [3486254]
+-- DONE DEALING WITH TABLE val_company_type [3731011]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE val_company_type_purpose
@@ -2621,7 +2621,7 @@ ALTER TABLE val_company_type
 -- TRIGGERS
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_company_type_purpose');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_company_type_purpose');
--- DONE DEALING WITH TABLE val_company_type_purpose [3486264]
+-- DONE DEALING WITH TABLE val_company_type_purpose [3731021]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE val_dns_domain_collection_type
@@ -2677,7 +2677,7 @@ ALTER TABLE val_dns_domain_collection_type ADD CONSTRAINT check_yes_no_dnsdom_co
 -- TRIGGERS
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_dns_domain_collection_type');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_dns_domain_collection_type');
--- DONE DEALING WITH TABLE val_dns_domain_collection_type [3486393]
+-- DONE DEALING WITH TABLE val_dns_domain_collection_type [3731150]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE val_layer2_network_coll_type
@@ -2735,7 +2735,7 @@ ALTER TABLE val_layer2_network_coll_type ADD CONSTRAINT check_yes_no_2053022263
 -- TRIGGERS
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_layer2_network_coll_type');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_layer2_network_coll_type');
--- DONE DEALING WITH TABLE val_layer2_network_coll_type [3486501]
+-- DONE DEALING WITH TABLE val_layer2_network_coll_type [3731258]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE val_layer3_network_coll_type
@@ -2793,7 +2793,7 @@ ALTER TABLE val_layer3_network_coll_type ADD CONSTRAINT check_yes_no_l3nc_chh
 -- TRIGGERS
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_layer3_network_coll_type');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_layer3_network_coll_type');
--- DONE DEALING WITH TABLE val_layer3_network_coll_type [3486511]
+-- DONE DEALING WITH TABLE val_layer3_network_coll_type [3731268]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE val_logical_volume_type
@@ -2843,10 +2843,10 @@ ALTER TABLE val_logical_volume_type ADD CONSTRAINT pk_logical_volume_type PRIMAR
 -- TRIGGERS
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_logical_volume_type');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_logical_volume_type');
--- DONE DEALING WITH TABLE val_logical_volume_type [3486546]
+-- DONE DEALING WITH TABLE val_logical_volume_type [3731303]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE val_netblock_collection_type [3429652]
+-- DEALING WITH TABLE val_netblock_collection_type [3722153]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'val_netblock_collection_type', 'val_netblock_collection_type');
 
@@ -3014,10 +3014,10 @@ SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_netblock_collectio
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_netblock_collection_type');
 DROP TABLE IF EXISTS val_netblock_collection_type_v64;
 DROP TABLE IF EXISTS audit.val_netblock_collection_type_v64;
--- DONE DEALING WITH TABLE val_netblock_collection_type [3486554]
+-- DONE DEALING WITH TABLE val_netblock_collection_type [3731311]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE val_network_range_type [3429720]
+-- DEALING WITH TABLE val_network_range_type [3722197]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'val_network_range_type', 'val_network_range_type');
 
@@ -3148,7 +3148,7 @@ ALTER TABLE network_range
 -- FOREIGN KEYS TO
 
 -- TRIGGERS
--- consider NEW oid 3493836
+-- consider NEW oid 3738593
 CREATE OR REPLACE FUNCTION jazzhands.validate_val_network_range_type()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -3187,7 +3187,7 @@ SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_network_range_type
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_network_range_type');
 DROP TABLE IF EXISTS val_network_range_type_v64;
 DROP TABLE IF EXISTS audit.val_network_range_type_v64;
--- DONE DEALING WITH TABLE val_network_range_type [3486600]
+-- DONE DEALING WITH TABLE val_network_range_type [3731357]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE val_person_company_attr_dtype
@@ -3256,7 +3256,7 @@ ALTER TABLE val_person_company_attr_dtype ADD CONSTRAINT pk_val_pers_comp_attr_d
 -- TRIGGERS
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_person_company_attr_dtype');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_person_company_attr_dtype');
--- DONE DEALING WITH TABLE val_person_company_attr_dtype [3486658]
+-- DONE DEALING WITH TABLE val_person_company_attr_dtype [3731415]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE val_person_company_attr_name
@@ -3307,7 +3307,7 @@ ALTER TABLE val_person_company_attr_name
 -- TRIGGERS
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_person_company_attr_name');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_person_company_attr_name');
--- DONE DEALING WITH TABLE val_person_company_attr_name [3486666]
+-- DONE DEALING WITH TABLE val_person_company_attr_name [3731423]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE val_person_company_attr_value
@@ -3344,7 +3344,7 @@ ALTER TABLE val_person_company_attr_value
 	FOREIGN KEY (person_company_attr_name) REFERENCES val_person_company_attr_name(person_company_attr_name);
 
 -- TRIGGERS
--- consider NEW oid 3493895
+-- consider NEW oid 3738642
 CREATE OR REPLACE FUNCTION jazzhands.validate_pers_comp_attr_value()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -3379,7 +3379,7 @@ CREATE TRIGGER trigger_validate_pers_comp_attr_value BEFORE DELETE OR UPDATE OF 
 -- XXX - may need to include trigger function
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_person_company_attr_value');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_person_company_attr_value');
--- DONE DEALING WITH TABLE val_person_company_attr_value [3486675]
+-- DONE DEALING WITH TABLE val_person_company_attr_value [3731432]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE val_physical_address_type
@@ -3433,10 +3433,10 @@ ALTER TABLE val_physical_address_type ADD CONSTRAINT pk_val_physical_address_typ
 -- TRIGGERS
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_physical_address_type');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_physical_address_type');
--- DONE DEALING WITH TABLE val_physical_address_type [3486745]
+-- DONE DEALING WITH TABLE val_physical_address_type [3731502]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE val_property [3429975]
+-- DEALING WITH TABLE val_property [3722339]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'val_property', 'val_property');
 
@@ -4008,10 +4008,10 @@ SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_property');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_property');
 DROP TABLE IF EXISTS val_property_v64;
 DROP TABLE IF EXISTS audit.val_property_v64;
--- DONE DEALING WITH TABLE val_property [3486778]
+-- DONE DEALING WITH TABLE val_property [3731535]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE val_raid_type [3430196]
+-- DEALING WITH TABLE val_raid_type [3722432]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'val_raid_type', 'val_raid_type');
 
@@ -4144,10 +4144,10 @@ SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_raid_type');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_raid_type');
 DROP TABLE IF EXISTS val_raid_type_v64;
 DROP TABLE IF EXISTS audit.val_raid_type_v64;
--- DONE DEALING WITH TABLE val_raid_type [3486884]
+-- DONE DEALING WITH TABLE val_raid_type [3731641]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE val_slot_function [3430233]
+-- DEALING WITH TABLE val_slot_function [3722450]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'val_slot_function', 'val_slot_function');
 
@@ -4290,10 +4290,10 @@ SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_slot_function');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_slot_function');
 DROP TABLE IF EXISTS val_slot_function_v64;
 DROP TABLE IF EXISTS audit.val_slot_function_v64;
--- DONE DEALING WITH TABLE val_slot_function [3486902]
+-- DONE DEALING WITH TABLE val_slot_function [3731659]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE account_token [3425578]
+-- DEALING WITH TABLE account_token [3720040]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'account_token', 'account_token');
 
@@ -4436,10 +4436,10 @@ ALTER SEQUENCE account_token_account_token_id_seq
 	 OWNED BY account_token.account_token_id;
 DROP TABLE IF EXISTS account_token_v64;
 DROP TABLE IF EXISTS audit.account_token_v64;
--- DONE DEALING WITH TABLE account_token [3484213]
+-- DONE DEALING WITH TABLE account_token [3728969]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE appaal_instance_property [3425674]
+-- DEALING WITH TABLE appaal_instance_property [3720098]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'appaal_instance_property', 'appaal_instance_property');
 
@@ -4593,10 +4593,10 @@ SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'appaal_instance_proper
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'appaal_instance_property');
 DROP TABLE IF EXISTS appaal_instance_property_v64;
 DROP TABLE IF EXISTS audit.appaal_instance_property_v64;
--- DONE DEALING WITH TABLE appaal_instance_property [3484268]
+-- DONE DEALING WITH TABLE appaal_instance_property [3729024]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE approval_instance_item [3425722]
+-- DEALING WITH TABLE approval_instance_item [3720122]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'approval_instance_item', 'approval_instance_item');
 
@@ -4784,7 +4784,7 @@ ALTER TABLE approval_instance_item
 	FOREIGN KEY (next_approval_instance_item_id) REFERENCES approval_instance_item(approval_instance_item_id);
 
 -- TRIGGERS
--- consider NEW oid 3493661
+-- consider NEW oid 3738418
 CREATE OR REPLACE FUNCTION jazzhands.approval_instance_item_approval_notify()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -4800,7 +4800,7 @@ $function$
 CREATE TRIGGER trigger_approval_instance_item_approval_notify AFTER INSERT OR UPDATE OF is_approved ON approval_instance_item FOR EACH STATEMENT EXECUTE PROCEDURE approval_instance_item_approval_notify();
 
 -- XXX - may need to include trigger function
--- consider NEW oid 3493657
+-- consider NEW oid 3738414
 CREATE OR REPLACE FUNCTION jazzhands.approval_instance_item_approved_immutable()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -4818,7 +4818,7 @@ $function$
 CREATE TRIGGER trigger_approval_instance_item_approved_immutable BEFORE UPDATE OF is_approved ON approval_instance_item FOR EACH ROW EXECUTE PROCEDURE approval_instance_item_approved_immutable();
 
 -- XXX - may need to include trigger function
--- consider NEW oid 3493653
+-- consider NEW oid 3738410
 CREATE OR REPLACE FUNCTION jazzhands.approval_instance_step_auto_complete()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -4874,10 +4874,10 @@ ALTER SEQUENCE approval_instance_item_approval_instance_item_id_seq
 	 OWNED BY approval_instance_item.approval_instance_item_id;
 DROP TABLE IF EXISTS approval_instance_item_v64;
 DROP TABLE IF EXISTS audit.approval_instance_item_v64;
--- DONE DEALING WITH TABLE approval_instance_item [3484295]
+-- DONE DEALING WITH TABLE approval_instance_item [3729051]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE approval_instance_step [3425755]
+-- DEALING WITH TABLE approval_instance_step [3720149]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'approval_instance_step', 'approval_instance_step');
 
@@ -5094,7 +5094,7 @@ ALTER TABLE approval_instance_step
 	FOREIGN KEY (approval_type) REFERENCES val_approval_type(approval_type);
 
 -- TRIGGERS
--- consider NEW oid 3493655
+-- consider NEW oid 3738412
 CREATE OR REPLACE FUNCTION jazzhands.approval_instance_step_completed_immutable()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -5112,7 +5112,7 @@ $function$
 CREATE TRIGGER trigger_approval_instance_step_completed_immutable BEFORE UPDATE OF is_completed ON approval_instance_step FOR EACH ROW EXECUTE PROCEDURE approval_instance_step_completed_immutable();
 
 -- XXX - may need to include trigger function
--- consider NEW oid 3493659
+-- consider NEW oid 3738416
 CREATE OR REPLACE FUNCTION jazzhands.approval_instance_step_resolve_instance()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -5146,10 +5146,10 @@ ALTER SEQUENCE approval_instance_step_approval_instance_step_id_seq
 	 OWNED BY approval_instance_step.approval_instance_step_id;
 DROP TABLE IF EXISTS approval_instance_step_v64;
 DROP TABLE IF EXISTS audit.approval_instance_step_v64;
--- DONE DEALING WITH TABLE approval_instance_step [3484322]
+-- DONE DEALING WITH TABLE approval_instance_step [3729078]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE approval_instance_step_notify [3425792]
+-- DEALING WITH TABLE approval_instance_step_notify [3720166]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'approval_instance_step_notify', 'approval_instance_step_notify');
 
@@ -5232,6 +5232,7 @@ FROM approval_instance_step_notify_v64 o
 	INNER JOIN approval_instance_step USING (approval_instance_step_id);
 
 
+
 INSERT INTO audit.approval_instance_step_notify (
 	approv_instance_step_notify_id,
 	approval_instance_step_id,
@@ -5293,7 +5294,7 @@ ALTER TABLE approval_instance_step_notify
 	FOREIGN KEY (account_id) REFERENCES account(account_id);
 
 -- TRIGGERS
--- consider NEW oid 3493663
+-- consider NEW oid 3738420
 CREATE OR REPLACE FUNCTION jazzhands.legacy_approval_instance_step_notify_account()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -5318,10 +5319,10 @@ SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'approval_instance_step
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'approval_instance_step_notify');
 DROP TABLE IF EXISTS approval_instance_step_notify_v64;
 DROP TABLE IF EXISTS audit.approval_instance_step_notify_v64;
--- DONE DEALING WITH TABLE approval_instance_step_notify [3484338]
+-- DONE DEALING WITH TABLE approval_instance_step_notify [3729094]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE approval_process [3425814]
+-- DEALING WITH TABLE approval_process [3720178]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'approval_process', 'approval_process');
 
@@ -5529,10 +5530,10 @@ ALTER SEQUENCE approval_process_approval_process_id_seq
 	 OWNED BY approval_process.approval_process_id;
 DROP TABLE IF EXISTS approval_process_v64;
 DROP TABLE IF EXISTS audit.approval_process_v64;
--- DONE DEALING WITH TABLE approval_process [3484351]
+-- DONE DEALING WITH TABLE approval_process [3729107]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE approval_process_chain [3425843]
+-- DEALING WITH TABLE approval_process_chain [3720194]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'approval_process_chain', 'approval_process_chain');
 
@@ -5759,7 +5760,7 @@ ALTER SEQUENCE approval_process_chain_approval_process_chain_id_seq
 	 OWNED BY approval_process_chain.approval_process_chain_id;
 DROP TABLE IF EXISTS approval_process_chain_v64;
 DROP TABLE IF EXISTS audit.approval_process_chain_v64;
--- DONE DEALING WITH TABLE approval_process_chain [3484367]
+-- DONE DEALING WITH TABLE approval_process_chain [3729123]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE company_collection_company
@@ -5797,7 +5798,7 @@ ALTER TABLE company_collection_company
 	FOREIGN KEY (company_id) REFERENCES company(company_id);
 
 -- TRIGGERS
--- consider NEW oid 3493703
+-- consider NEW oid 3738460
 CREATE OR REPLACE FUNCTION jazzhands.company_collection_member_enforce()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -5848,7 +5849,7 @@ CREATE CONSTRAINT TRIGGER trigger_company_collection_member_enforce AFTER INSERT
 -- XXX - may need to include trigger function
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'company_collection_company');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'company_collection_company');
--- DONE DEALING WITH TABLE company_collection_company [3484483]
+-- DONE DEALING WITH TABLE company_collection_company [3729239]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE company_collection_hier
@@ -5886,7 +5887,7 @@ ALTER TABLE company_collection_hier
 	FOREIGN KEY (child_company_collection_id) REFERENCES company_collection(company_collection_id);
 
 -- TRIGGERS
--- consider NEW oid 3493700
+-- consider NEW oid 3738457
 CREATE OR REPLACE FUNCTION jazzhands.company_collection_hier_enforce()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -5916,10 +5917,10 @@ CREATE CONSTRAINT TRIGGER trigger_company_collection_hier_enforce AFTER INSERT O
 -- XXX - may need to include trigger function
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'company_collection_hier');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'company_collection_hier');
--- DONE DEALING WITH TABLE company_collection_hier [3484493]
+-- DONE DEALING WITH TABLE company_collection_hier [3729249]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE department [3426297]
+-- DEALING WITH TABLE department [3720410]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'department', 'department');
 
@@ -6102,7 +6103,7 @@ SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'department');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'department');
 DROP TABLE IF EXISTS department_v64;
 DROP TABLE IF EXISTS audit.department_v64;
--- DONE DEALING WITH TABLE department [3484614]
+-- DONE DEALING WITH TABLE department [3729370]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE dns_domain_collection
@@ -6165,7 +6166,7 @@ ALTER TABLE dns_domain_collection
 	FOREIGN KEY (dns_domain_collection_type) REFERENCES val_dns_domain_collection_type(dns_domain_collection_type);
 
 -- TRIGGERS
--- consider NEW oid 3493688
+-- consider NEW oid 3738445
 CREATE OR REPLACE FUNCTION jazzhands.validate_dns_domain_collection_type_change()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -6200,7 +6201,7 @@ SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'dns_domain_collection'
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'dns_domain_collection');
 ALTER SEQUENCE dns_domain_collection_dns_domain_collection_id_seq
 	 OWNED BY dns_domain_collection.dns_domain_collection_id;
--- DONE DEALING WITH TABLE dns_domain_collection [3484855]
+-- DONE DEALING WITH TABLE dns_domain_collection [3729611]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE dns_domain_collection_dns_dom
@@ -6238,7 +6239,7 @@ ALTER TABLE dns_domain_collection_dns_dom
 	FOREIGN KEY (dns_domain_id) REFERENCES dns_domain(dns_domain_id);
 
 -- TRIGGERS
--- consider NEW oid 3493766
+-- consider NEW oid 3738523
 CREATE OR REPLACE FUNCTION jazzhands.dns_domain_collection_member_enforce()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -6289,7 +6290,7 @@ CREATE CONSTRAINT TRIGGER trigger_dns_domain_collection_member_enforce AFTER INS
 -- XXX - may need to include trigger function
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'dns_domain_collection_dns_dom');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'dns_domain_collection_dns_dom');
--- DONE DEALING WITH TABLE dns_domain_collection_dns_dom [3484867]
+-- DONE DEALING WITH TABLE dns_domain_collection_dns_dom [3729623]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE dns_domain_collection_hier
@@ -6327,7 +6328,7 @@ ALTER TABLE dns_domain_collection_hier
 	FOREIGN KEY (child_dns_domain_collection_id) REFERENCES dns_domain_collection(dns_domain_collection_id);
 
 -- TRIGGERS
--- consider NEW oid 3493763
+-- consider NEW oid 3738520
 CREATE OR REPLACE FUNCTION jazzhands.dns_domain_collection_hier_enforce()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -6357,7 +6358,7 @@ CREATE CONSTRAINT TRIGGER trigger_dns_domain_collection_hier_enforce AFTER INSER
 -- XXX - may need to include trigger function
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'dns_domain_collection_hier');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'dns_domain_collection_hier');
--- DONE DEALING WITH TABLE dns_domain_collection_hier [3484877]
+-- DONE DEALING WITH TABLE dns_domain_collection_hier [3729633]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE l2_network_coll_l2_network
@@ -6401,7 +6402,7 @@ ALTER TABLE l2_network_coll_l2_network
 	FOREIGN KEY (layer2_network_id) REFERENCES layer2_network(layer2_network_id);
 
 -- TRIGGERS
--- consider NEW oid 3493786
+-- consider NEW oid 3738543
 CREATE OR REPLACE FUNCTION jazzhands.layer2_network_collection_member_enforce()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -6452,7 +6453,7 @@ CREATE CONSTRAINT TRIGGER trigger_layer2_network_collection_member_enforce AFTER
 -- XXX - may need to include trigger function
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'l2_network_coll_l2_network');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'l2_network_coll_l2_network');
--- DONE DEALING WITH TABLE l2_network_coll_l2_network [3485036]
+-- DONE DEALING WITH TABLE l2_network_coll_l2_network [3729792]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE l3_network_coll_l3_network
@@ -6496,7 +6497,7 @@ ALTER TABLE l3_network_coll_l3_network
 	FOREIGN KEY (layer3_network_id) REFERENCES layer3_network(layer3_network_id);
 
 -- TRIGGERS
--- consider NEW oid 3493796
+-- consider NEW oid 3738553
 CREATE OR REPLACE FUNCTION jazzhands.layer3_network_collection_member_enforce()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -6547,7 +6548,7 @@ CREATE CONSTRAINT TRIGGER trigger_layer3_network_collection_member_enforce AFTER
 -- XXX - may need to include trigger function
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'l3_network_coll_l3_network');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'l3_network_coll_l3_network');
--- DONE DEALING WITH TABLE l3_network_coll_l3_network [3485048]
+-- DONE DEALING WITH TABLE l3_network_coll_l3_network [3729804]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE layer2_network_collection
@@ -6608,7 +6609,7 @@ ALTER TABLE layer2_network_collection
 	FOREIGN KEY (layer2_network_collection_type) REFERENCES val_layer2_network_coll_type(layer2_network_collection_type);
 
 -- TRIGGERS
--- consider NEW oid 3493690
+-- consider NEW oid 3738447
 CREATE OR REPLACE FUNCTION jazzhands.validate_layer2_network_collection_type_change()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -6643,7 +6644,7 @@ SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'layer2_network_collect
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'layer2_network_collection');
 ALTER SEQUENCE layer2_network_collection_layer2_network_collection_id_seq
 	 OWNED BY layer2_network_collection.layer2_network_collection_id;
--- DONE DEALING WITH TABLE layer2_network_collection [3485103]
+-- DONE DEALING WITH TABLE layer2_network_collection [3729859]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE layer2_network_collection_hier
@@ -6681,7 +6682,7 @@ ALTER TABLE layer2_network_collection_hier
 	FOREIGN KEY (layer2_network_collection_id) REFERENCES layer2_network_collection(layer2_network_collection_id);
 
 -- TRIGGERS
--- consider NEW oid 3493783
+-- consider NEW oid 3738540
 CREATE OR REPLACE FUNCTION jazzhands.layer2_network_collection_hier_enforce()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -6711,7 +6712,7 @@ CREATE CONSTRAINT TRIGGER trigger_layer2_network_collection_hier_enforce AFTER I
 -- XXX - may need to include trigger function
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'layer2_network_collection_hier');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'layer2_network_collection_hier');
--- DONE DEALING WITH TABLE layer2_network_collection_hier [3485115]
+-- DONE DEALING WITH TABLE layer2_network_collection_hier [3729871]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE layer3_network_collection
@@ -6772,7 +6773,7 @@ ALTER TABLE layer3_network_collection
 	FOREIGN KEY (layer3_network_collection_type) REFERENCES val_layer3_network_coll_type(layer3_network_collection_type);
 
 -- TRIGGERS
--- consider NEW oid 3493692
+-- consider NEW oid 3738449
 CREATE OR REPLACE FUNCTION jazzhands.validate_layer3_network_collection_type_change()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -6807,7 +6808,7 @@ SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'layer3_network_collect
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'layer3_network_collection');
 ALTER SEQUENCE layer3_network_collection_layer3_network_collection_id_seq
 	 OWNED BY layer3_network_collection.layer3_network_collection_id;
--- DONE DEALING WITH TABLE layer3_network_collection [3485143]
+-- DONE DEALING WITH TABLE layer3_network_collection [3729899]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE layer3_network_collection_hier
@@ -6845,7 +6846,7 @@ ALTER TABLE layer3_network_collection_hier
 	FOREIGN KEY (layer3_network_collection_id) REFERENCES layer3_network_collection(layer3_network_collection_id);
 
 -- TRIGGERS
--- consider NEW oid 3493793
+-- consider NEW oid 3738550
 CREATE OR REPLACE FUNCTION jazzhands.layer3_network_collection_hier_enforce()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -6875,10 +6876,10 @@ CREATE CONSTRAINT TRIGGER trigger_layer3_network_collection_hier_enforce AFTER I
 -- XXX - may need to include trigger function
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'layer3_network_collection_hier');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'layer3_network_collection_hier');
--- DONE DEALING WITH TABLE layer3_network_collection_hier [3485155]
+-- DONE DEALING WITH TABLE layer3_network_collection_hier [3729911]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE logical_port [3427140]
+-- DEALING WITH TABLE logical_port [3720856]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'logical_port', 'logical_port');
 
@@ -7045,10 +7046,10 @@ ALTER SEQUENCE logical_port_logical_port_id_seq
 	 OWNED BY logical_port.logical_port_id;
 DROP TABLE IF EXISTS logical_port_v64;
 DROP TABLE IF EXISTS audit.logical_port_v64;
--- DONE DEALING WITH TABLE logical_port [3485167]
+-- DONE DEALING WITH TABLE logical_port [3729923]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE logical_volume [3427167]
+-- DEALING WITH TABLE logical_volume [3720879]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'logical_volume', 'logical_volume');
 
@@ -7121,6 +7122,9 @@ SELECT schema_support.build_audit_table('audit', 'jazzhands', 'logical_volume', 
 ALTER TABLE logical_volume
 	ALTER logical_volume_id
 	SET DEFAULT nextval('logical_volume_logical_volume_id_seq'::regclass);
+ALTER TABLE logical_volume
+	ALTER logical_volume_type
+	SET DEFAULT 'legacy'::character varying;
 INSERT INTO logical_volume (
 	logical_volume_id,
 	logical_volume_name,
@@ -7137,7 +7141,7 @@ INSERT INTO logical_volume (
 ) SELECT
 	logical_volume_id,
 	logical_volume_name,
-	'legacy',		-- new column (logical_volume_type)
+	'legacy'::character varying,		-- new column (logical_volume_type)
 	volume_group_id,
 	device_id,
 	logical_volume_size_in_bytes,
@@ -7188,6 +7192,9 @@ FROM audit.logical_volume_v64;
 ALTER TABLE logical_volume
 	ALTER logical_volume_id
 	SET DEFAULT nextval('logical_volume_logical_volume_id_seq'::regclass);
+ALTER TABLE logical_volume
+	ALTER logical_volume_type
+	SET DEFAULT 'legacy'::character varying;
 
 -- PRIMARY AND ALTERNATE KEYS
 ALTER TABLE logical_volume ADD CONSTRAINT ak_logical_volume_filesystem UNIQUE (logical_volume_id, filesystem_type);
@@ -7243,10 +7250,10 @@ ALTER SEQUENCE logical_volume_logical_volume_id_seq
 	 OWNED BY logical_volume.logical_volume_id;
 DROP TABLE IF EXISTS logical_volume_v64;
 DROP TABLE IF EXISTS audit.logical_volume_v64;
--- DONE DEALING WITH TABLE logical_volume [3485190]
+-- DONE DEALING WITH TABLE logical_volume [3729946]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE logical_volume_property [3427204]
+-- DEALING WITH TABLE logical_volume_property [3720899]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'logical_volume_property', 'logical_volume_property');
 
@@ -7416,10 +7423,10 @@ ALTER SEQUENCE logical_volume_property_logical_volume_property_id_seq
 	 OWNED BY logical_volume_property.logical_volume_property_id;
 DROP TABLE IF EXISTS logical_volume_property_v64;
 DROP TABLE IF EXISTS audit.logical_volume_property_v64;
--- DONE DEALING WITH TABLE logical_volume_property [3485211]
+-- DONE DEALING WITH TABLE logical_volume_property [3729968]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE network_range [3427457]
+-- DEALING WITH TABLE network_range [3721054]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'network_range', 'network_range');
 
@@ -7602,7 +7609,7 @@ ALTER TABLE network_range
 	FOREIGN KEY (parent_netblock_id) REFERENCES netblock(netblock_id);
 
 -- TRIGGERS
--- consider NEW oid 3493834
+-- consider NEW oid 3738591
 CREATE OR REPLACE FUNCTION jazzhands.validate_network_range()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -7621,7 +7628,7 @@ BEGIN
 		RAISE EXCEPTION 'For type %, dns_domain_id is required.',
 			NEW.network_range_type
 			USING ERRCODE = 'not_null_violation';
-	ELSIF NEW.dns_domain_id IS NOT NULL AND 
+	ELSIF NEW.dns_domain_id IS NOT NULL AND
 			v_nrt.dns_domain_required = 'PROHIBITED' THEN
 		RAISE EXCEPTION 'For type %, dns_domain_id is prohibited.',
 			NEW.network_range_type
@@ -7639,7 +7646,7 @@ ALTER SEQUENCE network_range_network_range_id_seq
 	 OWNED BY network_range.network_range_id;
 DROP TABLE IF EXISTS network_range_v64;
 DROP TABLE IF EXISTS audit.network_range_v64;
--- DONE DEALING WITH TABLE network_range [3485368]
+-- DONE DEALING WITH TABLE network_range [3730125]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE person_company_attr
@@ -7688,7 +7695,7 @@ ALTER TABLE person_company_attr
 	FOREIGN KEY (person_company_attr_name) REFERENCES val_person_company_attr_name(person_company_attr_name);
 
 -- TRIGGERS
--- consider NEW oid 3493893
+-- consider NEW oid 3738640
 CREATE OR REPLACE FUNCTION jazzhands.validate_pers_company_attr()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -7774,10 +7781,10 @@ CREATE TRIGGER trigger_validate_pers_company_attr BEFORE INSERT OR UPDATE ON per
 -- XXX - may need to include trigger function
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'person_company_attr');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'person_company_attr');
--- DONE DEALING WITH TABLE person_company_attr [3485489]
+-- DONE DEALING WITH TABLE person_company_attr [3730246]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE physical_address [3427939]
+-- DEALING WITH TABLE physical_address [3721279]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'physical_address', 'physical_address');
 
@@ -8012,10 +8019,10 @@ ALTER SEQUENCE physical_address_physical_address_id_seq
 	 OWNED BY physical_address.physical_address_id;
 DROP TABLE IF EXISTS physical_address_v64;
 DROP TABLE IF EXISTS audit.physical_address_v64;
--- DONE DEALING WITH TABLE physical_address [3485605]
+-- DONE DEALING WITH TABLE physical_address [3730362]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE property [3428062]
+-- DEALING WITH TABLE property [3721329]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'property', 'property');
 
@@ -8509,7 +8516,7 @@ ALTER TABLE property
 	FOREIGN KEY (property_value_person_id) REFERENCES person(person_id);
 
 -- TRIGGERS
--- consider NEW oid 3493859
+-- consider NEW oid 3738607
 CREATE OR REPLACE FUNCTION jazzhands.validate_property()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -9316,10 +9323,10 @@ ALTER SEQUENCE property_property_id_seq
 	 OWNED BY property.property_id;
 DROP TABLE IF EXISTS property_v64;
 DROP TABLE IF EXISTS audit.property_v64;
--- DONE DEALING WITH TABLE property [3485658]
+-- DONE DEALING WITH TABLE property [3730415]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE slot [3428457]
+-- DEALING WITH TABLE slot [3721501]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'slot', 'slot');
 
@@ -9589,10 +9596,10 @@ ALTER SEQUENCE slot_slot_id_seq
 	 OWNED BY slot.slot_id;
 DROP TABLE IF EXISTS slot_v64;
 DROP TABLE IF EXISTS audit.slot_v64;
--- DONE DEALING WITH TABLE slot [3485831]
+-- DONE DEALING WITH TABLE slot [3730588]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE token [3428850]
+-- DEALING WITH TABLE token [3721708]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'token', 'token');
 
@@ -9826,10 +9833,10 @@ ALTER SEQUENCE token_token_id_seq
 	 OWNED BY token.token_id;
 DROP TABLE IF EXISTS token_v64;
 DROP TABLE IF EXISTS audit.token_v64;
--- DONE DEALING WITH TABLE token [3486038]
+-- DONE DEALING WITH TABLE token [3730795]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE volume_group [3430557]
+-- DEALING WITH TABLE volume_group [3722658]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'volume_group', 'volume_group');
 
@@ -10025,10 +10032,10 @@ ALTER SEQUENCE volume_group_volume_group_id_seq
 	 OWNED BY volume_group.volume_group_id;
 DROP TABLE IF EXISTS volume_group_v64;
 DROP TABLE IF EXISTS audit.volume_group_v64;
--- DONE DEALING WITH TABLE volume_group [3487112]
+-- DONE DEALING WITH TABLE volume_group [3731869]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE volume_group_physicalish_vol [3430595]
+-- DEALING WITH TABLE volume_group_physicalish_vol [3722676]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'volume_group_physicalish_vol', 'volume_group_physicalish_vol');
 
@@ -10201,10 +10208,10 @@ SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'volume_group_physicali
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'volume_group_physicalish_vol');
 DROP TABLE IF EXISTS volume_group_physicalish_vol_v64;
 DROP TABLE IF EXISTS audit.volume_group_physicalish_vol_v64;
--- DONE DEALING WITH TABLE volume_group_physicalish_vol [3487131]
+-- DONE DEALING WITH TABLE volume_group_physicalish_vol [3731888]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE x509_certificate [3430694]
+-- DEALING WITH TABLE x509_certificate [3722705]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'x509_certificate', 'x509_certificate');
 
@@ -10469,10 +10476,10 @@ ALTER SEQUENCE x509_certificate_x509_cert_id_seq
 	 OWNED BY x509_certificate.x509_cert_id;
 DROP TABLE IF EXISTS x509_certificate_v64;
 DROP TABLE IF EXISTS audit.x509_certificate_v64;
--- DONE DEALING WITH TABLE x509_certificate [3487160]
+-- DONE DEALING WITH TABLE x509_certificate [3731917]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE v_property [3441773]
+-- DEALING WITH TABLE v_property [3728247]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'v_property', 'v_property');
 SELECT schema_support.save_dependant_objects_for_replay('jazzhands', 'v_property');
@@ -10520,10 +10527,10 @@ CREATE VIEW jazzhands.v_property AS
   WHERE property.is_enabled = 'Y'::bpchar AND (property.start_date IS NULL AND property.finish_date IS NULL OR property.start_date IS NULL AND now() <= property.finish_date OR property.start_date <= now() AND property.finish_date IS NULL OR property.start_date <= now() AND now() <= property.finish_date);
 
 delete from __recreate where type = 'view' and object = 'v_property';
--- DONE DEALING WITH TABLE v_property [3493252]
+-- DONE DEALING WITH TABLE v_property [3738009]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE v_acct_coll_prop_expanded [3442274]
+-- DEALING WITH TABLE v_acct_coll_prop_expanded [3728347]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'v_acct_coll_prop_expanded', 'v_acct_coll_prop_expanded');
 SELECT schema_support.save_dependant_objects_for_replay('jazzhands', 'v_acct_coll_prop_expanded');
@@ -10543,70 +10550,70 @@ CREATE VIEW jazzhands.v_acct_coll_prop_expanded AS
     v_property.property_value_sw_package_id,
     v_property.property_value_token_col_id,
     v_property.property_rank,
-        CASE val_property.is_multivalue
-            WHEN 'N'::bpchar THEN false
-            WHEN 'Y'::bpchar THEN true
-            ELSE NULL::boolean
-        END AS is_multivalue,
-        CASE ac.account_collection_type
-            WHEN 'per-user'::text THEN 0
-            ELSE
-            CASE v_acct_coll_expanded_detail.assign_method
-                WHEN 'DirectAccountCollectionAssignment'::text THEN 10
-                WHEN 'DirectDepartmentAssignment'::text THEN 200
-                WHEN 'DepartmentAssignedToAccountCollection'::text THEN 300 + v_acct_coll_expanded_detail.dept_level + v_acct_coll_expanded_detail.acct_coll_level
-                WHEN 'AccountAssignedToChildDepartment'::text THEN 400 + v_acct_coll_expanded_detail.dept_level
-                WHEN 'AccountAssignedToChildAccountCollection'::text THEN 500 + v_acct_coll_expanded_detail.acct_coll_level
-                WHEN 'DepartmentAssignedToChildAccountCollection'::text THEN 600 + v_acct_coll_expanded_detail.dept_level + v_acct_coll_expanded_detail.acct_coll_level
-                WHEN 'ChildDepartmentAssignedToAccountCollection'::text THEN 700 + v_acct_coll_expanded_detail.dept_level + v_acct_coll_expanded_detail.acct_coll_level
-                WHEN 'ChildDepartmentAssignedToChildAccountCollection'::text THEN 800 + v_acct_coll_expanded_detail.dept_level + v_acct_coll_expanded_detail.acct_coll_level
-                ELSE 999
-            END
-        END AS assign_rank
+	CASE val_property.is_multivalue
+	    WHEN 'N'::bpchar THEN false
+	    WHEN 'Y'::bpchar THEN true
+	    ELSE NULL::boolean
+	END AS is_multivalue,
+	CASE ac.account_collection_type
+	    WHEN 'per-user'::text THEN 0
+	    ELSE
+	    CASE v_acct_coll_expanded_detail.assign_method
+		WHEN 'DirectAccountCollectionAssignment'::text THEN 10
+		WHEN 'DirectDepartmentAssignment'::text THEN 200
+		WHEN 'DepartmentAssignedToAccountCollection'::text THEN 300 + v_acct_coll_expanded_detail.dept_level + v_acct_coll_expanded_detail.acct_coll_level
+		WHEN 'AccountAssignedToChildDepartment'::text THEN 400 + v_acct_coll_expanded_detail.dept_level
+		WHEN 'AccountAssignedToChildAccountCollection'::text THEN 500 + v_acct_coll_expanded_detail.acct_coll_level
+		WHEN 'DepartmentAssignedToChildAccountCollection'::text THEN 600 + v_acct_coll_expanded_detail.dept_level + v_acct_coll_expanded_detail.acct_coll_level
+		WHEN 'ChildDepartmentAssignedToAccountCollection'::text THEN 700 + v_acct_coll_expanded_detail.dept_level + v_acct_coll_expanded_detail.acct_coll_level
+		WHEN 'ChildDepartmentAssignedToChildAccountCollection'::text THEN 800 + v_acct_coll_expanded_detail.dept_level + v_acct_coll_expanded_detail.acct_coll_level
+		ELSE 999
+	    END
+	END AS assign_rank
    FROM v_acct_coll_expanded_detail
      JOIN account_collection ac USING (account_collection_id)
      JOIN v_property USING (account_collection_id)
      JOIN val_property USING (property_name, property_type);
 
 delete from __recreate where type = 'view' and object = 'v_acct_coll_prop_expanded';
--- DONE DEALING WITH TABLE v_acct_coll_prop_expanded [3493350]
+-- DONE DEALING WITH TABLE v_acct_coll_prop_expanded [3738107]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE v_approval_instance_step_expanded
 DROP VIEW IF EXISTS jazzhands.v_approval_instance_step_expanded;
 CREATE VIEW jazzhands.v_approval_instance_step_expanded AS
  WITH RECURSIVE rai AS (
-         SELECT approval_instance_item.approval_instance_item_id AS root_item_id,
-            approval_instance_item.approval_instance_step_id AS root_step_id,
-            0 AS level,
-            approval_instance_item.approval_instance_step_id,
-            approval_instance_item.approval_instance_item_id,
-            approval_instance_item.next_approval_instance_item_id,
-            approval_instance_item.is_approved
-           FROM approval_instance_item
-          WHERE NOT (approval_instance_item.approval_instance_item_id IN ( SELECT approval_instance_item_1.next_approval_instance_item_id
-                   FROM approval_instance_item approval_instance_item_1
-                  WHERE approval_instance_item_1.next_approval_instance_item_id IS NOT NULL))
-        UNION
-         SELECT rai.root_item_id,
-            rai.root_step_id,
-            rai.level + 1,
-            i.approval_instance_step_id,
-            i.approval_instance_item_id,
-            i.next_approval_instance_item_id,
-            i.is_approved
-           FROM approval_instance_item i
-             JOIN rai ON rai.next_approval_instance_item_id = i.approval_instance_item_id
-        ), q AS (
-         SELECT rai.root_item_id AS first_approval_instance_item_id,
-            rai.root_step_id,
-            rai.approval_instance_item_id,
-            rai.approval_instance_step_id,
-            rank() OVER (PARTITION BY rai.root_item_id ORDER BY rai.root_item_id, rai.level DESC) AS tier,
-            rai.level,
-            rai.is_approved
-           FROM rai
-        )
+	 SELECT approval_instance_item.approval_instance_item_id AS root_item_id,
+	    approval_instance_item.approval_instance_step_id AS root_step_id,
+	    0 AS level,
+	    approval_instance_item.approval_instance_step_id,
+	    approval_instance_item.approval_instance_item_id,
+	    approval_instance_item.next_approval_instance_item_id,
+	    approval_instance_item.is_approved
+	   FROM approval_instance_item
+	  WHERE NOT (approval_instance_item.approval_instance_item_id IN ( SELECT approval_instance_item_1.next_approval_instance_item_id
+		   FROM approval_instance_item approval_instance_item_1
+		  WHERE approval_instance_item_1.next_approval_instance_item_id IS NOT NULL))
+	UNION
+	 SELECT rai.root_item_id,
+	    rai.root_step_id,
+	    rai.level + 1,
+	    i.approval_instance_step_id,
+	    i.approval_instance_item_id,
+	    i.next_approval_instance_item_id,
+	    i.is_approved
+	   FROM approval_instance_item i
+	     JOIN rai ON rai.next_approval_instance_item_id = i.approval_instance_item_id
+	), q AS (
+	 SELECT rai.root_item_id AS first_approval_instance_item_id,
+	    rai.root_step_id,
+	    rai.approval_instance_item_id,
+	    rai.approval_instance_step_id,
+	    rank() OVER (PARTITION BY rai.root_item_id ORDER BY rai.root_item_id, rai.level DESC) AS tier,
+	    rai.level,
+	    rai.is_approved
+	   FROM rai
+	)
  SELECT q.first_approval_instance_item_id,
     q.root_step_id,
     q.approval_instance_item_id,
@@ -10617,10 +10624,10 @@ CREATE VIEW jazzhands.v_approval_instance_step_expanded AS
    FROM q;
 
 delete from __recreate where type = 'view' and object = 'v_approval_instance_step_expanded';
--- DONE DEALING WITH TABLE v_approval_instance_step_expanded [3493491]
+-- DONE DEALING WITH TABLE v_approval_instance_step_expanded [3738248]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE v_property [3441773]
+-- DEALING WITH TABLE v_property [3728247]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'v_property', 'v_property');
 SELECT schema_support.save_dependant_objects_for_replay('jazzhands', 'v_property');
@@ -10668,10 +10675,10 @@ CREATE VIEW jazzhands.v_property AS
   WHERE property.is_enabled = 'Y'::bpchar AND (property.start_date IS NULL AND property.finish_date IS NULL OR property.start_date IS NULL AND now() <= property.finish_date OR property.start_date <= now() AND property.finish_date IS NULL OR property.start_date <= now() AND now() <= property.finish_date);
 
 delete from __recreate where type = 'view' and object = 'v_property';
--- DONE DEALING WITH TABLE v_property [3493252]
+-- DONE DEALING WITH TABLE v_property [3738009]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE v_token [3441817]
+-- DEALING WITH TABLE v_token [3728269]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'v_token', 'v_token');
 SELECT schema_support.save_dependant_objects_for_replay('jazzhands', 'v_token');
@@ -10699,10 +10706,10 @@ CREATE VIEW jazzhands.v_token AS
      LEFT JOIN account_token ta USING (token_id);
 
 delete from __recreate where type = 'view' and object = 'v_token';
--- DONE DEALING WITH TABLE v_token [3493272]
+-- DONE DEALING WITH TABLE v_token [3738029]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE v_approval_matrix [3442514]
+-- DEALING WITH TABLE v_approval_matrix [3728463]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'v_approval_matrix', 'v_approval_matrix');
 SELECT schema_support.save_dependant_objects_for_replay('approval_utils', 'v_approval_matrix');
@@ -10715,18 +10722,18 @@ CREATE VIEW approval_utils.v_approval_matrix AS
     ap.approval_expiration_action,
     ap.attestation_frequency,
     ap.attestation_offset,
-        CASE
-            WHEN ap.attestation_frequency::text = 'monthly'::text THEN to_char(now(), 'YYYY-MM'::text)
-            WHEN ap.attestation_frequency::text = 'weekly'::text THEN concat('week ', to_char(now(), 'WW'::text), ' - ', to_char(now(), 'YYY-MM-DD'::text))
-            WHEN ap.attestation_frequency::text = 'quarterly'::text THEN concat(to_char(now(), 'YYYY'::text), ' q', to_char(now(), 'Q'::text))
-            ELSE 'unknown'::text
-        END AS current_attestation_name,
-        CASE
-            WHEN ap.attestation_frequency::text = 'monthly'::text THEN date_trunc('month'::text, now())::timestamp without time zone + ((ap.attestation_offset || 'days'::text)::interval)
-            WHEN ap.attestation_frequency::text = 'weekly'::text THEN date_trunc('week'::text, now())::timestamp without time zone + ((ap.attestation_offset || 'days'::text)::interval)
-            WHEN ap.attestation_frequency::text = 'quarterly'::text THEN date_trunc('quarter'::text, now())::timestamp without time zone + ((ap.attestation_offset || 'days'::text)::interval)
-            ELSE '-infinity'::timestamp without time zone
-        END AS current_attestation_begins,
+	CASE
+	    WHEN ap.attestation_frequency::text = 'monthly'::text THEN to_char(now(), 'YYYY-MM'::text)
+	    WHEN ap.attestation_frequency::text = 'weekly'::text THEN concat('week ', to_char(now(), 'WW'::text), ' - ', to_char(now(), 'YYY-MM-DD'::text))
+	    WHEN ap.attestation_frequency::text = 'quarterly'::text THEN concat(to_char(now(), 'YYYY'::text), ' q', to_char(now(), 'Q'::text))
+	    ELSE 'unknown'::text
+	END AS current_attestation_name,
+	CASE
+	    WHEN ap.attestation_frequency::text = 'monthly'::text THEN date_trunc('month'::text, now())::timestamp without time zone + ((ap.attestation_offset || 'days'::text)::interval)
+	    WHEN ap.attestation_frequency::text = 'weekly'::text THEN date_trunc('week'::text, now())::timestamp without time zone + ((ap.attestation_offset || 'days'::text)::interval)
+	    WHEN ap.attestation_frequency::text = 'quarterly'::text THEN date_trunc('quarter'::text, now())::timestamp without time zone + ((ap.attestation_offset || 'days'::text)::interval)
+	    ELSE '-infinity'::timestamp without time zone
+	END AS current_attestation_begins,
     p.property_id,
     p.property_name,
     p.property_type,
@@ -10746,145 +10753,145 @@ CREATE VIEW approval_utils.v_approval_matrix AS
   WHERE ap.approval_process_name::text = 'ReportingAttest'::text AND ap.approval_process_type::text = 'attestation'::text;
 
 delete from __recreate where type = 'view' and object = 'v_approval_matrix';
--- DONE DEALING WITH TABLE v_approval_matrix [3493466]
+-- DONE DEALING WITH TABLE v_approval_matrix [3738223]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE v_account_collection_approval_process [3442564]
+-- DEALING WITH TABLE v_account_collection_approval_process [3728483]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'v_account_collection_approval_process', 'v_account_collection_approval_process');
 SELECT schema_support.save_dependant_objects_for_replay('approval_utils', 'v_account_collection_approval_process');
 DROP VIEW IF EXISTS approval_utils.v_account_collection_approval_process;
 CREATE VIEW approval_utils.v_account_collection_approval_process AS
  WITH combo AS (
-         WITH foo AS (
-                 SELECT mm.audit_seq_id,
-                    mm.account_collection_id,
-                    mm.account_collection_name,
-                    mm.account_collection_type,
-                    mm.login,
-                    mm.account_id,
-                    mm.person_id,
-                    mm.company_id,
-                    mm.first_name,
-                    mm.last_name,
-                    mm.manager_person_id,
-                    mm.human_readable,
-                    mm.manager_account_id,
-                    mm.manager_login,
-                    mm.manager_human_readable,
-                    mx.approval_process_id,
-                    mx.first_apprvl_process_chain_id,
-                    mx.approval_process_name,
-                    mx.approval_response_period,
-                    mx.approval_expiration_action,
-                    mx.attestation_frequency,
-                    mx.attestation_offset,
-                    mx.current_attestation_name,
-                    mx.current_attestation_begins,
-                    mx.property_id,
-                    mx.property_name,
-                    mx.property_type,
-                    mx.property_value,
-                    mx.property_val_lhs,
-                    mx.property_val_rhs,
-                    mx.approval_process_chain_id,
-                    mx.approving_entity,
-                    mx.approval_process_chain_name,
-                    mx.approval_process_description,
-                    mx.approval_chain_description
-                   FROM approval_utils.v_account_collection_audit_results mm
-                     JOIN approval_utils.v_approval_matrix mx ON mx.property_val_lhs = mm.account_collection_type::text
-                  ORDER BY mm.manager_account_id, mm.account_id
-                )
-         SELECT foo.login,
-            foo.account_id,
-            foo.person_id,
-            foo.company_id,
-            foo.manager_account_id,
-            foo.manager_login,
-            'account_collection_account'::text AS audit_table,
-            foo.audit_seq_id,
-            foo.approval_process_id,
-            foo.approval_process_chain_id,
-            foo.approving_entity,
-            foo.approval_process_description,
-            foo.approval_chain_description,
-            foo.approval_response_period,
-            foo.approval_expiration_action,
-            foo.attestation_frequency,
-            foo.current_attestation_name,
-            foo.current_attestation_begins,
-            foo.attestation_offset,
-            foo.approval_process_chain_name,
-            foo.account_collection_type AS approval_category,
-            concat('Verify ', foo.account_collection_type) AS approval_label,
-            foo.human_readable AS approval_lhs,
-            foo.account_collection_name AS approval_rhs
-           FROM foo
-        UNION
-         SELECT mm.login,
-            mm.account_id,
-            mm.person_id,
-            mm.company_id,
-            mm.manager_account_id,
-            mm.manager_login,
-            'account_collection_account'::text AS audit_table,
-            mm.audit_seq_id,
-            mx.approval_process_id,
-            mx.approval_process_chain_id,
-            mx.approving_entity,
-            mx.approval_process_description,
-            mx.approval_chain_description,
-            mx.approval_response_period,
-            mx.approval_expiration_action,
-            mx.attestation_frequency,
-            mx.current_attestation_name,
-            mx.current_attestation_begins,
-            mx.attestation_offset,
-            mx.approval_process_chain_name,
-            mx.approval_process_name AS approval_category,
-            'Verify Manager'::text AS approval_label,
-            mm.human_readable AS approval_lhs,
-            concat('Reports to ', mm.manager_human_readable) AS approval_rhs
-           FROM approval_utils.v_approval_matrix mx
-             JOIN property p ON p.property_name::text = mx.property_val_rhs AND p.property_type::text = mx.property_val_lhs
-             JOIN approval_utils.v_account_collection_audit_results mm ON mm.account_collection_id = p.property_value_account_coll_id
-          WHERE p.account_id <> mm.account_id
-        UNION
-         SELECT mm.login,
-            mm.account_id,
-            mm.person_id,
-            mm.company_id,
-            mm.manager_account_id,
-            mm.manager_login,
-            'person_company'::text AS audit_table,
-            pcm.audit_seq_id,
-            am.approval_process_id,
-            am.approval_process_chain_id,
-            am.approving_entity,
-            am.approval_process_description,
-            am.approval_chain_description,
-            am.approval_response_period,
-            am.approval_expiration_action,
-            am.attestation_frequency,
-            am.current_attestation_name,
-            am.current_attestation_begins,
-            am.attestation_offset,
-            am.approval_process_chain_name,
-            am.property_val_rhs AS approval_category,
-                CASE
-                    WHEN am.property_val_rhs = 'position_title'::text THEN 'Verify Position Title'::text
-                    ELSE NULL::text
-                END AS aproval_label,
-            mm.human_readable AS approval_lhs,
-                CASE
-                    WHEN am.property_val_rhs = 'position_title'::text THEN pcm.position_title
-                    ELSE NULL::character varying
-                END AS approval_rhs
-           FROM v_account_manager_map mm
-             JOIN approval_utils.v_person_company_audit_map pcm USING (person_id, company_id)
-             JOIN approval_utils.v_approval_matrix am ON am.property_val_lhs = 'person_company'::text AND am.property_val_rhs = 'position_title'::text
-        )
+	 WITH foo AS (
+		 SELECT mm.audit_seq_id,
+		    mm.account_collection_id,
+		    mm.account_collection_name,
+		    mm.account_collection_type,
+		    mm.login,
+		    mm.account_id,
+		    mm.person_id,
+		    mm.company_id,
+		    mm.first_name,
+		    mm.last_name,
+		    mm.manager_person_id,
+		    mm.human_readable,
+		    mm.manager_account_id,
+		    mm.manager_login,
+		    mm.manager_human_readable,
+		    mx.approval_process_id,
+		    mx.first_apprvl_process_chain_id,
+		    mx.approval_process_name,
+		    mx.approval_response_period,
+		    mx.approval_expiration_action,
+		    mx.attestation_frequency,
+		    mx.attestation_offset,
+		    mx.current_attestation_name,
+		    mx.current_attestation_begins,
+		    mx.property_id,
+		    mx.property_name,
+		    mx.property_type,
+		    mx.property_value,
+		    mx.property_val_lhs,
+		    mx.property_val_rhs,
+		    mx.approval_process_chain_id,
+		    mx.approving_entity,
+		    mx.approval_process_chain_name,
+		    mx.approval_process_description,
+		    mx.approval_chain_description
+		   FROM approval_utils.v_account_collection_audit_results mm
+		     JOIN approval_utils.v_approval_matrix mx ON mx.property_val_lhs = mm.account_collection_type::text
+		  ORDER BY mm.manager_account_id, mm.account_id
+		)
+	 SELECT foo.login,
+	    foo.account_id,
+	    foo.person_id,
+	    foo.company_id,
+	    foo.manager_account_id,
+	    foo.manager_login,
+	    'account_collection_account'::text AS audit_table,
+	    foo.audit_seq_id,
+	    foo.approval_process_id,
+	    foo.approval_process_chain_id,
+	    foo.approving_entity,
+	    foo.approval_process_description,
+	    foo.approval_chain_description,
+	    foo.approval_response_period,
+	    foo.approval_expiration_action,
+	    foo.attestation_frequency,
+	    foo.current_attestation_name,
+	    foo.current_attestation_begins,
+	    foo.attestation_offset,
+	    foo.approval_process_chain_name,
+	    foo.account_collection_type AS approval_category,
+	    concat('Verify ', foo.account_collection_type) AS approval_label,
+	    foo.human_readable AS approval_lhs,
+	    foo.account_collection_name AS approval_rhs
+	   FROM foo
+	UNION
+	 SELECT mm.login,
+	    mm.account_id,
+	    mm.person_id,
+	    mm.company_id,
+	    mm.manager_account_id,
+	    mm.manager_login,
+	    'account_collection_account'::text AS audit_table,
+	    mm.audit_seq_id,
+	    mx.approval_process_id,
+	    mx.approval_process_chain_id,
+	    mx.approving_entity,
+	    mx.approval_process_description,
+	    mx.approval_chain_description,
+	    mx.approval_response_period,
+	    mx.approval_expiration_action,
+	    mx.attestation_frequency,
+	    mx.current_attestation_name,
+	    mx.current_attestation_begins,
+	    mx.attestation_offset,
+	    mx.approval_process_chain_name,
+	    mx.approval_process_name AS approval_category,
+	    'Verify Manager'::text AS approval_label,
+	    mm.human_readable AS approval_lhs,
+	    concat('Reports to ', mm.manager_human_readable) AS approval_rhs
+	   FROM approval_utils.v_approval_matrix mx
+	     JOIN property p ON p.property_name::text = mx.property_val_rhs AND p.property_type::text = mx.property_val_lhs
+	     JOIN approval_utils.v_account_collection_audit_results mm ON mm.account_collection_id = p.property_value_account_coll_id
+	  WHERE p.account_id <> mm.account_id
+	UNION
+	 SELECT mm.login,
+	    mm.account_id,
+	    mm.person_id,
+	    mm.company_id,
+	    mm.manager_account_id,
+	    mm.manager_login,
+	    'person_company'::text AS audit_table,
+	    pcm.audit_seq_id,
+	    am.approval_process_id,
+	    am.approval_process_chain_id,
+	    am.approving_entity,
+	    am.approval_process_description,
+	    am.approval_chain_description,
+	    am.approval_response_period,
+	    am.approval_expiration_action,
+	    am.attestation_frequency,
+	    am.current_attestation_name,
+	    am.current_attestation_begins,
+	    am.attestation_offset,
+	    am.approval_process_chain_name,
+	    am.property_val_rhs AS approval_category,
+		CASE
+		    WHEN am.property_val_rhs = 'position_title'::text THEN 'Verify Position Title'::text
+		    ELSE NULL::text
+		END AS aproval_label,
+	    mm.human_readable AS approval_lhs,
+		CASE
+		    WHEN am.property_val_rhs = 'position_title'::text THEN pcm.position_title
+		    ELSE NULL::character varying
+		END AS approval_rhs
+	   FROM v_account_manager_map mm
+	     JOIN approval_utils.v_person_company_audit_map pcm USING (person_id, company_id)
+	     JOIN approval_utils.v_approval_matrix am ON am.property_val_lhs = 'person_company'::text AND am.property_val_rhs = 'position_title'::text
+	)
  SELECT combo.login,
     combo.account_id,
     combo.person_id,
@@ -10914,7 +10921,7 @@ CREATE VIEW approval_utils.v_account_collection_approval_process AS
   ORDER BY combo.manager_login, combo.account_id, combo.approval_label;
 
 delete from __recreate where type = 'view' and object = 'v_account_collection_approval_process';
--- DONE DEALING WITH TABLE v_account_collection_approval_process [3493486]
+-- DONE DEALING WITH TABLE v_account_collection_approval_process [3738243]
 --------------------------------------------------------------------
 --
 -- Process trigger procs in jazzhands
@@ -13306,7 +13313,7 @@ BEGIN
 		RAISE EXCEPTION 'For type %, dns_domain_id is required.',
 			NEW.network_range_type
 			USING ERRCODE = 'not_null_violation';
-	ELSIF NEW.dns_domain_id IS NOT NULL AND 
+	ELSIF NEW.dns_domain_id IS NOT NULL AND
 			v_nrt.dns_domain_required = 'PROHIBITED' THEN
 		RAISE EXCEPTION 'For type %, dns_domain_id is prohibited.',
 			NEW.network_range_type
@@ -13604,39 +13611,39 @@ CREATE TRIGGER trigger_validate_netblock_collection_type_change BEFORE UPDATE OF
 CREATE TRIGGER trigger_validate_property_collection_type_change BEFORE UPDATE OF property_collection_type ON property_collection FOR EACH ROW EXECUTE PROCEDURE validate_property_collection_type_change();
 CREATE TRIGGER trigger_validate_service_env_collection_type_change BEFORE UPDATE OF service_env_collection_type ON service_environment_collection FOR EACH ROW EXECUTE PROCEDURE validate_service_env_collection_type_change();
 
-DROP TRIGGER IF EXISTS trigger_automated_ac_on_person_company ON person_company;
-CREATE TRIGGER trigger_automated_ac_on_person_company AFTER UPDATE OF is_management, is_exempt, is_full_time, person_id, company_id, manager_person_id ON person_company FOR EACH ROW EXECUTE PROCEDURE automated_ac_on_person_company();
-
+-- per-company collection population for existing companies
 WITH col AS (
-        INSERT INTO company_collection (
-                company_collection_name, company_collection_type
-        ) SELECT company_name || '-historical', 'per-company'
-        FROM company
-        WHERE company_id NOT IN (
-                select company_id
-                from company_collection_company
-                inner join company_collection using (company_collection_id)
-                where company_collection_type = 'per-company'
-                )
-        ORDER BY company_id
-        RETURNING *
+	INSERT INTO company_collection (
+		company_collection_name, company_collection_type
+	) SELECT company_name || '-historical', 'per-company'
+	FROM company
+	WHERE company_id NOT IN (
+		select company_id
+		from company_collection_company
+		inner join company_collection using (company_collection_id)
+		where company_collection_type = 'per-company'
+		)
+	ORDER BY company_id
+	RETURNING *
 ) INSERT INTO company_collection_company
-        (company_collection_id, company_id)
+	(company_collection_id, company_id)
 SELECT company_collection_id, company_id
 FROM company_collection, company
 WHERE company_collection_name = company_name || '-historical'
 AND company_collection_type = 'per-company'
 AND company_id NOT IN (
-        select company_id
-        from company_collection_company
-                inner join company_collection using (company_collection_id)
-        where company_collection_type = 'per-company'
-        )
+	select company_id
+	from company_collection_company
+		inner join company_collection using (company_collection_id)
+	where company_collection_type = 'per-company'
+	)
 ORDER BY company_id;
 
 delete from val_property_data_type where
-        property_data_type = 'dns_domain_id';
+	property_data_type = 'dns_domain_id';
 
+DROP TRIGGER IF EXISTS trigger_automated_ac_on_person_company ON person_company;
+CREATE TRIGGER trigger_automated_ac_on_person_company AFTER UPDATE OF is_management, is_exempt, is_full_time, person_id, company_id, manager_person_id ON person_company FOR EACH ROW EXECUTE PROCEDURE automated_ac_on_person_company();
 
 
 -- Clean Up
