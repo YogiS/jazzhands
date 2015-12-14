@@ -59,6 +59,187 @@ select timeofday(), now();
 --
 -- Process middle (non-trigger) schema lv_manip
 --
+-- Changed function
+SELECT schema_support.save_grants_for_replay('lv_manip', 'delete_lv_hier');
+-- Dropped in case type changes.
+DROP FUNCTION IF EXISTS lv_manip.delete_lv_hier ( INOUT physicalish_volume_list integer[], INOUT volume_group_list integer[], INOUT logical_volume_list integer[] );
+CREATE OR REPLACE FUNCTION lv_manip.delete_lv_hier(INOUT physicalish_volume_list integer[] DEFAULT NULL::integer[], INOUT volume_group_list integer[] DEFAULT NULL::integer[], INOUT logical_volume_list integer[] DEFAULT NULL::integer[])
+ RETURNS record
+ LANGUAGE plpgsql
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	pv_list	integer[];
+	vg_list	integer[];
+	lv_list	integer[];
+BEGIN
+	SET CONSTRAINTS ALL DEFERRED;
+
+	SELECT ARRAY(
+		SELECT 
+			DISTINCT child_pv_id
+		FROM
+			v_lv_hier lh
+		WHERE
+			(CASE WHEN physicalish_volume_list IS NULL
+				THEN false
+				ELSE lh.physicalish_volume_id = ANY (physical_volume_list)
+			END OR
+			CASE WHEN volume_group_list  IS NULL
+				THEN false
+				ELSE lh.volume_group_id = ANY (volume_group_list)
+			END OR
+			CASE WHEN logical_volume_list IS NULL
+				THEN false
+				ELSE lh.logical_volume_id = ANY (logical_volume_list)
+			END)
+			AND child_pv_id IS NOT NULL
+	) INTO pv_list;
+
+	SELECT ARRAY(
+		SELECT 
+			DISTINCT child_vg_id
+		FROM
+			v_lv_hier lh
+		WHERE
+			(CASE WHEN pv_list IS NULL
+				THEN false
+				ELSE lh.physicalish_volume_id = ANY (physicalish_volume_list)
+			END OR
+			CASE WHEN vgid  IS NULL
+				THEN false
+				ELSE lh.volume_group_id = ANY (volume_group_list)
+			END OR
+			CASE WHEN lvid IS NULL
+				THEN false
+				ELSE lh.logical_volume_id = ANY (logical_volume_list)
+			END)
+			AND child_vg_id IS NOT NULL
+	) INTO vg_list;
+
+	SELECT ARRAY(
+		SELECT 
+			DISTINCT child_lv_id
+		FROM
+			v_lv_hier lh
+		WHERE
+			(CASE WHEN pvid IS NULL
+				THEN false
+				ELSE lh.physicalish_volume_id = ANY (physicalish_volume_list)
+			END OR
+			CASE WHEN vgid  IS NULL
+				THEN false
+				ELSE lh.volume_group_id = ANY (volume_group_list)
+			END OR
+			CASE WHEN lvid IS NULL
+				THEN false
+				ELSE lh.logical_volume_id = ANY (logical_volume_list)
+			END)
+			AND child_lv_id IS NOT NULL
+	) INTO lv_list;
+
+	DELETE FROM logical_volume_property WHERE logical_volume_id = ANY(lv_list);
+	DELETE FROM logical_volume_purpose WHERE logical_volume_id = ANY(lv_list);
+	DELETE FROM logical_volume WHERE logical_volume_id = ANY(lv_list);
+	DELETE FROM volume_group WHERE volume_group_id = ANY(vg_list);
+	DELETE FROM physicalish_volume WHERE physicalish_volume_id = ANY(pv_list);
+
+	physicalish_volume_list := pv_list;
+	volume_group_list := vg_list;
+	logical_volume_list := lv_list;
+END;
+$function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('lv_manip', 'delete_lv_hier');
+-- Dropped in case type changes.
+DROP FUNCTION IF EXISTS lv_manip.delete_lv_hier ( physicalish_volume_id integer, volume_group_id integer, logical_volume_id integer, OUT pv_list integer[], OUT vg_list integer[], OUT lv_list integer[] );
+CREATE OR REPLACE FUNCTION lv_manip.delete_lv_hier(physicalish_volume_id integer DEFAULT NULL::integer, volume_group_id integer DEFAULT NULL::integer, logical_volume_id integer DEFAULT NULL::integer, OUT pv_list integer[], OUT vg_list integer[], OUT lv_list integer[])
+ RETURNS record
+ LANGUAGE plpgsql
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	pvid ALIAS FOR physicalish_volume_id;
+	vgid ALIAS FOR volume_group_id;
+	lvid ALIAS FOR logical_volume_id;
+BEGIN
+	SET CONSTRAINTS ALL DEFERRED;
+
+	SELECT ARRAY(
+		SELECT 
+			DISTINCT child_pv_id
+		FROM
+			v_lv_hier lh
+		WHERE
+			(CASE WHEN pvid IS NULL
+				THEN false
+				ELSE lh.physicalish_volume_id = pvid
+			END OR
+			CASE WHEN vgid  IS NULL
+				THEN false
+				ELSE lh.volume_group_id = vgid
+			END OR
+			CASE WHEN lvid IS NULL
+				THEN false
+				ELSE lh.logical_volume_id = lvid
+			END)
+			AND child_pv_id IS NOT NULL
+	) INTO pv_list;
+
+	SELECT ARRAY(
+		SELECT 
+			DISTINCT child_vg_id
+		FROM
+			v_lv_hier lh
+		WHERE
+			(CASE WHEN pvid IS NULL
+				THEN false
+				ELSE lh.physicalish_volume_id = pvid
+			END OR
+			CASE WHEN vgid  IS NULL
+				THEN false
+				ELSE lh.volume_group_id = vgid
+			END OR
+			CASE WHEN lvid IS NULL
+				THEN false
+				ELSE lh.logical_volume_id = lvid
+			END)
+			AND child_vg_id IS NOT NULL
+	) INTO vg_list;
+
+	SELECT ARRAY(
+		SELECT 
+			DISTINCT child_lv_id
+		FROM
+			v_lv_hier lh
+		WHERE
+			(CASE WHEN pvid IS NULL
+				THEN false
+				ELSE lh.physicalish_volume_id = pvid
+			END OR
+			CASE WHEN vgid  IS NULL
+				THEN false
+				ELSE lh.volume_group_id = vgid
+			END OR
+			CASE WHEN lvid IS NULL
+				THEN false
+				ELSE lh.logical_volume_id = lvid
+			END)
+			AND child_lv_id IS NOT NULL
+	) INTO lv_list;
+
+	DELETE FROM logical_volume_property WHERE logical_volume_id = ANY(lv_list);
+	DELETE FROM logical_volume_purpose WHERE logical_volume_id = ANY(lv_list);
+	DELETE FROM logical_volume WHERE logical_volume_id = ANY(lv_list);
+	DELETE FROM volume_group_purpose WHERE volume_group_id = ANY(vg_list);
+	DELETE FROM volume_group WHERE volume_group_id = ANY(vg_list);
+	DELETE FROM physicalish_volume WHERE physicalish_volume_id = ANY(pv_list);
+END;
+$function$
+;
+
 --
 -- Process middle (non-trigger) schema schema_support
 --
@@ -69,7 +250,7 @@ select timeofday(), now();
 
 
 --------------------------------------------------------------------
--- DEALING WITH TABLE val_person_company_attr_name [4378019]
+-- DEALING WITH TABLE val_person_company_attr_name [4402495]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'val_person_company_attr_name', 'val_person_company_attr_name');
 
@@ -182,13 +363,13 @@ CREATE INDEX xifprescompattr_name_datatyp ON val_person_company_attr_name USING 
 
 -- FOREIGN KEYS FROM
 -- consider FK val_person_company_attr_name and val_person_company_attr_value
---ALTER TABLE val_person_company_attr_value
---	ADD CONSTRAINT fk_pers_comp_attr_val_name
---	FOREIGN KEY (person_company_attr_name) REFERENCES val_person_company_attr_name(person_company_attr_name);
+ALTER TABLE val_person_company_attr_value
+	ADD CONSTRAINT fk_pers_comp_attr_val_name
+	FOREIGN KEY (person_company_attr_name) REFERENCES val_person_company_attr_name(person_company_attr_name);
 -- consider FK val_person_company_attr_name and person_company_attr
---ALTER TABLE person_company_attr
---	ADD CONSTRAINT fk_person_comp_attr_val_name
---	FOREIGN KEY (person_company_attr_name) REFERENCES val_person_company_attr_name(person_company_attr_name);
+ALTER TABLE person_company_attr
+	ADD CONSTRAINT fk_person_comp_attr_val_name
+	FOREIGN KEY (person_company_attr_name) REFERENCES val_person_company_attr_name(person_company_attr_name);
 
 -- FOREIGN KEYS TO
 -- consider FK val_person_company_attr_name and val_person_company_attr_dtype
@@ -201,10 +382,10 @@ SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_person_company_att
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_person_company_attr_name');
 DROP TABLE IF EXISTS val_person_company_attr_name_v65;
 DROP TABLE IF EXISTS audit.val_person_company_attr_name_v65;
--- DONE DEALING WITH TABLE val_person_company_attr_name [4392437]
+-- DONE DEALING WITH TABLE val_person_company_attr_name [4412336]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE val_person_company_attr_value [4378028]
+-- DEALING WITH TABLE val_person_company_attr_value [4402504]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'val_person_company_attr_value', 'val_person_company_attr_value');
 
@@ -323,7 +504,7 @@ ALTER TABLE val_person_company_attr_value
 	FOREIGN KEY (person_company_attr_name) REFERENCES val_person_company_attr_name(person_company_attr_name);
 
 -- TRIGGERS
--- consider NEW oid 4399662
+-- consider NEW oid 4419567
 CREATE OR REPLACE FUNCTION jazzhands.validate_pers_comp_attr_value()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -360,10 +541,10 @@ SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_person_company_att
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_person_company_attr_value');
 DROP TABLE IF EXISTS val_person_company_attr_value_v65;
 DROP TABLE IF EXISTS audit.val_person_company_attr_value_v65;
--- DONE DEALING WITH TABLE val_person_company_attr_value [4392446]
+-- DONE DEALING WITH TABLE val_person_company_attr_value [4412345]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE person_company_attr [4376842]
+-- DEALING WITH TABLE person_company_attr [4401318]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'person_company_attr', 'person_company_attr');
 
@@ -513,7 +694,7 @@ ALTER TABLE person_company_attr
 	FOREIGN KEY (person_company_attr_name) REFERENCES val_person_company_attr_name(person_company_attr_name);
 
 -- TRIGGERS
--- consider NEW oid 4399660
+-- consider NEW oid 4419565
 CREATE OR REPLACE FUNCTION jazzhands.validate_pers_company_attr()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -601,7 +782,74 @@ SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'person_company_attr');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'person_company_attr');
 DROP TABLE IF EXISTS person_company_attr_v65;
 DROP TABLE IF EXISTS audit.person_company_attr_v65;
--- DONE DEALING WITH TABLE person_company_attr [4391260]
+-- DONE DEALING WITH TABLE person_company_attr [4411159]
+--------------------------------------------------------------------
+--------------------------------------------------------------------
+-- DEALING WITH TABLE v_acct_coll_acct_expanded_detail [4409169]
+-- Save grants for later reapplication
+SELECT schema_support.save_grants_for_replay('jazzhands', 'v_acct_coll_acct_expanded_detail', 'v_acct_coll_acct_expanded_detail');
+SELECT schema_support.save_dependant_objects_for_replay('jazzhands', 'v_acct_coll_acct_expanded_detail');
+DROP VIEW IF EXISTS jazzhands.v_acct_coll_acct_expanded_detail;
+CREATE VIEW jazzhands.v_acct_coll_acct_expanded_detail AS
+ WITH RECURSIVE var_recurse(account_collection_id, root_account_collection_id, account_id, acct_coll_level, dept_level, assign_method, array_path, cycle) AS (
+         SELECT aca.account_collection_id,
+            aca.account_collection_id,
+            aca.account_id,
+                CASE ac.account_collection_type
+                    WHEN 'department'::text THEN 0
+                    ELSE 1
+                END AS "case",
+                CASE ac.account_collection_type
+                    WHEN 'department'::text THEN 1
+                    ELSE 0
+                END AS "case",
+                CASE ac.account_collection_type
+                    WHEN 'department'::text THEN 'DirectDepartmentAssignment'::text
+                    ELSE 'DirectAccountCollectionAssignment'::text
+                END AS "case",
+            ARRAY[aca.account_collection_id] AS "array",
+            false AS bool
+           FROM account_collection ac
+             JOIN v_account_collection_account aca USING (account_collection_id)
+        UNION ALL
+         SELECT ach.account_collection_id,
+            x.root_account_collection_id,
+            x.account_id,
+                CASE ac.account_collection_type
+                    WHEN 'department'::text THEN x.dept_level
+                    ELSE x.acct_coll_level + 1
+                END AS "case",
+                CASE ac.account_collection_type
+                    WHEN 'department'::text THEN x.dept_level + 1
+                    ELSE x.dept_level
+                END AS dept_level,
+                CASE
+                    WHEN ac.account_collection_type::text = 'department'::text THEN 'AccountAssignedToChildDepartment'::text
+                    WHEN x.dept_level > 1 AND x.acct_coll_level > 0 THEN 'ParentDepartmentAssignedToParentAccountCollection'::text
+                    WHEN x.dept_level > 1 THEN 'ParentDepartmentAssignedToAccountCollection'::text
+                    WHEN x.dept_level = 1 AND x.acct_coll_level > 0 THEN 'DepartmentAssignedToParentAccountCollection'::text
+                    WHEN x.dept_level = 1 THEN 'DepartmentAssignedToAccountCollection'::text
+                    ELSE 'AccountAssignedToParentAccountCollection'::text
+                END AS assign_method,
+            x.array_path || ach.account_collection_id AS array_path,
+            ach.account_collection_id = ANY (x.array_path)
+           FROM var_recurse x
+             JOIN account_collection_hier ach ON x.account_collection_id = ach.child_account_collection_id
+             JOIN account_collection ac ON ach.account_collection_id = ac.account_collection_id
+          WHERE NOT x.cycle
+        )
+ SELECT var_recurse.account_collection_id,
+    var_recurse.root_account_collection_id,
+    var_recurse.account_id,
+    var_recurse.acct_coll_level,
+    var_recurse.dept_level,
+    var_recurse.assign_method,
+    array_to_string(var_recurse.array_path, '/'::text) AS text_path,
+    var_recurse.array_path
+   FROM var_recurse;
+
+delete from __recreate where type = 'view' and object = 'v_acct_coll_acct_expanded_detail';
+-- DONE DEALING WITH TABLE v_acct_coll_acct_expanded_detail [4419011]
 --------------------------------------------------------------------
 --
 -- Process trigger procs in jazzhands
