@@ -250,7 +250,7 @@ $function$
 
 
 --------------------------------------------------------------------
--- DEALING WITH TABLE val_person_company_attr_name [4402495]
+-- DEALING WITH TABLE val_person_company_attr_name [4441652]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'val_person_company_attr_name', 'val_person_company_attr_name');
 
@@ -363,13 +363,13 @@ CREATE INDEX xifprescompattr_name_datatyp ON val_person_company_attr_name USING 
 
 -- FOREIGN KEYS FROM
 -- consider FK val_person_company_attr_name and val_person_company_attr_value
-ALTER TABLE val_person_company_attr_value
-	ADD CONSTRAINT fk_pers_comp_attr_val_name
-	FOREIGN KEY (person_company_attr_name) REFERENCES val_person_company_attr_name(person_company_attr_name);
+--ALTER TABLE val_person_company_attr_value
+--	ADD CONSTRAINT fk_pers_comp_attr_val_name
+--	FOREIGN KEY (person_company_attr_name) REFERENCES val_person_company_attr_name(person_company_attr_name);
 -- consider FK val_person_company_attr_name and person_company_attr
-ALTER TABLE person_company_attr
-	ADD CONSTRAINT fk_person_comp_attr_val_name
-	FOREIGN KEY (person_company_attr_name) REFERENCES val_person_company_attr_name(person_company_attr_name);
+--ALTER TABLE person_company_attr
+--	ADD CONSTRAINT fk_person_comp_attr_val_name
+--	FOREIGN KEY (person_company_attr_name) REFERENCES val_person_company_attr_name(person_company_attr_name);
 
 -- FOREIGN KEYS TO
 -- consider FK val_person_company_attr_name and val_person_company_attr_dtype
@@ -382,10 +382,10 @@ SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_person_company_att
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_person_company_attr_name');
 DROP TABLE IF EXISTS val_person_company_attr_name_v65;
 DROP TABLE IF EXISTS audit.val_person_company_attr_name_v65;
--- DONE DEALING WITH TABLE val_person_company_attr_name [4412336]
+-- DONE DEALING WITH TABLE val_person_company_attr_name [4432088]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE val_person_company_attr_value [4402504]
+-- DEALING WITH TABLE val_person_company_attr_value [4441662]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'val_person_company_attr_value', 'val_person_company_attr_value');
 
@@ -504,7 +504,7 @@ ALTER TABLE val_person_company_attr_value
 	FOREIGN KEY (person_company_attr_name) REFERENCES val_person_company_attr_name(person_company_attr_name);
 
 -- TRIGGERS
--- consider NEW oid 4419567
+-- consider NEW oid 4445339
 CREATE OR REPLACE FUNCTION jazzhands.validate_pers_comp_attr_value()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -541,10 +541,10 @@ SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_person_company_att
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_person_company_attr_value');
 DROP TABLE IF EXISTS val_person_company_attr_value_v65;
 DROP TABLE IF EXISTS audit.val_person_company_attr_value_v65;
--- DONE DEALING WITH TABLE val_person_company_attr_value [4412345]
+-- DONE DEALING WITH TABLE val_person_company_attr_value [4432097]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE person_company_attr [4401318]
+-- DEALING WITH TABLE person_company_attr [4440403]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'person_company_attr', 'person_company_attr');
 
@@ -694,7 +694,7 @@ ALTER TABLE person_company_attr
 	FOREIGN KEY (person_company_attr_name) REFERENCES val_person_company_attr_name(person_company_attr_name);
 
 -- TRIGGERS
--- consider NEW oid 4419565
+-- consider NEW oid 4445337
 CREATE OR REPLACE FUNCTION jazzhands.validate_pers_company_attr()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -782,10 +782,10 @@ SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'person_company_attr');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'person_company_attr');
 DROP TABLE IF EXISTS person_company_attr_v65;
 DROP TABLE IF EXISTS audit.person_company_attr_v65;
--- DONE DEALING WITH TABLE person_company_attr [4411159]
+-- DONE DEALING WITH TABLE person_company_attr [4430911]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE v_acct_coll_acct_expanded_detail [4409169]
+-- DEALING WITH TABLE v_acct_coll_acct_expanded_detail [4448621]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'v_acct_coll_acct_expanded_detail', 'v_acct_coll_acct_expanded_detail');
 SELECT schema_support.save_dependant_objects_for_replay('jazzhands', 'v_acct_coll_acct_expanded_detail');
@@ -849,11 +849,32 @@ CREATE VIEW jazzhands.v_acct_coll_acct_expanded_detail AS
    FROM var_recurse;
 
 delete from __recreate where type = 'view' and object = 'v_acct_coll_acct_expanded_detail';
--- DONE DEALING WITH TABLE v_acct_coll_acct_expanded_detail [4419011]
+-- DONE DEALING WITH TABLE v_acct_coll_acct_expanded_detail [4439141]
 --------------------------------------------------------------------
 --
 -- Process trigger procs in jazzhands
 --
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'legacy_approval_instance_step_notify_account');
+CREATE OR REPLACE FUNCTION jazzhands.legacy_approval_instance_step_notify_account()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+BEGIN
+	IF NEW.account_id IS NULL THEN
+		SELECT	approver_account_id
+		INTO	NEW.account_id
+		FROM	approval_instance_step
+		WHERE	approval_instance_step_id =
+				NEW.approval_instance_step_id;
+	END IF;
+	RETURN NEW;
+END;
+$function$
+;
+
 -- New function
 CREATE OR REPLACE FUNCTION jazzhands.account_validate_login()
  RETURNS trigger
@@ -941,6 +962,10 @@ $function$
 -- index
 -- triggers
 CREATE TRIGGER trigger_account_validate_login BEFORE INSERT OR UPDATE OF login ON account FOR EACH ROW EXECUTE PROCEDURE account_validate_login();
+
+DROP TRIGGER IF EXISTS trigger_legacy_approval_instance_step_notify_account ON approval_instance_step_notify;
+CREATE TRIGGER trigger_legacy_approval_instance_step_notify_account BEFORE INSERT OR UPDATE OF account_id ON approval_instance_step_notify FOR EACH ROW EXECUTE PROCEDURE legacy_approval_instance_step_notify_account();
+
 
 
 -- Clean Up
