@@ -72,7 +72,7 @@ select timeofday(), now();
 
 
 --------------------------------------------------------------------
--- DEALING WITH TABLE val_property [5773728]
+-- DEALING WITH TABLE val_property [5795189]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'val_property', 'val_property');
 
@@ -680,7 +680,7 @@ DROP TABLE IF EXISTS audit.val_property_v67;
 -- DONE DEALING WITH TABLE val_property [5763809]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE person_company_attr [5772439]
+-- DEALING WITH TABLE person_company_attr [5793897]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'person_company_attr', 'person_company_attr');
 
@@ -922,7 +922,7 @@ DROP TABLE IF EXISTS audit.person_company_attr_v67;
 -- DONE DEALING WITH TABLE person_company_attr [5762518]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE property [5772608]
+-- DEALING WITH TABLE property [5794066]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'property', 'property');
 
@@ -2253,7 +2253,7 @@ DROP TABLE IF EXISTS audit.property_v67;
 -- DONE DEALING WITH TABLE property [5762688]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE v_hotpants_device_collection [5780454]
+-- DEALING WITH TABLE v_hotpants_device_collection [5801914]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'v_hotpants_device_collection', 'v_hotpants_device_collection');
 SELECT schema_support.save_dependant_objects_for_replay('jazzhands', 'v_hotpants_device_collection');
@@ -2277,7 +2277,7 @@ delete from __recreate where type = 'view' and object = 'v_hotpants_device_colle
 -- DONE DEALING WITH TABLE v_hotpants_device_collection [5770541]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE v_property [5780203]
+-- DEALING WITH TABLE v_property [5801664]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'v_property', 'v_property');
 SELECT schema_support.save_dependant_objects_for_replay('jazzhands', 'v_property');
@@ -3329,9 +3329,9 @@ $function$
 -- index
 -- triggers
 
-CREATE TRIGGER trigger_upd_v_hotpants_token 
-	INSTEAD OF UPDATE ON v_hotpants_token 
-	FOR EACH ROW EXECUTE PROCEDURE upd_v_hotpants_token();
+CREATE TRIGGER trigger_upd_v_hotpants_token
+        INSTEAD OF UPDATE ON v_hotpants_token
+        FOR EACH ROW EXECUTE PROCEDURE upd_v_hotpants_token();
 
 -- Clean Up
 SELECT schema_support.replay_object_recreates();
