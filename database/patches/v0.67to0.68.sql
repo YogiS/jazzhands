@@ -3329,6 +3329,7 @@ $function$
 -- index
 -- triggers
 
+DROP TRIGGER IF EXISTS trigger_upd_v_hotpants_token  ON v_hotpants_token;
 CREATE TRIGGER trigger_upd_v_hotpants_token
         INSTEAD OF UPDATE ON v_hotpants_token
         FOR EACH ROW EXECUTE PROCEDURE upd_v_hotpants_token();
