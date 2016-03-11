@@ -2581,6 +2581,24 @@ ALTER TABLE person_company_attr
 -- index
 -- triggers
 
+--- misc
+-- backwards compatibility
+insert into val_property (
+        property_name, property_type, is_multivalue, property_data_type,
+        description,
+        permit_account_realm_id
+) values (
+        'login_restriction', 'Defaults', 'N', 'string',
+        'per-account realm validation of login names',
+        'REQUIRED'
+);
+INSERT INTO property (
+	property_type, property_name, property_value, account_realm_id
+) SELECT 'Defaults', 'login_restriction', '[^-/@a-z0-9_]+', account_realm_id
+FROM account_realm;
+
+COMMENT ON SCHEMA account_collection_manip IS 'part of jazzhands';
+COMMENT ON SCHEMA script_hooks IS 'part of jazzhands';
 
 -- Clean Up
 SELECT schema_support.replay_object_recreates();
