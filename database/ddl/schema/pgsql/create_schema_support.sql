@@ -393,6 +393,8 @@ BEGIN
 		newname := _object;
 	END IF;
 	PERFORM schema_support.prepare_for_grant_replay();
+
+	-- Handle table wide grants
 	FOR _tabs IN SELECT  n.nspname as schema,
 			c.relname as name,
 			CASE c.relkind
@@ -403,7 +405,7 @@ BEGIN
 				END as "Type",
 			c.relacl as privs
 		FROM    pg_catalog.pg_class c
-			LEFT JOIN pg_catalog.pg_namespace n
+			INNER JOIN pg_catalog.pg_namespace n
 				ON n.oid = c.relnamespace
 		WHERE c.relkind IN ('r', 'v', 'S', 'f')
 		  AND c.relname = _object
@@ -436,6 +438,57 @@ BEGIN
 			INSERT INTO __regrants (schema, object, newname, regrant) values (schema,object, newname, _fullgrant );
 		END LOOP;
 	END LOOP;
+
+	-- Handle column specific wide grants
+	FOR _tabs IN SELECT  n.nspname as schema,
+			c.relname as name,
+			CASE c.relkind
+				WHEN 'r' THEN 'table'
+				WHEN 'v' THEN 'view'
+				WHEN 'S' THEN 'sequence'
+				WHEN 'f' THEN 'foreign table'
+				END as "Type",
+			a.attname as col,
+			a.attacl as privs
+		FROM    pg_catalog.pg_class c
+			INNER JOIN pg_catalog.pg_namespace n
+				ON n.oid = c.relnamespace
+			INNER JOIN pg_attribute a
+                ON a.attrelid = c.oid
+		WHERE c.relkind IN ('r', 'v', 'S', 'f')
+		  AND a.attacl IS NOT NULL
+		  AND c.relname = _object
+		  AND n.nspname = _schema
+		ORDER BY 1, 2
+	LOOP
+		-- NOTE:  We lose who granted it.  Oh Well.
+		FOR _perm IN SELECT * FROM pg_catalog.aclexplode(acl := _tabs.privs)
+		LOOP
+			--  grantor | grantee | privilege_type | is_grantable 
+			IF _perm.is_grantable THEN
+				_grant = ' WITH GRANT OPTION';
+			ELSE
+				_grant = '';
+			END IF;
+			IF _perm.grantee = 0 THEN
+				_role := 'PUBLIC';
+			ELSE
+				_role := pg_get_userbyid(_perm.grantee);
+			END IF;
+			_fullgrant := 'GRANT ' || 
+				_perm.privilege_type || '(' || _tabs.col || ')'
+				' on ' ||
+				_schema || '.' ||
+				newname || ' to ' ||
+				_role || _grant;
+			IF _fullgrant IS NULL THEN
+				RAISE EXCEPTION 'built up grant for %.% (%) is NULL',
+					schema, object, newname;
+	    END IF;
+			INSERT INTO __regrants (schema, object, newname, regrant) values (schema,object, newname, _fullgrant );
+		END LOOP;
+	END LOOP;
+
 END;
 $$ LANGUAGE plpgsql SECURITY INVOKER;
 
