@@ -575,7 +575,7 @@ $$ LANGUAGE plpgsql SECURITY INVOKER;
 
 --
 -- Saves view definition for replay later.  This is to allow for dropping
--- dependant views and having a migration script recreate them.
+-- dependent views and having a migration script recreate them.
 --
 CREATE OR REPLACE FUNCTION schema_support.save_view_for_replay(
 	schema varchar,
@@ -626,7 +626,7 @@ $$ LANGUAGE plpgsql SECURITY INVOKER;
 --
 
 --
--- Saves relations dependant on an object for reply.
+-- legacy spelling to be killed after 0.70! XXX
 --
 CREATE OR REPLACE FUNCTION schema_support.save_dependant_objects_for_replay(
 	schema varchar,
@@ -634,6 +634,22 @@ CREATE OR REPLACE FUNCTION schema_support.save_dependant_objects_for_replay(
 	dropit boolean DEFAULT true,
 	doobjectdeps boolean DEFAULT false
 ) RETURNS VOID AS $$
+BEGIN
+	PERFORM schema_support.save_dependent_objects_for_replay(
+		schema, object, dropit, doobjectdeps);
+END;
+$$ LANGUAGE plpgsql SECURITY INVOKER;
+
+--
+-- Saves relations dependent on an object for reply.
+--
+CREATE OR REPLACE FUNCTION schema_support.save_dependent_objects_for_replay(
+	schema varchar,
+	object varchar,
+	dropit boolean DEFAULT true,
+	doobjectdeps boolean DEFAULT false
+) RETURNS VOID AS $$
+
 DECLARE
 	_r		RECORD;
 	_cmd	TEXT;
@@ -652,7 +668,7 @@ BEGIN
 	LOOP
 		RAISE NOTICE '1 dealing with  %.%', _r.nspname, _r.proname;
 		PERFORM schema_support.save_constraint_for_replay(_r.nspname, _r.proname, dropit);
-		PERFORM schema_support.save_dependant_objects_for_replay(_r.nspname, _r.proname, dropit);
+		PERFORM schema_support.save_dependent_objects_for_replay(_r.nspname, _r.proname, dropit);
 		PERFORM schema_support.save_function_for_replay(_r.nspname, _r.proname, dropit);
 	END LOOP;
 
@@ -671,7 +687,7 @@ BEGIN
 	LOOP
 		IF _r.relkind = 'v' THEN
 			RAISE NOTICE '2 dealing with  %.%', _r.nspname, _r.relname;
-			PERFORM * FROM save_dependant_objects_for_replay(_r.nspname, _r.relname, dropit);
+			PERFORM * FROM save_dependent_objects_for_replay(_r.nspname, _r.relname, dropit);
 			PERFORM schema_support.save_view_for_replay(_r.nspname, _r.relname, dropit);
 		END IF;
 	END LOOP;
@@ -770,7 +786,7 @@ $$ LANGUAGE plpgsql SECURITY INVOKER;
 
 --
 -- Saves view definition for replay later.  This is to allow for dropping
--- dependant functions and having a migration script recreate them.
+-- dependent functions and having a migration script recreate them.
 --
 -- Note this will drop and recreate all functions of the name.  This sh
 --
@@ -1347,7 +1363,7 @@ SELECT schema_support.save_constraint_for_replay('jazzhands', 'table');
 SELECT schema_support.save_trigger_for_replay('jazzhands', 'relation');
 	- save triggers poinging to an object for replay
 
-SELECT schema_support.save_dependant_objects_for_replay(schema, object)
+SELECT schema_support.save_dependent_objects_for_replay(schema, object)
 
 This will take an option (relation[table/view] or procedure) and figure
 out what depends on it, and save the ddl to recreate tehm.
