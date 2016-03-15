@@ -4056,6 +4056,19 @@ FROM account_realm;
 COMMENT ON SCHEMA account_collection_manip IS 'part of jazzhands';
 COMMENT ON SCHEMA script_hooks IS 'part of jazzhands';
 
+alter sequence audit.network_interface_netblock_seq restart;
+
+insert into network_interface_netblock
+        (network_interface_id, netblock_id)
+select network_interface_id, netblock_id
+from network_interface where
+        (network_interface_id, netblock_id) NOT IN
+                (SELECT network_interface_id, netblock_id
+                from network_interface_netblock
+                )
+and netblock_id is not NULL;
+
+
 -- Clean Up
 SELECT schema_support.replay_object_recreates();
 SELECT schema_support.replay_saved_grants();
