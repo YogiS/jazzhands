@@ -1020,7 +1020,1216 @@ $function$
 
 
 --------------------------------------------------------------------
--- DEALING WITH TABLE property [1003499]
+-- DEALING WITH TABLE val_account_collection_type [1291452]
+-- Save grants for later reapplication
+SELECT schema_support.save_grants_for_replay('jazzhands', 'val_account_collection_type', 'val_account_collection_type');
+
+-- FOREIGN KEYS FROM
+ALTER TABLE account_realm_acct_coll_type DROP CONSTRAINT IF EXISTS fk_acct_realm_acct_coll_typ;
+ALTER TABLE account_collection DROP CONSTRAINT IF EXISTS fk_acctcol_usrcoltyp;
+ALTER TABLE val_property_type DROP CONSTRAINT IF EXISTS fk_prop_typ_pv_uctyp_rst;
+ALTER TABLE val_property DROP CONSTRAINT IF EXISTS fk_val_prop_acct_coll_type;
+ALTER TABLE val_property DROP CONSTRAINT IF EXISTS fk_valprop_pv_actyp_rst;
+
+-- FOREIGN KEYS TO
+
+-- EXTRA-SCHEMA constraints
+SELECT schema_support.save_constraint_for_replay('jazzhands', 'val_account_collection_type');
+
+-- PRIMARY and ALTERNATE KEYS
+ALTER TABLE jazzhands.val_account_collection_type DROP CONSTRAINT IF EXISTS pk_val_account_collection_type;
+-- INDEXES
+-- CHECK CONSTRAINTS, etc
+ALTER TABLE jazzhands.val_account_collection_type DROP CONSTRAINT IF EXISTS check_yes_no_1816418084;
+ALTER TABLE jazzhands.val_account_collection_type DROP CONSTRAINT IF EXISTS check_yes_no_act_chh;
+-- TRIGGERS, etc
+DROP TRIGGER IF EXISTS trig_userlog_val_account_collection_type ON jazzhands.val_account_collection_type;
+DROP TRIGGER IF EXISTS trigger_audit_val_account_collection_type ON jazzhands.val_account_collection_type;
+SELECT schema_support.save_dependant_objects_for_replay('jazzhands', 'val_account_collection_type');
+---- BEGIN audit.val_account_collection_type TEARDOWN
+-- Save grants for later reapplication
+SELECT schema_support.save_grants_for_replay('audit', 'val_account_collection_type', 'val_account_collection_type');
+
+-- FOREIGN KEYS FROM
+
+-- FOREIGN KEYS TO
+
+-- EXTRA-SCHEMA constraints
+SELECT schema_support.save_constraint_for_replay('audit', 'val_account_collection_type');
+
+-- PRIMARY and ALTERNATE KEYS
+-- INDEXES
+DROP INDEX IF EXISTS "audit"."val_account_collection_type_aud#timestamp_idx";
+-- CHECK CONSTRAINTS, etc
+-- TRIGGERS, etc
+SELECT schema_support.save_dependant_objects_for_replay('audit', 'val_account_collection_type');
+---- DONE audit.val_account_collection_type TEARDOWN
+
+
+ALTER TABLE val_account_collection_type RENAME TO val_account_collection_type_v69;
+ALTER TABLE audit.val_account_collection_type RENAME TO val_account_collection_type_v69;
+
+CREATE TABLE val_account_collection_type
+(
+	account_collection_type	varchar(50) NOT NULL,
+	description	varchar(4000)  NULL,
+	is_infrastructure_type	character(1) NOT NULL,
+	max_num_members	integer  NULL,
+	max_num_collections	integer  NULL,
+	can_have_hierarchy	character(1) NOT NULL,
+	account_realm_id	integer  NULL,
+	data_ins_user	varchar(255)  NULL,
+	data_ins_date	timestamp with time zone  NULL,
+	data_upd_user	varchar(255)  NULL,
+	data_upd_date	timestamp with time zone  NULL
+);
+SELECT schema_support.build_audit_table('audit', 'jazzhands', 'val_account_collection_type', false);
+ALTER TABLE val_account_collection_type
+	ALTER is_infrastructure_type
+	SET DEFAULT 'N'::bpchar;
+ALTER TABLE val_account_collection_type
+	ALTER can_have_hierarchy
+	SET DEFAULT 'Y'::bpchar;
+INSERT INTO val_account_collection_type (
+	account_collection_type,
+	description,
+	is_infrastructure_type,
+	max_num_members,
+	max_num_collections,
+	can_have_hierarchy,
+	account_realm_id,		-- new column (account_realm_id)
+	data_ins_user,
+	data_ins_date,
+	data_upd_user,
+	data_upd_date
+) SELECT
+	account_collection_type,
+	description,
+	is_infrastructure_type,
+	max_num_members,
+	max_num_collections,
+	can_have_hierarchy,
+	NULL,		-- new column (account_realm_id)
+	data_ins_user,
+	data_ins_date,
+	data_upd_user,
+	data_upd_date
+FROM val_account_collection_type_v69;
+
+INSERT INTO audit.val_account_collection_type (
+	account_collection_type,
+	description,
+	is_infrastructure_type,
+	max_num_members,
+	max_num_collections,
+	can_have_hierarchy,
+	account_realm_id,		-- new column (account_realm_id)
+	data_ins_user,
+	data_ins_date,
+	data_upd_user,
+	data_upd_date,
+	"aud#action",
+	"aud#timestamp",
+	"aud#user",
+	"aud#seq"
+) SELECT
+	account_collection_type,
+	description,
+	is_infrastructure_type,
+	max_num_members,
+	max_num_collections,
+	can_have_hierarchy,
+	NULL,		-- new column (account_realm_id)
+	data_ins_user,
+	data_ins_date,
+	data_upd_user,
+	data_upd_date,
+	"aud#action",
+	"aud#timestamp",
+	"aud#user",
+	"aud#seq"
+FROM audit.val_account_collection_type_v69;
+
+ALTER TABLE val_account_collection_type
+	ALTER is_infrastructure_type
+	SET DEFAULT 'N'::bpchar;
+ALTER TABLE val_account_collection_type
+	ALTER can_have_hierarchy
+	SET DEFAULT 'Y'::bpchar;
+
+-- PRIMARY AND ALTERNATE KEYS
+ALTER TABLE val_account_collection_type ADD CONSTRAINT pk_val_account_collection_type PRIMARY KEY (account_collection_type);
+
+-- Table/Column Comments
+COMMENT ON COLUMN val_account_collection_type.max_num_members IS 'Maximum INTEGER of members in a given collection of this type
+';
+COMMENT ON COLUMN val_account_collection_type.max_num_collections IS 'Maximum INTEGER of collections a given member can be a part of of this type.
+';
+COMMENT ON COLUMN val_account_collection_type.can_have_hierarchy IS 'Indicates if the collections can have other collections to make it hierarchical.';
+COMMENT ON COLUMN val_account_collection_type.account_realm_id IS 'If set, all accounts in this collection must be of this realm, and all child account collections of this one must have the realm set to be the same.';
+-- INDEXES
+CREATE INDEX xif1val_account_collection_typ ON val_account_collection_type USING btree (account_realm_id);
+
+-- CHECK CONSTRAINTS
+ALTER TABLE val_account_collection_type ADD CONSTRAINT check_yes_no_1816418084
+	CHECK (is_infrastructure_type = ANY (ARRAY['Y'::bpchar, 'N'::bpchar]));
+ALTER TABLE val_account_collection_type ADD CONSTRAINT check_yes_no_act_chh
+	CHECK (can_have_hierarchy = ANY (ARRAY['Y'::bpchar, 'N'::bpchar]));
+
+-- FOREIGN KEYS FROM
+-- consider FK val_account_collection_type and account_realm_acct_coll_type
+ALTER TABLE account_realm_acct_coll_type
+	ADD CONSTRAINT fk_acct_realm_acct_coll_typ
+	FOREIGN KEY (account_collection_type) REFERENCES val_account_collection_type(account_collection_type);
+-- consider FK val_account_collection_type and account_collection
+ALTER TABLE account_collection
+	ADD CONSTRAINT fk_acctcol_usrcoltyp
+	FOREIGN KEY (account_collection_type) REFERENCES val_account_collection_type(account_collection_type);
+-- consider FK val_account_collection_type and val_property_type
+ALTER TABLE val_property_type
+	ADD CONSTRAINT fk_prop_typ_pv_uctyp_rst
+	FOREIGN KEY (prop_val_acct_coll_type_rstrct) REFERENCES val_account_collection_type(account_collection_type);
+-- consider FK val_account_collection_type and val_property
+ALTER TABLE val_property
+	ADD CONSTRAINT fk_val_prop_acct_coll_type
+	FOREIGN KEY (account_collection_type) REFERENCES val_account_collection_type(account_collection_type);
+-- consider FK val_account_collection_type and val_property
+ALTER TABLE val_property
+	ADD CONSTRAINT fk_valprop_pv_actyp_rst
+	FOREIGN KEY (prop_val_acct_coll_type_rstrct) REFERENCES val_account_collection_type(account_collection_type);
+
+-- FOREIGN KEYS TO
+-- consider FK val_account_collection_type and account_realm
+ALTER TABLE val_account_collection_type
+	ADD CONSTRAINT r_785
+	FOREIGN KEY (account_realm_id) REFERENCES account_realm(account_realm_id);
+
+-- TRIGGERS
+-- consider NEW oid 1365001
+CREATE OR REPLACE FUNCTION jazzhands.account_collection_type_realm()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	_tally	integer;
+BEGIN
+	IF NEW.account_realm_id IS NULL THEN
+		RETURN NEW;
+	END IF;
+
+	SELECT	count(*)
+	INTO	_tally
+	FROM	account_collection_account
+			JOIN account_collection USING (account_collection_id)
+			JOIN account a USING (account_id)
+	WHERE	account_collection_type = NEW.account_collection_type
+	AND		a.account_realm_id != NEW.account_realm_id;
+	IF _tally > 0 THEN
+		RAISE EXCEPTION 'Unable to set account_realm restriction because there are accounts assigned that do not match it'
+			USING ERRCODE = 'integrity_constraint_violation';
+	END IF;
+
+	-- This is probably useless.
+	SELECT	count(*)
+	INTO	_tally
+	FROM	account_collection_hier h
+			JOIN account_collection pac USING (account_collection_id)
+			JOIN val_account_collection_type pat USING (account_collection_type)
+			JOIN account_collection cac ON
+				h.child_account_collection_id = cac.account_collection_id
+			JOIN val_account_collection_type cat ON
+				cac.account_collection_type = cat.account_collection_type
+	WHERE	(
+				pac.account_collection_type = NEW.account_collection_type
+			OR
+				cac.account_collection_type = NEW.account_collection_type
+			)
+	AND		(
+				pat.account_realm_id IS DISTINCT FROM NEW.account_realm_id
+			OR
+				cat.account_realm_id IS DISTINCT FROM NEW.account_realm_id
+			)
+	;
+	IF _tally > 0 THEN
+		RAISE EXCEPTION 'Unable to set account_realm restriction because there are account collections in the hierarchy that do not match'
+			USING ERRCODE = 'integrity_constraint_violation';
+	END IF;
+	RETURN NEW;
+END;
+$function$
+;
+CREATE TRIGGER trig_account_collection_type_realm AFTER UPDATE OF account_realm_id ON val_account_collection_type FOR EACH ROW EXECUTE PROCEDURE account_collection_type_realm();
+
+-- XXX - may need to include trigger function
+SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_account_collection_type');
+SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_account_collection_type');
+DROP TABLE IF EXISTS val_account_collection_type_v69;
+DROP TABLE IF EXISTS audit.val_account_collection_type_v69;
+-- DONE DEALING WITH TABLE val_account_collection_type [1354547]
+--------------------------------------------------------------------
+--------------------------------------------------------------------
+-- DEALING WITH TABLE device [1289975]
+-- Save grants for later reapplication
+SELECT schema_support.save_grants_for_replay('jazzhands', 'device', 'device');
+
+-- FOREIGN KEYS FROM
+ALTER TABLE chassis_location DROP CONSTRAINT IF EXISTS fk_chass_loc_chass_devid;
+ALTER TABLE device_encapsulation_domain DROP CONSTRAINT IF EXISTS fk_dev_encap_domain_devid;
+ALTER TABLE device_management_controller DROP CONSTRAINT IF EXISTS fk_dev_mgmt_ctlr_dev_id;
+ALTER TABLE device_ssh_key DROP CONSTRAINT IF EXISTS fk_dev_ssh_key_ssh_key_id;
+ALTER TABLE device_ticket DROP CONSTRAINT IF EXISTS fk_dev_tkt_dev_id;
+ALTER TABLE device_type DROP CONSTRAINT IF EXISTS fk_dev_typ_tmplt_dev_typ_id;
+ALTER TABLE device_collection_device DROP CONSTRAINT IF EXISTS fk_devcolldev_dev_id;
+ALTER TABLE device_layer2_network DROP CONSTRAINT IF EXISTS fk_device_l2_net_devid;
+ALTER TABLE device_note DROP CONSTRAINT IF EXISTS fk_device_note_device;
+ALTER TABLE device_management_controller DROP CONSTRAINT IF EXISTS fk_dvc_mgmt_ctrl_mgr_dev_id;
+ALTER TABLE logical_volume DROP CONSTRAINT IF EXISTS fk_logvol_device_id;
+ALTER TABLE mlag_peering DROP CONSTRAINT IF EXISTS fk_mlag_peering_devid1;
+ALTER TABLE mlag_peering DROP CONSTRAINT IF EXISTS fk_mlag_peering_devid2;
+ALTER TABLE network_interface DROP CONSTRAINT IF EXISTS fk_netint_device_id;
+ALTER TABLE network_interface_purpose DROP CONSTRAINT IF EXISTS fk_netint_purpose_device_id;
+ALTER TABLE network_service DROP CONSTRAINT IF EXISTS fk_netsvc_device_id;
+ALTER TABLE physicalish_volume DROP CONSTRAINT IF EXISTS fk_physvol_device_id;
+ALTER TABLE snmp_commstr DROP CONSTRAINT IF EXISTS fk_snmpstr_device_id;
+ALTER TABLE static_route DROP CONSTRAINT IF EXISTS fk_statrt_devsrc_id;
+ALTER TABLE volume_group DROP CONSTRAINT IF EXISTS fk_volgrp_devid;
+
+-- FOREIGN KEYS TO
+ALTER TABLE jazzhands.device DROP CONSTRAINT IF EXISTS fk_chasloc_chass_devid;
+ALTER TABLE jazzhands.device DROP CONSTRAINT IF EXISTS fk_dev_chass_loc_id_mod_enfc;
+ALTER TABLE jazzhands.device DROP CONSTRAINT IF EXISTS fk_dev_devtp_id;
+ALTER TABLE jazzhands.device DROP CONSTRAINT IF EXISTS fk_dev_os_id;
+ALTER TABLE jazzhands.device DROP CONSTRAINT IF EXISTS fk_dev_rack_location_id;
+ALTER TABLE jazzhands.device DROP CONSTRAINT IF EXISTS fk_dev_ref_mgmt_proto;
+ALTER TABLE jazzhands.device DROP CONSTRAINT IF EXISTS fk_device_asset_id;
+ALTER TABLE jazzhands.device DROP CONSTRAINT IF EXISTS fk_device_comp_id;
+ALTER TABLE jazzhands.device DROP CONSTRAINT IF EXISTS fk_device_dev_v_svcenv;
+ALTER TABLE jazzhands.device DROP CONSTRAINT IF EXISTS fk_device_dev_val_status;
+ALTER TABLE jazzhands.device DROP CONSTRAINT IF EXISTS fk_device_fk_voe;
+ALTER TABLE jazzhands.device DROP CONSTRAINT IF EXISTS fk_device_id_dnsrecord;
+ALTER TABLE jazzhands.device DROP CONSTRAINT IF EXISTS fk_device_ref_parent_device;
+ALTER TABLE jazzhands.device DROP CONSTRAINT IF EXISTS fk_device_ref_voesymbtrk;
+ALTER TABLE jazzhands.device DROP CONSTRAINT IF EXISTS fk_device_site_code;
+
+-- EXTRA-SCHEMA constraints
+SELECT schema_support.save_constraint_for_replay('jazzhands', 'device');
+
+-- PRIMARY and ALTERNATE KEYS
+ALTER TABLE jazzhands.device DROP CONSTRAINT IF EXISTS ak_device_chassis_location_id;
+ALTER TABLE jazzhands.device DROP CONSTRAINT IF EXISTS ak_device_rack_location_id;
+ALTER TABLE jazzhands.device DROP CONSTRAINT IF EXISTS pk_device;
+-- INDEXES
+DROP INDEX IF EXISTS "jazzhands"."idx_dev_islclymgd";
+DROP INDEX IF EXISTS "jazzhands"."idx_dev_ismonitored";
+DROP INDEX IF EXISTS "jazzhands"."idx_device_type_location";
+DROP INDEX IF EXISTS "jazzhands"."xif_dev_chass_loc_id_mod_enfc";
+DROP INDEX IF EXISTS "jazzhands"."xif_dev_os_id";
+DROP INDEX IF EXISTS "jazzhands"."xif_device_asset_id";
+DROP INDEX IF EXISTS "jazzhands"."xif_device_comp_id";
+DROP INDEX IF EXISTS "jazzhands"."xif_device_dev_v_svcenv";
+DROP INDEX IF EXISTS "jazzhands"."xif_device_dev_val_status";
+DROP INDEX IF EXISTS "jazzhands"."xif_device_fk_voe";
+DROP INDEX IF EXISTS "jazzhands"."xif_device_id_dnsrecord";
+DROP INDEX IF EXISTS "jazzhands"."xif_device_site_code";
+-- CHECK CONSTRAINTS, etc
+ALTER TABLE jazzhands.device DROP CONSTRAINT IF EXISTS ckc_is_locally_manage_device;
+ALTER TABLE jazzhands.device DROP CONSTRAINT IF EXISTS ckc_is_monitored_device;
+ALTER TABLE jazzhands.device DROP CONSTRAINT IF EXISTS ckc_is_virtual_device_device;
+ALTER TABLE jazzhands.device DROP CONSTRAINT IF EXISTS ckc_should_fetch_conf_device;
+ALTER TABLE jazzhands.device DROP CONSTRAINT IF EXISTS dev_osid_notnull;
+ALTER TABLE jazzhands.device DROP CONSTRAINT IF EXISTS sys_c0069051;
+ALTER TABLE jazzhands.device DROP CONSTRAINT IF EXISTS sys_c0069052;
+ALTER TABLE jazzhands.device DROP CONSTRAINT IF EXISTS sys_c0069057;
+ALTER TABLE jazzhands.device DROP CONSTRAINT IF EXISTS sys_c0069059;
+ALTER TABLE jazzhands.device DROP CONSTRAINT IF EXISTS sys_c0069060;
+-- TRIGGERS, etc
+DROP TRIGGER IF EXISTS trig_userlog_device ON jazzhands.device;
+DROP TRIGGER IF EXISTS trigger_audit_device ON jazzhands.device;
+DROP TRIGGER IF EXISTS trigger_create_device_component ON jazzhands.device;
+DROP TRIGGER IF EXISTS trigger_delete_per_device_device_collection ON jazzhands.device;
+DROP TRIGGER IF EXISTS trigger_device_one_location_validate ON jazzhands.device;
+DROP TRIGGER IF EXISTS trigger_update_per_device_device_collection ON jazzhands.device;
+DROP TRIGGER IF EXISTS trigger_validate_device_component_assignment ON jazzhands.device;
+DROP TRIGGER IF EXISTS trigger_verify_device_voe ON jazzhands.device;
+SELECT schema_support.save_dependant_objects_for_replay('jazzhands', 'device');
+---- BEGIN audit.device TEARDOWN
+-- Save grants for later reapplication
+SELECT schema_support.save_grants_for_replay('audit', 'device', 'device');
+
+-- FOREIGN KEYS FROM
+
+-- FOREIGN KEYS TO
+
+-- EXTRA-SCHEMA constraints
+SELECT schema_support.save_constraint_for_replay('audit', 'device');
+
+-- PRIMARY and ALTERNATE KEYS
+-- INDEXES
+DROP INDEX IF EXISTS "audit"."device_aud#timestamp_idx";
+-- CHECK CONSTRAINTS, etc
+-- TRIGGERS, etc
+SELECT schema_support.save_dependant_objects_for_replay('audit', 'device');
+---- DONE audit.device TEARDOWN
+
+
+ALTER TABLE device RENAME TO device_v69;
+ALTER TABLE audit.device RENAME TO device_v69;
+
+CREATE TABLE device
+(
+	device_id	integer NOT NULL,
+	component_id	integer  NULL,
+	device_type_id	integer NOT NULL,
+	asset_id	integer  NULL,
+	device_name	varchar(255)  NULL,
+	site_code	varchar(50)  NULL,
+	identifying_dns_record_id	integer  NULL,
+	host_id	varchar(255)  NULL,
+	physical_label	varchar(255)  NULL,
+	rack_location_id	integer  NULL,
+	chassis_location_id	integer  NULL,
+	parent_device_id	integer  NULL,
+	description	varchar(255)  NULL,
+	device_status	varchar(50) NOT NULL,
+	operating_system_id	integer NOT NULL,
+	service_environment_id	integer NOT NULL,
+	voe_id	integer  NULL,
+	auto_mgmt_protocol	varchar(50)  NULL,
+	voe_symbolic_track_id	integer  NULL,
+	is_locally_managed	character(1) NOT NULL,
+	is_monitored	character(1) NOT NULL,
+	is_virtual_device	character(1) NOT NULL,
+	should_fetch_config	character(1) NOT NULL,
+	date_in_service	timestamp with time zone  NULL,
+	data_ins_user	varchar(255)  NULL,
+	data_ins_date	timestamp with time zone  NULL,
+	data_upd_user	varchar(255)  NULL,
+	data_upd_date	timestamp with time zone  NULL
+);
+SELECT schema_support.build_audit_table('audit', 'jazzhands', 'device', false);
+ALTER TABLE device
+	ALTER device_id
+	SET DEFAULT nextval('device_device_id_seq'::regclass);
+ALTER TABLE device
+	ALTER operating_system_id
+	SET DEFAULT 0;
+ALTER TABLE device
+	ALTER is_locally_managed
+	SET DEFAULT 'Y'::bpchar;
+ALTER TABLE device
+	ALTER is_virtual_device
+	SET DEFAULT 'N'::bpchar;
+ALTER TABLE device
+	ALTER should_fetch_config
+	SET DEFAULT 'Y'::bpchar;
+INSERT INTO device (
+	device_id,
+	component_id,
+	device_type_id,
+	asset_id,
+	device_name,
+	site_code,
+	identifying_dns_record_id,
+	host_id,
+	physical_label,
+	rack_location_id,
+	chassis_location_id,
+	parent_device_id,
+	description,
+	device_status,
+	operating_system_id,
+	service_environment_id,
+	voe_id,
+	auto_mgmt_protocol,
+	voe_symbolic_track_id,
+	is_locally_managed,
+	is_monitored,
+	is_virtual_device,
+	should_fetch_config,
+	date_in_service,
+	data_ins_user,
+	data_ins_date,
+	data_upd_user,
+	data_upd_date
+) SELECT
+	device_id,
+	component_id,
+	device_type_id,
+	asset_id,
+	device_name,
+	site_code,
+	identifying_dns_record_id,
+	host_id,
+	physical_label,
+	rack_location_id,
+	chassis_location_id,
+	parent_device_id,
+	description,
+	device_status,
+	operating_system_id,
+	service_environment_id,
+	voe_id,
+	auto_mgmt_protocol,
+	voe_symbolic_track_id,
+	is_locally_managed,
+	is_monitored,
+	is_virtual_device,
+	should_fetch_config,
+	date_in_service,
+	data_ins_user,
+	data_ins_date,
+	data_upd_user,
+	data_upd_date
+FROM device_v69;
+
+INSERT INTO audit.device (
+	device_id,
+	component_id,
+	device_type_id,
+	asset_id,
+	device_name,
+	site_code,
+	identifying_dns_record_id,
+	host_id,
+	physical_label,
+	rack_location_id,
+	chassis_location_id,
+	parent_device_id,
+	description,
+	device_status,
+	operating_system_id,
+	service_environment_id,
+	voe_id,
+	auto_mgmt_protocol,
+	voe_symbolic_track_id,
+	is_locally_managed,
+	is_monitored,
+	is_virtual_device,
+	should_fetch_config,
+	date_in_service,
+	data_ins_user,
+	data_ins_date,
+	data_upd_user,
+	data_upd_date,
+	"aud#action",
+	"aud#timestamp",
+	"aud#user",
+	"aud#seq"
+) SELECT
+	device_id,
+	component_id,
+	device_type_id,
+	asset_id,
+	device_name,
+	site_code,
+	identifying_dns_record_id,
+	host_id,
+	physical_label,
+	rack_location_id,
+	chassis_location_id,
+	parent_device_id,
+	description,
+	device_status,
+	operating_system_id,
+	service_environment_id,
+	voe_id,
+	auto_mgmt_protocol,
+	voe_symbolic_track_id,
+	is_locally_managed,
+	is_monitored,
+	is_virtual_device,
+	should_fetch_config,
+	date_in_service,
+	data_ins_user,
+	data_ins_date,
+	data_upd_user,
+	data_upd_date,
+	"aud#action",
+	"aud#timestamp",
+	"aud#user",
+	"aud#seq"
+FROM audit.device_v69;
+
+ALTER TABLE device
+	ALTER device_id
+	SET DEFAULT nextval('device_device_id_seq'::regclass);
+ALTER TABLE device
+	ALTER operating_system_id
+	SET DEFAULT 0;
+ALTER TABLE device
+	ALTER is_locally_managed
+	SET DEFAULT 'Y'::bpchar;
+ALTER TABLE device
+	ALTER is_virtual_device
+	SET DEFAULT 'N'::bpchar;
+ALTER TABLE device
+	ALTER should_fetch_config
+	SET DEFAULT 'Y'::bpchar;
+
+-- PRIMARY AND ALTERNATE KEYS
+ALTER TABLE device ADD CONSTRAINT ak_device_chassis_location_id UNIQUE (chassis_location_id);
+ALTER TABLE device ADD CONSTRAINT ak_device_rack_location_id UNIQUE (rack_location_id);
+ALTER TABLE device ADD CONSTRAINT pk_device PRIMARY KEY (device_id);
+
+-- Table/Column Comments
+COMMENT ON COLUMN device.asset_id IS 'COLUMN IS DEPRECATED AND WILL REMOVED >= 0.70.  Get to it via asset.component_id.';
+-- INDEXES
+CREATE INDEX idx_dev_islclymgd ON device USING btree (is_locally_managed);
+CREATE INDEX idx_dev_ismonitored ON device USING btree (is_monitored);
+CREATE INDEX idx_device_type_location ON device USING btree (device_type_id);
+CREATE INDEX xif_dev_chass_loc_id_mod_enfc ON device USING btree (chassis_location_id, parent_device_id, device_type_id);
+CREATE INDEX xif_dev_os_id ON device USING btree (operating_system_id);
+CREATE INDEX xif_device_asset_id ON device USING btree (asset_id);
+CREATE INDEX xif_device_comp_id ON device USING btree (component_id);
+CREATE INDEX xif_device_dev_v_svcenv ON device USING btree (service_environment_id);
+CREATE INDEX xif_device_dev_val_status ON device USING btree (device_status);
+CREATE INDEX xif_device_fk_voe ON device USING btree (voe_id);
+CREATE INDEX xif_device_id_dnsrecord ON device USING btree (identifying_dns_record_id);
+CREATE INDEX xif_device_site_code ON device USING btree (site_code);
+
+-- CHECK CONSTRAINTS
+ALTER TABLE device ADD CONSTRAINT ckc_is_locally_manage_device
+	CHECK ((is_locally_managed = ANY (ARRAY['Y'::bpchar, 'N'::bpchar])) AND ((is_locally_managed)::text = upper((is_locally_managed)::text)));
+ALTER TABLE device ADD CONSTRAINT ckc_is_monitored_device
+	CHECK ((is_monitored = ANY (ARRAY['Y'::bpchar, 'N'::bpchar])) AND ((is_monitored)::text = upper((is_monitored)::text)));
+ALTER TABLE device ADD CONSTRAINT ckc_is_virtual_device_device
+	CHECK ((is_virtual_device = ANY (ARRAY['Y'::bpchar, 'N'::bpchar])) AND ((is_virtual_device)::text = upper((is_virtual_device)::text)));
+ALTER TABLE device ADD CONSTRAINT ckc_should_fetch_conf_device
+	CHECK ((should_fetch_config = ANY (ARRAY['Y'::bpchar, 'N'::bpchar])) AND ((should_fetch_config)::text = upper((should_fetch_config)::text)));
+ALTER TABLE device ADD CONSTRAINT dev_osid_notnull
+	CHECK (operating_system_id IS NOT NULL);
+ALTER TABLE device ADD CONSTRAINT sys_c0069051
+	CHECK (device_id IS NOT NULL);
+ALTER TABLE device ADD CONSTRAINT sys_c0069052
+	CHECK (device_type_id IS NOT NULL);
+ALTER TABLE device ADD CONSTRAINT sys_c0069057
+	CHECK (is_monitored IS NOT NULL);
+ALTER TABLE device ADD CONSTRAINT sys_c0069059
+	CHECK (is_virtual_device IS NOT NULL);
+ALTER TABLE device ADD CONSTRAINT sys_c0069060
+	CHECK (should_fetch_config IS NOT NULL);
+
+-- FOREIGN KEYS FROM
+-- consider FK device and chassis_location
+ALTER TABLE chassis_location
+	ADD CONSTRAINT fk_chass_loc_chass_devid
+	FOREIGN KEY (chassis_device_id) REFERENCES device(device_id) DEFERRABLE;
+-- consider FK device and device_encapsulation_domain
+ALTER TABLE device_encapsulation_domain
+	ADD CONSTRAINT fk_dev_encap_domain_devid
+	FOREIGN KEY (device_id) REFERENCES device(device_id);
+-- consider FK device and device_management_controller
+ALTER TABLE device_management_controller
+	ADD CONSTRAINT fk_dev_mgmt_ctlr_dev_id
+	FOREIGN KEY (device_id) REFERENCES device(device_id);
+-- consider FK device and device_ssh_key
+ALTER TABLE device_ssh_key
+	ADD CONSTRAINT fk_dev_ssh_key_ssh_key_id
+	FOREIGN KEY (device_id) REFERENCES device(device_id);
+-- consider FK device and device_ticket
+ALTER TABLE device_ticket
+	ADD CONSTRAINT fk_dev_tkt_dev_id
+	FOREIGN KEY (device_id) REFERENCES device(device_id);
+-- consider FK device and device_type
+ALTER TABLE device_type
+	ADD CONSTRAINT fk_dev_typ_tmplt_dev_typ_id
+	FOREIGN KEY (template_device_id) REFERENCES device(device_id);
+-- consider FK device and device_collection_device
+ALTER TABLE device_collection_device
+	ADD CONSTRAINT fk_devcolldev_dev_id
+	FOREIGN KEY (device_id) REFERENCES device(device_id);
+-- consider FK device and device_layer2_network
+ALTER TABLE device_layer2_network
+	ADD CONSTRAINT fk_device_l2_net_devid
+	FOREIGN KEY (device_id) REFERENCES device(device_id);
+-- consider FK device and device_note
+ALTER TABLE device_note
+	ADD CONSTRAINT fk_device_note_device
+	FOREIGN KEY (device_id) REFERENCES device(device_id);
+-- consider FK device and device_management_controller
+ALTER TABLE device_management_controller
+	ADD CONSTRAINT fk_dvc_mgmt_ctrl_mgr_dev_id
+	FOREIGN KEY (manager_device_id) REFERENCES device(device_id);
+-- consider FK device and logical_volume
+ALTER TABLE logical_volume
+	ADD CONSTRAINT fk_logvol_device_id
+	FOREIGN KEY (device_id) REFERENCES device(device_id) DEFERRABLE;
+-- consider FK device and mlag_peering
+ALTER TABLE mlag_peering
+	ADD CONSTRAINT fk_mlag_peering_devid1
+	FOREIGN KEY (device1_id) REFERENCES device(device_id);
+-- consider FK device and mlag_peering
+ALTER TABLE mlag_peering
+	ADD CONSTRAINT fk_mlag_peering_devid2
+	FOREIGN KEY (device2_id) REFERENCES device(device_id);
+-- consider FK device and network_interface
+ALTER TABLE network_interface
+	ADD CONSTRAINT fk_netint_device_id
+	FOREIGN KEY (device_id) REFERENCES device(device_id);
+-- consider FK device and network_interface_purpose
+ALTER TABLE network_interface_purpose
+	ADD CONSTRAINT fk_netint_purpose_device_id
+	FOREIGN KEY (device_id) REFERENCES device(device_id);
+-- consider FK device and network_service
+ALTER TABLE network_service
+	ADD CONSTRAINT fk_netsvc_device_id
+	FOREIGN KEY (device_id) REFERENCES device(device_id);
+-- consider FK device and physicalish_volume
+ALTER TABLE physicalish_volume
+	ADD CONSTRAINT fk_physvol_device_id
+	FOREIGN KEY (device_id) REFERENCES device(device_id) DEFERRABLE;
+-- consider FK device and snmp_commstr
+ALTER TABLE snmp_commstr
+	ADD CONSTRAINT fk_snmpstr_device_id
+	FOREIGN KEY (device_id) REFERENCES device(device_id);
+-- consider FK device and static_route
+ALTER TABLE static_route
+	ADD CONSTRAINT fk_statrt_devsrc_id
+	FOREIGN KEY (device_src_id) REFERENCES device(device_id);
+-- consider FK device and volume_group
+ALTER TABLE volume_group
+	ADD CONSTRAINT fk_volgrp_devid
+	FOREIGN KEY (device_id) REFERENCES device(device_id) DEFERRABLE;
+
+-- FOREIGN KEYS TO
+-- consider FK device and chassis_location
+ALTER TABLE device
+	ADD CONSTRAINT fk_chasloc_chass_devid
+	FOREIGN KEY (chassis_location_id) REFERENCES chassis_location(chassis_location_id) DEFERRABLE;
+-- consider FK device and chassis_location
+ALTER TABLE device
+	ADD CONSTRAINT fk_dev_chass_loc_id_mod_enfc
+	FOREIGN KEY (chassis_location_id, parent_device_id, device_type_id) REFERENCES chassis_location(chassis_location_id, chassis_device_id, module_device_type_id) DEFERRABLE;
+-- consider FK device and device_type
+ALTER TABLE device
+	ADD CONSTRAINT fk_dev_devtp_id
+	FOREIGN KEY (device_type_id) REFERENCES device_type(device_type_id);
+-- consider FK device and operating_system
+ALTER TABLE device
+	ADD CONSTRAINT fk_dev_os_id
+	FOREIGN KEY (operating_system_id) REFERENCES operating_system(operating_system_id);
+-- consider FK device and rack_location
+ALTER TABLE device
+	ADD CONSTRAINT fk_dev_rack_location_id
+	FOREIGN KEY (rack_location_id) REFERENCES rack_location(rack_location_id);
+-- consider FK device and val_device_auto_mgmt_protocol
+ALTER TABLE device
+	ADD CONSTRAINT fk_dev_ref_mgmt_proto
+	FOREIGN KEY (auto_mgmt_protocol) REFERENCES val_device_auto_mgmt_protocol(auto_mgmt_protocol);
+-- consider FK device and asset
+ALTER TABLE device
+	ADD CONSTRAINT fk_device_asset_id
+	FOREIGN KEY (asset_id) REFERENCES asset(asset_id);
+-- consider FK device and component
+ALTER TABLE device
+	ADD CONSTRAINT fk_device_comp_id
+	FOREIGN KEY (component_id) REFERENCES component(component_id);
+-- consider FK device and service_environment
+ALTER TABLE device
+	ADD CONSTRAINT fk_device_dev_v_svcenv
+	FOREIGN KEY (service_environment_id) REFERENCES service_environment(service_environment_id);
+-- consider FK device and val_device_status
+ALTER TABLE device
+	ADD CONSTRAINT fk_device_dev_val_status
+	FOREIGN KEY (device_status) REFERENCES val_device_status(device_status);
+-- consider FK device and voe
+ALTER TABLE device
+	ADD CONSTRAINT fk_device_fk_voe
+	FOREIGN KEY (voe_id) REFERENCES voe(voe_id);
+-- consider FK device and dns_record
+ALTER TABLE device
+	ADD CONSTRAINT fk_device_id_dnsrecord
+	FOREIGN KEY (identifying_dns_record_id) REFERENCES dns_record(dns_record_id) DEFERRABLE;
+-- consider FK device and device
+ALTER TABLE device
+	ADD CONSTRAINT fk_device_ref_parent_device
+	FOREIGN KEY (parent_device_id) REFERENCES device(device_id);
+-- consider FK device and voe_symbolic_track
+ALTER TABLE device
+	ADD CONSTRAINT fk_device_ref_voesymbtrk
+	FOREIGN KEY (voe_symbolic_track_id) REFERENCES voe_symbolic_track(voe_symbolic_track_id);
+-- consider FK device and site
+ALTER TABLE device
+	ADD CONSTRAINT fk_device_site_code
+	FOREIGN KEY (site_code) REFERENCES site(site_code);
+
+-- TRIGGERS
+-- consider NEW oid 1364559
+CREATE OR REPLACE FUNCTION jazzhands.create_device_component_by_trigger()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	devtype		RECORD;
+	ctid		integer;
+	cid			integer;
+	scarr       integer[];
+	dcarr       integer[];
+	server_ver	integer;
+BEGIN
+
+	SELECT
+		dt.device_type_id,
+		dt.component_type_id,
+		dt.template_device_id,
+		d.component_id
+	INTO
+		devtype
+	FROM
+		device_type dt LEFT JOIN
+		device d ON (dt.template_device_id = d.device_id)
+	WHERE
+		dt.device_type_id = NEW.device_type_id;
+
+	IF NEW.component_id IS NOT NULL THEN
+		IF devtype.component_type_id IS NOT NULL THEN
+			SELECT
+				component_type_id INTO ctid
+			FROM
+				component c
+			WHERE
+				c.component_id = NEW.component_id;
+
+			IF ctid != devtype.component_type_id THEN
+				UPDATE
+					component
+				SET
+					component_type_id = devtype.component_type_id
+				WHERE
+					component_id = NEW.component_id;
+			END IF;
+		END IF;
+			
+		RETURN NEW;
+	END IF;
+
+	--
+	-- If template_device_id doesn't exist, then create an instance of
+	-- the component_id if it exists 
+	--
+	IF devtype.component_id IS NULL THEN
+		--
+		-- If the component_id doesn't exist, then we're done
+		--
+		IF devtype.component_type_id IS NULL THEN
+			RETURN NEW;
+		END IF;
+		--
+		-- Insert a component of the given type and tie it to the device
+		--
+		INSERT INTO component (component_type_id)
+			VALUES (devtype.component_type_id)
+			RETURNING component_id INTO cid;
+
+		NEW.component_id := cid;
+		RETURN NEW;
+	ELSE
+		SELECT setting INTO server_ver FROM pg_catalog.pg_settings
+			WHERE name = 'server_version_num';
+
+		IF (server_ver < 90400) THEN
+			--
+			-- This is pretty nasty; welcome to SQL
+			--
+			--
+			-- This returns data into a temporary table (ugh) that's used as a
+			-- key/value store to map each template component to the 
+			-- newly-created one
+			--
+			CREATE TEMPORARY TABLE trig_comp_ins AS
+			WITH comp_ins AS (
+				INSERT INTO component (
+					component_type_id
+				) SELECT
+					c.component_type_id
+				FROM
+					device_type dt JOIN 
+					v_device_components dc ON
+						(dc.device_id = dt.template_device_id) JOIN
+					component c USING (component_id)
+				WHERE
+					device_type_id = NEW.device_type_id
+				ORDER BY
+					level, c.component_type_id
+				RETURNING component_id
+			)
+			SELECT 
+				src_comp.component_id as src_component_id,
+				dst_comp.component_id as dst_component_id,
+				src_comp.level as level
+			FROM
+				(SELECT
+					c.component_id,
+					level,
+					row_number() OVER (ORDER BY level, c.component_type_id)
+						AS rownum
+				 FROM
+					device_type dt JOIN 
+					v_device_components dc ON
+						(dc.device_id = dt.template_device_id) JOIN
+					component c USING (component_id)
+				 WHERE
+					device_type_id = NEW.device_type_id
+				) src_comp,
+				(SELECT
+					component_id,
+					row_number() OVER () AS rownum
+				 FROM
+					comp_ins
+				) dst_comp
+			WHERE
+				src_comp.rownum = dst_comp.rownum;
+
+			/* 
+				 Now take the mapping of components that were inserted above,
+				 and tie the new components to the appropriate slot on the
+				 parent.
+				 The logic below is:
+					- Take the template component, and locate its parent slot
+					- Find the correct slot on the corresponding new parent 
+					  component by locating one with the same slot_name and
+					  slot_type_id on the mapped parent component_id
+					- Update the parent_slot_id of the component with the
+					  mapped component_id to this slot_id 
+				 
+				 This works even if the top-level component is attached to some
+				 other device, since there will not be a mapping for those in
+				 the table to locate.
+			*/
+					  
+			UPDATE
+				component dc
+			SET
+				parent_slot_id = ds.slot_id
+			FROM
+				trig_comp_ins tt,
+				trig_comp_ins ptt,
+				component sc,
+				slot ss,
+				slot ds
+			WHERE
+				tt.src_component_id = sc.component_id AND
+				tt.dst_component_id = dc.component_id AND
+				ss.slot_id = sc.parent_slot_id AND
+				ss.component_id = ptt.src_component_id AND
+				ds.component_id = ptt.dst_component_id AND
+				ss.slot_type_id = ds.slot_type_id AND
+				ss.slot_name = ds.slot_name;
+
+			SELECT dst_component_id INTO cid FROM trig_comp_ins WHERE
+				level = 1;
+
+			NEW.component_id := cid;
+
+			DROP TABLE trig_comp_ins;
+
+			RETURN NEW;
+		ELSE
+			WITH dev_comps AS (
+				SELECT
+					c.component_id,
+					c.component_type_id,
+					level,
+					row_number() OVER (ORDER BY level, c.component_type_id) AS
+						rownum
+				FROM
+					device_type dt JOIN 
+					v_device_components dc ON
+						(dc.device_id = dt.template_device_id) JOIN
+					component c USING (component_id)
+				WHERE
+					device_type_id = NEW.device_type_id
+			),
+			comp_ins AS (
+				INSERT INTO component (
+					component_type_id
+				) SELECT
+					component_type_id
+				FROM
+					dev_comps
+				ORDER BY
+					rownum
+				RETURNING component_id, component_type_id
+			),
+			comp_ins_arr AS (
+				SELECT
+					array_agg(component_id) AS dst_arr
+				FROM
+					comp_ins
+			),
+			dev_comps_arr AS (
+				SELECT
+					array_agg(component_id) as src_arr
+				FROM
+					dev_comps
+			)
+			SELECT src_arr, dst_arr INTO scarr, dcarr FROM
+				dev_comps_arr, comp_ins_arr;
+
+			UPDATE
+				component dc
+			SET
+				parent_slot_id = ds.slot_id
+			FROM
+				unnest(scarr, dcarr) AS 
+					tt(src_component_id, dst_component_id),
+				unnest(scarr, dcarr) AS 
+					ptt(src_component_id, dst_component_id),
+				component sc,
+				slot ss,
+				slot ds
+			WHERE
+				tt.src_component_id = sc.component_id AND
+				tt.dst_component_id = dc.component_id AND
+				ss.slot_id = sc.parent_slot_id AND
+				ss.component_id = ptt.src_component_id AND
+				ds.component_id = ptt.dst_component_id AND
+				ss.slot_type_id = ds.slot_type_id AND
+				ss.slot_name = ds.slot_name;
+
+			SELECT 
+				component_id INTO NEW.component_id
+			FROM 
+				component c
+			WHERE
+				component_id = ANY(dcarr) AND
+				parent_slot_id IS NULL;
+
+			RETURN NEW;
+		END IF;
+	END IF;
+	RETURN NEW;
+END;
+$function$
+;
+CREATE TRIGGER trigger_create_device_component BEFORE INSERT OR UPDATE OF device_type_id ON device FOR EACH ROW EXECUTE PROCEDURE create_device_component_by_trigger();
+
+-- XXX - may need to include trigger function
+-- consider NEW oid 1364582
+CREATE OR REPLACE FUNCTION jazzhands.delete_per_device_device_collection()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	dcid			device_collection.device_collection_id%TYPE;
+BEGIN
+	SELECT	device_collection_id
+	  FROM  device_collection
+	  INTO	dcid
+	 WHERE	device_collection_type = 'per-device'
+	   AND	device_collection_id in
+		(select device_collection_id
+		 from device_collection_device
+		where device_id = OLD.device_id
+		)
+	ORDER BY device_collection_id
+	LIMIT 1;
+
+	IF dcid IS NOT NULL THEN
+		DELETE FROM device_collection_device
+		WHERE device_collection_id = dcid;
+
+		DELETE from device_collection
+		WHERE device_collection_id = dcid;
+	END IF;
+
+	RETURN OLD;
+END;
+$function$
+;
+CREATE TRIGGER trigger_delete_per_device_device_collection BEFORE DELETE ON device FOR EACH ROW EXECUTE PROCEDURE delete_per_device_device_collection();
+
+-- XXX - may need to include trigger function
+-- consider NEW oid 1364606
+CREATE OR REPLACE FUNCTION jazzhands.device_one_location_validate()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+BEGIN
+	IF NEW.RACK_LOCATION_ID IS NOT NULL AND NEW.CHASSIS_LOCATION_ID IS NOT NULL THEN
+		RAISE EXCEPTION 'Both Rack_Location_Id and Chassis_Location_Id may not be set.'
+			USING ERRCODE = 'unique_violation';
+	END IF;
+
+	IF NEW.CHASSIS_LOCATION_ID IS NOT NULL AND NEW.PARENT_DEVICE_ID IS NULL THEN
+		RAISE EXCEPTION 'Must set parent_device_id if setting chassis location.'
+			USING ERRCODE = 'foreign_key_violation';
+	END IF;
+	RETURN NEW;
+END;
+$function$
+;
+CREATE TRIGGER trigger_device_one_location_validate BEFORE INSERT OR UPDATE ON device FOR EACH ROW EXECUTE PROCEDURE device_one_location_validate();
+
+-- XXX - may need to include trigger function
+-- consider NEW oid 1364591
+CREATE OR REPLACE FUNCTION jazzhands.update_per_device_device_collection()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	dcid		device_collection.device_collection_id%TYPE;
+	newname		device_collection.device_collection_name%TYPE;
+BEGIN
+	IF NEW.device_name IS NOT NULL THEN
+		newname = NEW.device_name || '_' || NEW.device_id;
+	ELSE
+		newname = 'per_d_dc_contrived_' || NEW.device_id;
+	END IF;
+
+	IF TG_OP = 'INSERT' THEN
+		insert into device_collection
+			(device_collection_name, device_collection_type)
+		values
+			(newname, 'per-device')
+		RETURNING device_collection_id INTO dcid;
+		insert into device_collection_device
+			(device_collection_id, device_id)
+		VALUES
+			(dcid, NEW.device_id);
+	ELSIF TG_OP = 'UPDATE'  THEN
+		UPDATE	device_collection
+		   SET	device_collection_name = newname
+		 WHERE	device_collection_name != newname
+		   AND	device_collection_type = 'per-device'
+		   AND	device_collection_id in (
+			SELECT	device_collection_id
+			  FROM	device_collection_device
+			 WHERE	device_id = NEW.device_id
+			);
+	END IF;
+	RETURN NEW;
+END;
+$function$
+;
+CREATE TRIGGER trigger_update_per_device_device_collection AFTER INSERT OR UPDATE ON device FOR EACH ROW EXECUTE PROCEDURE update_per_device_device_collection();
+
+-- XXX - may need to include trigger function
+-- consider NEW oid 1364492
+CREATE OR REPLACE FUNCTION jazzhands.validate_device_component_assignment()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	dtid		device_type.device_type_id%TYPE;
+	dt_ctid		component.component_type_id%TYPE;
+	ctid		component.component_type_id%TYPE;
+BEGIN
+	-- If no component_id is set, then we're done
+
+	IF NEW.component_id IS NULL THEN
+		RETURN NEW;
+	END IF;
+
+	SELECT
+		device_type_id, component_type_id 
+	INTO
+		dtid, dt_ctid
+	FROM
+		device_type
+	WHERE
+		device_type_id = NEW.device_type_id;
+	
+	IF NOT FOUND OR dt_ctid IS NULL THEN
+		RAISE EXCEPTION 'No component_type_id set for device type'
+		USING ERRCODE = 'foreign_key_violation';
+	END IF;
+
+	SELECT
+		component_type_id INTO ctid
+	FROM
+		component
+	WHERE
+		component_id = NEW.component_id;
+	
+	IF NOT FOUND OR ctid IS DISTINCT FROM dt_ctid THEN
+		RAISE EXCEPTION 'Component type of component_id % does not match component_type for device_type_id % (%)',
+			ctid, dtid, dt_ctid
+		USING ERRCODE = 'foreign_key_violation';
+	END IF;
+
+	RETURN NEW;
+END;
+$function$
+;
+CREATE CONSTRAINT TRIGGER trigger_validate_device_component_assignment AFTER INSERT OR UPDATE OF device_type_id, component_id ON device DEFERRABLE INITIALLY IMMEDIATE FOR EACH ROW EXECUTE PROCEDURE validate_device_component_assignment();
+
+-- XXX - may need to include trigger function
+-- consider NEW oid 1364598
+CREATE OR REPLACE FUNCTION jazzhands.verify_device_voe()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	voe_sw_pkg_repos		sw_package_repository.sw_package_repository_id%TYPE;
+	os_sw_pkg_repos		operating_system.sw_package_repository_id%TYPE;
+	voe_sym_trx_sw_pkg_repo_id	voe_symbolic_track.sw_package_repository_id%TYPE;
+BEGIN
+
+	IF (NEW.operating_system_id IS NOT NULL)
+	THEN
+		SELECT sw_package_repository_id INTO os_sw_pkg_repos
+			FROM
+				operating_system
+			WHERE
+				operating_system_id = NEW.operating_system_id;
+	END IF;
+
+	IF (NEW.voe_id IS NOT NULL) THEN
+		SELECT sw_package_repository_id INTO voe_sw_pkg_repos
+			FROM
+				voe
+			WHERE
+				voe_id=NEW.voe_id;
+		IF (voe_sw_pkg_repos != os_sw_pkg_repos) THEN
+			RAISE EXCEPTION
+				'Device OS and VOE have different SW Pkg Repositories';
+		END IF;
+	END IF;
+
+	IF (NEW.voe_symbolic_track_id IS NOT NULL) THEN
+		SELECT sw_package_repository_id INTO voe_sym_trx_sw_pkg_repo_id
+			FROM
+				voe_symbolic_track
+			WHERE
+				voe_symbolic_track_id=NEW.voe_symbolic_track_id;
+		IF (voe_sym_trx_sw_pkg_repo_id != os_sw_pkg_repos) THEN
+			RAISE EXCEPTION
+				'Device OS and VOE track have different SW Pkg Repositories';
+		END IF;
+	END IF;
+	RETURN NEW;
+END;
+$function$
+;
+CREATE TRIGGER trigger_verify_device_voe BEFORE INSERT OR UPDATE ON device FOR EACH ROW EXECUTE PROCEDURE verify_device_voe();
+
+-- XXX - may need to include trigger function
+SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'device');
+SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'device');
+ALTER SEQUENCE device_device_id_seq
+	 OWNED BY device.device_id;
+DROP TABLE IF EXISTS device_v69;
+DROP TABLE IF EXISTS audit.device_v69;
+-- DONE DEALING WITH TABLE device [1352326]
+--------------------------------------------------------------------
+--------------------------------------------------------------------
+-- DEALING WITH TABLE property [1291004]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'property', 'property');
 
@@ -1528,7 +2737,7 @@ ALTER TABLE property
 	FOREIGN KEY (network_range_id) REFERENCES network_range(network_range_id);
 
 -- TRIGGERS
--- consider NEW oid 1021649
+-- consider NEW oid 1364902
 CREATE OR REPLACE FUNCTION jazzhands.validate_property()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -2350,7 +3559,7 @@ ALTER SEQUENCE property_property_id_seq
 	 OWNED BY property.property_id;
 DROP TABLE IF EXISTS property_v69;
 DROP TABLE IF EXISTS audit.property_v69;
--- DONE DEALING WITH TABLE property [1013398]
+-- DONE DEALING WITH TABLE property [1353605]
 --------------------------------------------------------------------
 --
 -- Process trigger procs in jazzhands
@@ -3957,6 +5166,219 @@ BEGIN
 END; $function$
 ;
 
+-- New function
+CREATE OR REPLACE FUNCTION jazzhands.account_change_realm_aca_realm()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	_tally	integer;
+BEGIN
+	SELECT	count(*)
+	INTO	_tally
+	FROM	account_collection_account
+			JOIN account_collection USING (account_collection_id)
+			JOIN val_account_collection_type vt USING (account_collection_type)
+	WHERE	vt.account_realm_id IS NOT NULL
+	AND		vt.account_realm_id != NEW.account_realm_id;
+	
+	IF _tally > 0 THEN
+		RAISE EXCEPTION 'New account realm is part of % account collections with a type restriction',
+			_tally
+			USING ERRCODE = 'integrity_constraint_violation';
+	END IF;
+	RETURN NEW;
+END;
+$function$
+;
+
+-- New function
+CREATE OR REPLACE FUNCTION jazzhands.account_collection_account_realm()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	_a	account%ROWTYPE;
+	_at	val_account_collection_type%ROWTYPE;
+BEGIN
+	SELECT *
+	INTO	_at
+	FROM	val_account_collection_type
+		JOIN account_collection USING (account_collection_type)
+	WHERE
+		account_collection_id = NEW.account_collection_id;
+
+	-- no restrictions, so do not care
+	IF _at.account_realm_id IS NULL THEN
+		RETURN NEW;
+	END IF;
+
+	-- check to see if the account's account realm matches
+	IF TG_OP = 'INSERT' OR OLD.account_id != NEW.account_id THEN
+		SELECT	*
+		INTO	_a
+		FROM	account	
+		WHERE	account_id = NEW.account_id;
+		
+		IF _a.account_realm_id != _at.account_realm_id THEN
+			RAISE EXCEPTION 'account realm of % does not match account realm restriction on account_collection %',
+				NEW.account_id, NEW.account_collection_id
+				USING ERRCODE = 'integrity_constraint_violation';
+		END IF;
+	END IF;
+	RETURN NEW;
+END;
+$function$
+;
+
+-- New function
+CREATE OR REPLACE FUNCTION jazzhands.account_collection_hier_realm()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	_pat	val_account_collection_type%ROWTYPE;
+	_cat	val_account_collection_type%ROWTYPE;
+BEGIN
+	SELECT *
+	INTO	_pat
+	FROM	val_account_collection_type
+		JOIN account_collection USING (account_collection_type)
+	WHERE
+		account_collection_id = NEW.account_collection_id;
+	SELECT *
+	INTO	_cat
+	FROM	val_account_collection_type
+		JOIN account_collection USING (account_collection_type)
+	WHERE
+		account_collection_id = NEW.child_account_collection_id;
+
+	-- no restrictions, so do not care
+	IF _pat.account_realm_id IS DISTINCT FROM _cat.account_realm_id THEN
+		RAISE EXCEPTION 'account realm restrictions on parent %/child % do not match" ',
+			NEW.account_collection_id, NEW.child_account_collection_id
+			USING ERRCODE = 'integrity_constraint_violation';
+	END IF;
+	RETURN NEW;
+END;
+$function$
+;
+
+-- New function
+CREATE OR REPLACE FUNCTION jazzhands.account_collection_realm()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	_at		val_account_collection_type%ROWTYPE;
+	_tally	integer;
+BEGIN
+	SELECT * INTO _at FROM val_account_collection_type
+	WHERE account_collection_type = NEW.account_collection_type;
+
+	IF _at.account_realm_id IS NULL THEN
+		RETURN NEW;
+	END IF;
+
+	SELECT	count(*)
+	INTO	_tally
+	FROM	account_collection_account
+			JOIN account a USING (account_id)
+	WHERE	account_collection_id = NEW.account_collection_id
+	AND		a.account_realm_id != _at.account_realm_id;
+	IF _tally > 0 THEN
+		RAISE EXCEPTION 'Unable to set account_realm restriction because there are accounts assigned that do not match it'
+			USING ERRCODE = 'integrity_constraint_violation';
+	END IF;
+
+	SELECT	count(*)
+	INTO	_tally
+	FROM	account_collection_hier h
+			JOIN account_collection pac USING (account_collection_id)
+			JOIN val_account_collection_type pat USING (account_collection_type)
+			JOIN account_collection cac ON
+				h.child_account_collection_id = cac.account_collection_id
+			JOIN val_account_collection_type cat ON
+				cac.account_collection_type = cat.account_collection_type
+	WHERE	(
+				pac.account_collection_id = NEW.account_collection_id
+			OR		cac.account_collection_id = NEW.account_collection_id
+			)
+	AND		pat.account_realm_id IS DISTINCT FROM cat.account_realm_id
+	;
+	IF _tally > 0 THEN
+		RAISE EXCEPTION 'Unable to set account_realm restriction because there are account collections in the hierarchy that do not match'
+			USING ERRCODE = 'integrity_constraint_violation';
+	END IF;
+	RETURN NEW;
+END;
+$function$
+;
+
+-- New function
+CREATE OR REPLACE FUNCTION jazzhands.account_collection_type_realm()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	_tally	integer;
+BEGIN
+	IF NEW.account_realm_id IS NULL THEN
+		RETURN NEW;
+	END IF;
+
+	SELECT	count(*)
+	INTO	_tally
+	FROM	account_collection_account
+			JOIN account_collection USING (account_collection_id)
+			JOIN account a USING (account_id)
+	WHERE	account_collection_type = NEW.account_collection_type
+	AND		a.account_realm_id != NEW.account_realm_id;
+	IF _tally > 0 THEN
+		RAISE EXCEPTION 'Unable to set account_realm restriction because there are accounts assigned that do not match it'
+			USING ERRCODE = 'integrity_constraint_violation';
+	END IF;
+
+	-- This is probably useless.
+	SELECT	count(*)
+	INTO	_tally
+	FROM	account_collection_hier h
+			JOIN account_collection pac USING (account_collection_id)
+			JOIN val_account_collection_type pat USING (account_collection_type)
+			JOIN account_collection cac ON
+				h.child_account_collection_id = cac.account_collection_id
+			JOIN val_account_collection_type cat ON
+				cac.account_collection_type = cat.account_collection_type
+	WHERE	(
+				pac.account_collection_type = NEW.account_collection_type
+			OR
+				cac.account_collection_type = NEW.account_collection_type
+			)
+	AND		(
+				pat.account_realm_id IS DISTINCT FROM NEW.account_realm_id
+			OR
+				cat.account_realm_id IS DISTINCT FROM NEW.account_realm_id
+			)
+	;
+	IF _tally > 0 THEN
+		RAISE EXCEPTION 'Unable to set account_realm restriction because there are account collections in the hierarchy that do not match'
+			USING ERRCODE = 'integrity_constraint_violation';
+	END IF;
+	RETURN NEW;
+END;
+$function$
+;
+
 --
 -- Process trigger procs in net_manip
 --
@@ -4036,6 +5458,27 @@ ALTER TABLE person_company_attr
 
 -- index
 -- triggers
+CREATE TRIGGER trig_account_change_realm_aca_realm BEFORE UPDATE OF account_realm_id ON account FOR EACH ROW EXECUTE PROCEDURE account_change_realm_aca_realm();
+CREATE TRIGGER trig_account_collection_realm AFTER UPDATE OF account_collection_type ON account_collection FOR EACH ROW EXECUTE PROCEDURE account_collection_realm();
+CREATE TRIGGER trig_account_collection_account_realm AFTER INSERT OR UPDATE ON account_collection_account FOR EACH ROW EXECUTE PROCEDURE account_collection_account_realm();
+CREATE TRIGGER trig_account_collection_hier_realm AFTER INSERT OR UPDATE ON account_collection_hier FOR EACH ROW EXECUTE PROCEDURE account_collection_hier_realm();
+
+alter sequence audit.network_interface_netblock_seq restart;
+insert into network_interface_netblock
+        (network_interface_id, netblock_id)
+select network_interface_id, netblock_id
+from network_interface where
+        (network_interface_id, netblock_id) NOT IN
+                (SELECT network_interface_id, netblock_id
+                from network_interface_netblock
+                )
+and netblock_id is not NULL;
+
+CREATE TRIGGER trigger_net_int_netblock_to_nbn_compat_after AFTER INSERT OR DELETE OR UPDATE OF network_interface_id, netblock_id ON network_interface FOR EACH ROW EXECUTE PROCEDURE net_int_netblock_to_nbn_compat_after();
+CREATE TRIGGER trigger_net_int_netblock_to_nbn_compat_before BEFORE DELETE ON network_interface FOR EACH ROW EXECUTE PROCEDURE net_int_netblock_to_nbn_compat_before();
+CREATE TRIGGER trigger_network_interface_drop_tt_netint_ni AFTER INSERT OR DELETE OR UPDATE ON network_interface FOR EACH STATEMENT EXECUTE PROCEDURE network_interface_drop_tt();
+CREATE TRIGGER trigger_network_interface_drop_tt_netint_nb AFTER INSERT OR DELETE OR UPDATE ON network_interface_netblock FOR EACH STATEMENT EXECUTE PROCEDURE network_interface_drop_tt();
+CREATE TRIGGER trigger_network_interface_netblock_to_ni AFTER INSERT OR DELETE OR UPDATE ON network_interface_netblock FOR EACH ROW EXECUTE PROCEDURE network_interface_netblock_to_ni();
 
 --- misc
 -- backwards compatibility
@@ -4056,17 +5499,7 @@ FROM account_realm;
 COMMENT ON SCHEMA account_collection_manip IS 'part of jazzhands';
 COMMENT ON SCHEMA script_hooks IS 'part of jazzhands';
 
-alter sequence audit.network_interface_netblock_seq restart;
 
-insert into network_interface_netblock
-        (network_interface_id, netblock_id)
-select network_interface_id, netblock_id
-from network_interface where
-        (network_interface_id, netblock_id) NOT IN
-                (SELECT network_interface_id, netblock_id
-                from network_interface_netblock
-                )
-and netblock_id is not NULL;
 
 
 -- Clean Up
