@@ -1,7 +1,6 @@
 /*
 Invoked:
 
-	--post=/tmp/mq
 	--scan-tables
 	--suffix=v70
 */
@@ -648,7 +647,262 @@ DROP FUNCTION IF EXISTS schema_support.save_dependant_objects_for_replay ( schem
 
 
 --------------------------------------------------------------------
--- DEALING WITH TABLE v_account_manager_map [3473759]
+-- DEALING WITH TABLE person_company_attr [3934545]
+-- Save grants for later reapplication
+SELECT schema_support.save_grants_for_replay('jazzhands', 'person_company_attr', 'person_company_attr');
+
+-- FOREIGN KEYS FROM
+
+-- FOREIGN KEYS TO
+ALTER TABLE jazzhands.person_company_attr DROP CONSTRAINT IF EXISTS fk_pers_comp_attr_person_comp_;
+ALTER TABLE jazzhands.person_company_attr DROP CONSTRAINT IF EXISTS fk_person_comp_att_pers_person;
+ALTER TABLE jazzhands.person_company_attr DROP CONSTRAINT IF EXISTS fk_person_comp_attr_val_name;
+
+-- EXTRA-SCHEMA constraints
+SELECT schema_support.save_constraint_for_replay('jazzhands', 'person_company_attr');
+
+-- PRIMARY and ALTERNATE KEYS
+ALTER TABLE jazzhands.person_company_attr DROP CONSTRAINT IF EXISTS ak_person_company_attr_name;
+ALTER TABLE jazzhands.person_company_attr DROP CONSTRAINT IF EXISTS pk_person_company_attr;
+-- INDEXES
+DROP INDEX IF EXISTS "jazzhands"."xif1person_company_attr";
+DROP INDEX IF EXISTS "jazzhands"."xif2person_company_attr";
+DROP INDEX IF EXISTS "jazzhands"."xif3person_company_attr";
+-- CHECK CONSTRAINTS, etc
+-- TRIGGERS, etc
+DROP TRIGGER IF EXISTS trig_userlog_person_company_attr ON jazzhands.person_company_attr;
+DROP TRIGGER IF EXISTS trigger_audit_person_company_attr ON jazzhands.person_company_attr;
+DROP TRIGGER IF EXISTS trigger_validate_pers_company_attr ON jazzhands.person_company_attr;
+SELECT schema_support.save_dependent_objects_for_replay('jazzhands', 'person_company_attr');
+---- BEGIN audit.person_company_attr TEARDOWN
+-- Save grants for later reapplication
+SELECT schema_support.save_grants_for_replay('audit', 'person_company_attr', 'person_company_attr');
+
+-- FOREIGN KEYS FROM
+
+-- FOREIGN KEYS TO
+
+-- EXTRA-SCHEMA constraints
+SELECT schema_support.save_constraint_for_replay('audit', 'person_company_attr');
+
+-- PRIMARY and ALTERNATE KEYS
+-- INDEXES
+DROP INDEX IF EXISTS "audit"."person_company_attr_aud#timestamp_idx";
+-- CHECK CONSTRAINTS, etc
+-- TRIGGERS, etc
+SELECT schema_support.save_dependent_objects_for_replay('audit', 'person_company_attr');
+---- DONE audit.person_company_attr TEARDOWN
+
+
+ALTER TABLE person_company_attr RENAME TO person_company_attr_v70;
+ALTER TABLE audit.person_company_attr RENAME TO person_company_attr_v70;
+
+CREATE TABLE person_company_attr
+(
+	company_id	integer NOT NULL,
+	person_id	integer NOT NULL,
+	person_company_attr_name	varchar(50) NOT NULL,
+	attribute_value	varchar(50)  NULL,
+	attribute_value_timestamp	timestamp with time zone  NULL,
+	attribute_value_person_id	integer  NULL,
+	start_date	timestamp with time zone  NULL,
+	finish_date	timestamp with time zone  NULL,
+	data_ins_user	varchar(255)  NULL,
+	data_ins_date	timestamp with time zone  NULL,
+	data_upd_user	varchar(255)  NULL,
+	data_upd_date	timestamp with time zone  NULL
+);
+SELECT schema_support.build_audit_table('audit', 'jazzhands', 'person_company_attr', false);
+INSERT INTO person_company_attr (
+	company_id,
+	person_id,
+	person_company_attr_name,
+	attribute_value,
+	attribute_value_timestamp,
+	attribute_value_person_id,
+	start_date,		-- new column (start_date)
+	finish_date,		-- new column (finish_date)
+	data_ins_user,
+	data_ins_date,
+	data_upd_user,
+	data_upd_date
+) SELECT
+	company_id,
+	person_id,
+	person_company_attr_name,
+	attribute_value,
+	attribute_value_timestamp,
+	attribute_value_person_id,
+	NULL,		-- new column (start_date)
+	NULL,		-- new column (finish_date)
+	data_ins_user,
+	data_ins_date,
+	data_upd_user,
+	data_upd_date
+FROM person_company_attr_v70;
+
+INSERT INTO audit.person_company_attr (
+	company_id,
+	person_id,
+	person_company_attr_name,
+	attribute_value,
+	attribute_value_timestamp,
+	attribute_value_person_id,
+	start_date,		-- new column (start_date)
+	finish_date,		-- new column (finish_date)
+	data_ins_user,
+	data_ins_date,
+	data_upd_user,
+	data_upd_date,
+	"aud#action",
+	"aud#timestamp",
+	"aud#user",
+	"aud#seq"
+) SELECT
+	company_id,
+	person_id,
+	person_company_attr_name,
+	attribute_value,
+	attribute_value_timestamp,
+	attribute_value_person_id,
+	NULL,		-- new column (start_date)
+	NULL,		-- new column (finish_date)
+	data_ins_user,
+	data_ins_date,
+	data_upd_user,
+	data_upd_date,
+	"aud#action",
+	"aud#timestamp",
+	"aud#user",
+	"aud#seq"
+FROM audit.person_company_attr_v70;
+
+
+-- PRIMARY AND ALTERNATE KEYS
+ALTER TABLE person_company_attr ADD CONSTRAINT ak_person_company_attr_name UNIQUE (company_id, person_id, person_company_attr_name);
+ALTER TABLE person_company_attr ADD CONSTRAINT pk_person_company_attr PRIMARY KEY (company_id, person_id, person_company_attr_name);
+
+-- Table/Column Comments
+COMMENT ON COLUMN person_company_attr.attribute_value IS 'string value of the attribute.';
+COMMENT ON COLUMN person_company_attr.attribute_value_person_id IS 'person_id value of the attribute.';
+-- INDEXES
+CREATE INDEX xif1person_company_attr ON person_company_attr USING btree (company_id, person_id);
+CREATE INDEX xif2person_company_attr ON person_company_attr USING btree (attribute_value_person_id);
+CREATE INDEX xif3person_company_attr ON person_company_attr USING btree (person_company_attr_name);
+
+-- CHECK CONSTRAINTS
+
+-- FOREIGN KEYS FROM
+
+-- FOREIGN KEYS TO
+-- consider FK person_company_attr and person_company
+ALTER TABLE person_company_attr
+	ADD CONSTRAINT fk_pers_comp_attr_person_comp_
+	FOREIGN KEY (company_id, person_id) REFERENCES person_company(company_id, person_id) DEFERRABLE;
+-- consider FK person_company_attr and person
+ALTER TABLE person_company_attr
+	ADD CONSTRAINT fk_person_comp_att_pers_person
+	FOREIGN KEY (attribute_value_person_id) REFERENCES person(person_id);
+-- consider FK person_company_attr and val_person_company_attr_name
+ALTER TABLE person_company_attr
+	ADD CONSTRAINT fk_person_comp_attr_val_name
+	FOREIGN KEY (person_company_attr_name) REFERENCES val_person_company_attr_name(person_company_attr_name);
+
+-- TRIGGERS
+-- consider NEW oid 3881193
+CREATE OR REPLACE FUNCTION jazzhands.validate_pers_company_attr()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	tally			integer;
+	v_pc_atr		val_person_company_attr_name%ROWTYPE;
+	v_listvalue		Property.Property_Value%TYPE;
+BEGIN
+
+	SELECT	*
+	INTO	v_pc_atr
+	FROM	val_person_company_attr_name
+	WHERE	person_company_attr_name = NEW.person_company_attr_name;
+
+	IF v_pc_atr.person_company_attr_data_type IN
+			('boolean', 'number', 'string', 'list') THEN
+		IF NEW.attribute_value IS NULL THEN
+			RAISE EXCEPTION 'attribute_value must be set for %',
+				v_pc_atr.person_company_attr_data_type
+				USING ERRCODE = 'not_null_violation';
+		END IF;
+		IF v_pc_atr.person_company_attr_data_type = 'boolean' THEN
+			IF NEW.attribute_value NOT IN ('Y', 'N') THEN
+				RAISE EXCEPTION 'attribute_value must be boolean (Y,N)'
+					USING ERRCODE = 'integrity_constraint_violation';
+			END IF;
+		ELSIF v_pc_atr.person_company_attr_data_type = 'number' THEN
+			IF NEW.attribute_value !~ '^-?(\d*\.?\d*){1}$' THEN
+				RAISE EXCEPTION 'attribute_value must be a number'
+					USING ERRCODE = 'integrity_constraint_violation';
+			END IF;
+		ELSIF v_pc_atr.person_company_attr_data_type = 'timestamp' THEN
+			IF NEW.attribute_value_timestamp IS NULL THEN
+				RAISE EXCEPTION 'attribute_value_timestamp must be set for %',
+					v_pc_atr.person_company_attr_data_type
+					USING ERRCODE = 'not_null_violation';
+			END IF;
+		ELSIF v_pc_atr.person_company_attr_data_type = 'list' THEN
+			PERFORM 1
+			FROM	val_person_company_attr_value
+			WHERE	(person_company_attr_name,person_company_attr_value)
+					IN
+					(NEW.person_company_attr_name,NEW.person_company_attr_value)
+			;
+			IF NOT FOUND THEN
+				RAISE EXCEPTION 'attribute_value must be valid'
+					USING ERRCODE = 'integrity_constraint_violation';
+			END IF;
+		END IF;
+	ELSIF v_pc_atr.person_company_attr_data_type = 'person_id' THEN
+		IF NEW.attribute_value_timestamp IS NULL THEN
+			RAISE EXCEPTION 'attribute_value_timestamp must be set for %',
+				v_pc_atr.person_company_attr_data_type
+				USING ERRCODE = 'not_null_violation';
+		END IF;
+	END IF;
+
+	IF NEW.attribute_value IS NOT NULL AND
+			(NEW.attribute_value_person_id IS NOT NULL OR
+			NEW.attribute_value_timestamp IS NOT NULL) THEN
+		RAISE EXCEPTION 'only one attribute_value may be set'
+			USING ERRCODE = 'integrity_constraint_violation';
+	ELSIF NEW.attribute_value_person_id IS NOT NULL AND
+			(NEW.attribute_value IS NOT NULL OR
+			NEW.attribute_value_timestamp IS NOT NULL) THEN
+		RAISE EXCEPTION 'only one attribute_value may be set'
+			USING ERRCODE = 'integrity_constraint_violation';
+	ELSIF NEW.attribute_value_timestamp IS NOT NULL AND
+			(NEW.attribute_value_person_id IS NOT NULL OR
+			NEW.attribute_value IS NOT NULL) THEN
+		RAISE EXCEPTION 'only one attribute_value may be set'
+			USING ERRCODE = 'integrity_constraint_violation';
+	END IF;
+	RETURN NEW;
+END;
+$function$
+;
+CREATE TRIGGER trigger_validate_pers_company_attr BEFORE INSERT OR UPDATE ON person_company_attr FOR EACH ROW EXECUTE PROCEDURE validate_pers_company_attr();
+
+-- XXX - may need to include trigger function
+-- this used to be at the end...
+SELECT schema_support.replay_object_recreates();
+SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'person_company_attr');
+SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'person_company_attr');
+DROP TABLE IF EXISTS person_company_attr_v70;
+DROP TABLE IF EXISTS audit.person_company_attr_v70;
+-- DONE DEALING WITH TABLE person_company_attr [3865064]
+--------------------------------------------------------------------
+--------------------------------------------------------------------
+-- DEALING WITH TABLE v_account_manager_map [3942538]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'v_account_manager_map', 'v_account_manager_map');
 SELECT schema_support.save_dependent_objects_for_replay('jazzhands', 'v_account_manager_map');
@@ -695,7 +949,7 @@ CREATE VIEW jazzhands.v_account_manager_map AS
      JOIN dude mp ON mp.person_id = a.manager_person_id AND mp.account_realm_id = a.account_realm_id;
 
 delete from __recreate where type = 'view' and object = 'v_account_manager_map';
--- DONE DEALING WITH TABLE v_account_manager_map [3485083]
+-- DONE DEALING WITH TABLE v_account_manager_map [3880353]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE v_l3_network_coll_expanded
@@ -728,7 +982,7 @@ CREATE VIEW jazzhands.v_l3_network_coll_expanded AS
     l3_network_coll_recurse.rvs_array_path
    FROM l3_network_coll_recurse;
 
--- DONE DEALING WITH TABLE v_l3_network_coll_expanded [3485148]
+-- DONE DEALING WITH TABLE v_l3_network_coll_expanded [3880427]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE v_l2_network_coll_expanded
@@ -761,10 +1015,10 @@ CREATE VIEW jazzhands.v_l2_network_coll_expanded AS
     l2_network_coll_recurse.rvs_array_path
    FROM l2_network_coll_recurse;
 
--- DONE DEALING WITH TABLE v_l2_network_coll_expanded [3485143]
+-- DONE DEALING WITH TABLE v_l2_network_coll_expanded [3880422]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE v_account_collection_audit_results [3473816]
+-- DEALING WITH TABLE v_account_collection_audit_results [3942559]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'v_account_collection_audit_results', 'v_account_collection_audit_results');
 SELECT schema_support.save_dependent_objects_for_replay('approval_utils', 'v_account_collection_audit_results');
@@ -812,10 +1066,10 @@ CREATE VIEW approval_utils.v_account_collection_audit_results AS
    FROM membermap;
 
 delete from __recreate where type = 'view' and object = 'v_account_collection_audit_results';
--- DONE DEALING WITH TABLE v_account_collection_audit_results [3485104]
+-- DONE DEALING WITH TABLE v_account_collection_audit_results [3880377]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE v_account_collection_approval_process [3473831]
+-- DEALING WITH TABLE v_account_collection_approval_process [3942564]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'v_account_collection_approval_process', 'v_account_collection_approval_process');
 SELECT schema_support.save_dependent_objects_for_replay('approval_utils', 'v_account_collection_approval_process');
@@ -981,7 +1235,7 @@ CREATE VIEW approval_utils.v_account_collection_approval_process AS
   ORDER BY combo.manager_login, combo.account_id, combo.approval_label;
 
 delete from __recreate where type = 'view' and object = 'v_account_collection_approval_process';
--- DONE DEALING WITH TABLE v_account_collection_approval_process [3485109]
+-- DONE DEALING WITH TABLE v_account_collection_approval_process [3880383]
 --------------------------------------------------------------------
 --
 -- Process trigger procs in jazzhands
@@ -1371,13 +1625,6 @@ CREATE TRIGGER trigger_member_device_collection_after_hooks AFTER INSERT OR DELE
 CREATE TRIGGER trigger_hier_device_collection_after_hooks AFTER INSERT OR DELETE OR UPDATE ON device_collection_hier FOR EACH STATEMENT EXECUTE PROCEDURE device_collection_after_hooks();
 CREATE TRIGGER trigger_member_layer2_network_collection_after_hooks AFTER INSERT OR DELETE OR UPDATE ON l2_network_coll_l2_network FOR EACH STATEMENT EXECUTE PROCEDURE layer2_network_collection_after_hooks();
 CREATE TRIGGER trigger_hier_layer2_network_collection_after_hooks AFTER INSERT OR DELETE OR UPDATE ON layer2_network_collection_hier FOR EACH STATEMENT EXECUTE PROCEDURE layer2_network_collection_after_hooks();
-
-
--- BEGIN Misc that does not apply to above
-DROP FUNCTION IF EXISTS schema_support.save_dependant_objects_for_replay(character varying, character varying, boolean, boolean);
-
-
--- END Misc that does not apply to above
 
 
 -- Clean Up
