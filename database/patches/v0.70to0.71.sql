@@ -1,7 +1,6 @@
 /*
 Invoked:
 
-	--scan-tables
 	--suffix=v70
 */
 
@@ -618,6 +617,221 @@ $function$
 --
 -- Process middle (non-trigger) schema netblock_manip
 --
+-- New function
+CREATE OR REPLACE FUNCTION netblock_manip.create_network_range(start_ip_address inet, stop_ip_address inet, network_range_type character varying, parent_netblock_id integer DEFAULT NULL::integer, description character varying DEFAULT NULL::character varying, allow_assigned boolean DEFAULT false)
+ RETURNS network_range
+ LANGUAGE plpgsql
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	par_netblock	RECORD;
+	start_netblock	RECORD;
+	stop_netblock	RECORD;
+	netrange		RECORD;
+	nrtype			ALIAS FOR network_range_type;
+	pnbid			ALIAS FOR parent_netblock_id;
+BEGIN
+	--
+	-- If the network range already exists, then just return it, even if the
+	--
+	SELECT 
+		nr.* INTO netrange
+	FROM
+		network_range nr JOIN
+		netblock startnb ON (nr.start_netblock_id = startnb.netblock_id) JOIN
+		netblock stopnb ON (nr.stop_netblock_id = stopnb.netblock_id)
+	WHERE
+		nr.network_range_type = nrtype AND
+		host(startnb.ip_address) = host(start_ip_address) AND
+		host(stopnb.ip_address) = host(stop_ip_address) AND
+		CASE WHEN pnbid IS NOT NULL THEN 
+			(pnbid = nr.parent_netblock_id)
+		ELSE
+			true
+		END;
+
+	IF FOUND THEN
+		RETURN netrange;
+	END IF;
+
+	--
+	-- If any other network ranges exist that overlap this, then error
+	--
+	PERFORM 
+		*
+	FROM
+		network_range nr JOIN
+		netblock startnb ON (nr.start_netblock_id = startnb.netblock_id) JOIN
+		netblock stopnb ON (nr.stop_netblock_id = stopnb.netblock_id)
+	WHERE
+		nr.network_range_type = nrtype AND ((
+			host(startnb.ip_address)::inet <= host(start_ip_address)::inet AND
+			host(stopnb.ip_address)::inet >= host(start_ip_address)::inet
+		) OR (
+			host(startnb.ip_address)::inet <= host(stop_ip_address)::inet AND
+			host(stopnb.ip_address)::inet >= host(stop_ip_address)::inet
+		));
+
+	IF FOUND THEN
+		RAISE 'create_network_range: a network_range of type % already exists that has addresses between % and %',
+			nrtype, start_ip_address, stop_ip_address
+			USING ERRCODE = 'check_violation';
+	END IF;
+
+	IF parent_netblock_id IS NOT NULL THEN
+		SELECT * INTO par_netblock WHERE netblock_id = parent_netblock_id;
+		IF NOT FOUND THEN
+			RAISE 'create_network_range: parent_netblock_id % does not exist',
+				parent_netblock_id USING ERRCODE = 'foreign_key_violation';
+		END IF;
+		IF par_netblock.can_subnet != 'N' OR 
+				par_netblock.is_single_address != 'N' THEN
+			RAISE 'create_network_range: parent netblock % must not be subnettable or a single address',
+				par_netblock.netblock_id USING ERRCODE = 'check_violation';
+		END IF;
+	ELSE
+		SELECT * INTO par_netblock FROM netblock WHERE netblock_id = (
+			SELECT 
+				*
+			FROM
+				netblock_utils.find_best_parent_id(
+					in_ipaddress := start_ip_address
+				)
+		);
+
+		IF NOT FOUND THEN
+			RAISE 'create_network_range: valid parent netblock for start_ip_address % does not exist',
+				start_ip_address USING ERRCODE = 'check_violation';
+		END IF;
+	END IF;
+	
+	IF NOT (start_ip_address <<= par_netblock.ip_address) THEN
+		RAISE 'create_network_range: start_ip_address % is not contained by parent netblock % (%)',
+			start_ip_address, par_netblock.ip_address,
+			par_netblock.netblock_id USING ERRCODE = 'check_violation';
+	END IF;
+
+	IF NOT (stop_ip_address <<= par_netblock.ip_address) THEN
+		RAISE 'create_network_range: stop_ip_address % is not contained by parent netblock % (%)',
+			stop_ip_address, par_netblock.ip_address,
+			par_netblock.netblock_id USING ERRCODE = 'check_violation';
+	END IF;
+
+	IF NOT (start_ip_address <= stop_ip_address) THEN
+		RAISE 'create_network_range: start_ip_address % is not lower than stop_ip_address %',
+			start_ip_address, stop_ip_address
+			USING ERRCODE = 'check_violation';
+	END IF;
+
+	--
+	-- Validate that there are not currently any addresses assigned in the
+	-- range, unless allow_assigned is set
+	--
+	IF NOT allow_assigned THEN
+		PERFORM 
+			*
+		FROM
+			netblock n
+		WHERE
+			n.parent_netblock_id = par_netblock.netblock_id AND
+			host(n.ip_address)::inet > host(start_ip_address)::inet AND
+			host(n.ip_address)::inet < host(stop_ip_address)::inet;
+
+		IF FOUND THEN
+			RAISE 'create_network_range: netblocks are already present for parent netblock % betweeen % and %',
+			par_netblock.netblock_id,
+			start_ip_address, stop_ip_address
+			USING ERRCODE = 'check_violation';
+		END IF;
+	END IF;
+
+	--
+	-- Ok, well, we should be able to insert things now
+	--
+
+	SELECT
+		*
+	FROM
+		netblock n
+	INTO
+		start_netblock
+	WHERE
+		host(n.ip_address)::inet = start_ip_address AND
+		n.netblock_type = 'adhoc' AND
+		n.can_subnet = 'N' AND
+		n.is_single_address = 'Y' AND
+		n.ip_universe_id = par_netblock.ip_universe_id;
+
+	IF NOT FOUND THEN
+		INSERT INTO netblock (
+			ip_address,
+			netblock_type,
+			is_single_address,
+			can_subnet,
+			netblock_status,
+			ip_universe_id
+		) VALUES (
+			host(start_ip_address)::inet,
+			'adhoc',
+			'Y',
+			'N',
+			'Allocated',
+			par_netblock.ip_universe_id
+		) RETURNING * INTO start_netblock;
+	END IF;
+
+	SELECT
+		*
+	FROM
+		netblock n
+	INTO
+		stop_netblock
+	WHERE
+		host(n.ip_address)::inet = stop_ip_address AND
+		n.netblock_type = 'adhoc' AND
+		n.can_subnet = 'N' AND
+		n.is_single_address = 'Y' AND
+		n.ip_universe_id = par_netblock.ip_universe_id;
+
+	IF NOT FOUND THEN
+		INSERT INTO netblock (
+			ip_address,
+			netblock_type,
+			is_single_address,
+			can_subnet,
+			netblock_status,
+			ip_universe_id
+		) VALUES (
+			host(stop_ip_address)::inet,
+			'adhoc',
+			'Y',
+			'N',
+			'Allocated',
+			par_netblock.ip_universe_id
+		) RETURNING * INTO stop_netblock;
+	END IF;
+
+	INSERT INTO network_range (
+		network_range_type,
+		description,
+		parent_netblock_id,
+		start_netblock_id,
+		stop_netblock_id
+	) VALUES (
+		nrtype,
+		description,
+		par_netblock.netblock_id,
+		start_netblock.netblock_id,
+		stop_netblock.netblock_id
+	) RETURNING * INTO netrange;
+
+	RETURN netrange;
+
+	RETURN NULL;
+END;
+$function$
+;
+
 --
 -- Process middle (non-trigger) schema physical_address_utils
 --
@@ -647,7 +861,765 @@ DROP FUNCTION IF EXISTS schema_support.save_dependant_objects_for_replay ( schem
 
 
 --------------------------------------------------------------------
--- DEALING WITH TABLE person_company_attr [3934545]
+-- DEALING WITH TABLE val_netblock_collection_type [5343940]
+-- Save grants for later reapplication
+SELECT schema_support.save_grants_for_replay('jazzhands', 'val_netblock_collection_type', 'val_netblock_collection_type');
+
+-- FOREIGN KEYS FROM
+ALTER TABLE netblock_collection DROP CONSTRAINT IF EXISTS fk_nblk_coll_v_nblk_c_typ;
+ALTER TABLE val_property DROP CONSTRAINT IF EXISTS fk_val_prop_nblk_coll_type;
+ALTER TABLE val_property DROP CONSTRAINT IF EXISTS fk_val_property_netblkcolltype;
+
+-- FOREIGN KEYS TO
+
+-- EXTRA-SCHEMA constraints
+SELECT schema_support.save_constraint_for_replay('jazzhands', 'val_netblock_collection_type');
+
+-- PRIMARY and ALTERNATE KEYS
+ALTER TABLE jazzhands.val_netblock_collection_type DROP CONSTRAINT IF EXISTS pk_val_netblock_collection_typ;
+-- INDEXES
+-- CHECK CONSTRAINTS, etc
+ALTER TABLE jazzhands.val_netblock_collection_type DROP CONSTRAINT IF EXISTS check_any_yes_no_nc_singaddr_r;
+ALTER TABLE jazzhands.val_netblock_collection_type DROP CONSTRAINT IF EXISTS check_yes_no_nct_chh;
+-- TRIGGERS, etc
+DROP TRIGGER IF EXISTS trig_userlog_val_netblock_collection_type ON jazzhands.val_netblock_collection_type;
+DROP TRIGGER IF EXISTS trigger_audit_val_netblock_collection_type ON jazzhands.val_netblock_collection_type;
+SELECT schema_support.save_dependent_objects_for_replay('jazzhands', 'val_netblock_collection_type');
+---- BEGIN audit.val_netblock_collection_type TEARDOWN
+-- Save grants for later reapplication
+SELECT schema_support.save_grants_for_replay('audit', 'val_netblock_collection_type', 'val_netblock_collection_type');
+
+-- FOREIGN KEYS FROM
+
+-- FOREIGN KEYS TO
+
+-- EXTRA-SCHEMA constraints
+SELECT schema_support.save_constraint_for_replay('audit', 'val_netblock_collection_type');
+
+-- PRIMARY and ALTERNATE KEYS
+-- INDEXES
+DROP INDEX IF EXISTS "audit"."val_netblock_collection_type_aud#timestamp_idx";
+-- CHECK CONSTRAINTS, etc
+-- TRIGGERS, etc
+SELECT schema_support.save_dependent_objects_for_replay('audit', 'val_netblock_collection_type');
+---- DONE audit.val_netblock_collection_type TEARDOWN
+
+
+ALTER TABLE val_netblock_collection_type RENAME TO val_netblock_collection_type_v70;
+ALTER TABLE audit.val_netblock_collection_type RENAME TO val_netblock_collection_type_v70;
+
+CREATE TABLE val_netblock_collection_type
+(
+	netblock_collection_type	varchar(50) NOT NULL,
+	description	varchar(4000)  NULL,
+	max_num_members	integer  NULL,
+	max_num_collections	integer  NULL,
+	can_have_hierarchy	character(1) NOT NULL,
+	netblock_single_addr_restrict	varchar(3) NOT NULL,
+	netblock_ip_family_restrict	integer  NULL,
+	data_ins_user	varchar(255)  NULL,
+	data_ins_date	timestamp with time zone  NULL,
+	data_upd_user	varchar(255)  NULL,
+	data_upd_date	timestamp with time zone  NULL
+);
+SELECT schema_support.build_audit_table('audit', 'jazzhands', 'val_netblock_collection_type', false);
+ALTER TABLE val_netblock_collection_type
+	ALTER can_have_hierarchy
+	SET DEFAULT 'Y'::bpchar;
+ALTER TABLE val_netblock_collection_type
+	ALTER netblock_single_addr_restrict
+	SET DEFAULT 'ANY'::character varying;
+INSERT INTO val_netblock_collection_type (
+	netblock_collection_type,
+	description,
+	max_num_members,
+	max_num_collections,
+	can_have_hierarchy,
+	netblock_single_addr_restrict,
+	netblock_ip_family_restrict,		-- new column (netblock_ip_family_restrict)
+	data_ins_user,
+	data_ins_date,
+	data_upd_user,
+	data_upd_date
+) SELECT
+	netblock_collection_type,
+	description,
+	max_num_members,
+	max_num_collections,
+	can_have_hierarchy,
+	netblock_single_addr_restrict,
+	NULL,		-- new column (netblock_ip_family_restrict)
+	data_ins_user,
+	data_ins_date,
+	data_upd_user,
+	data_upd_date
+FROM val_netblock_collection_type_v70;
+
+INSERT INTO audit.val_netblock_collection_type (
+	netblock_collection_type,
+	description,
+	max_num_members,
+	max_num_collections,
+	can_have_hierarchy,
+	netblock_single_addr_restrict,
+	netblock_ip_family_restrict,		-- new column (netblock_ip_family_restrict)
+	data_ins_user,
+	data_ins_date,
+	data_upd_user,
+	data_upd_date,
+	"aud#action",
+	"aud#timestamp",
+	"aud#user",
+	"aud#seq"
+) SELECT
+	netblock_collection_type,
+	description,
+	max_num_members,
+	max_num_collections,
+	can_have_hierarchy,
+	netblock_single_addr_restrict,
+	NULL,		-- new column (netblock_ip_family_restrict)
+	data_ins_user,
+	data_ins_date,
+	data_upd_user,
+	data_upd_date,
+	"aud#action",
+	"aud#timestamp",
+	"aud#user",
+	"aud#seq"
+FROM audit.val_netblock_collection_type_v70;
+
+ALTER TABLE val_netblock_collection_type
+	ALTER can_have_hierarchy
+	SET DEFAULT 'Y'::bpchar;
+ALTER TABLE val_netblock_collection_type
+	ALTER netblock_single_addr_restrict
+	SET DEFAULT 'ANY'::character varying;
+
+-- PRIMARY AND ALTERNATE KEYS
+ALTER TABLE val_netblock_collection_type ADD CONSTRAINT pk_val_netblock_collection_typ PRIMARY KEY (netblock_collection_type);
+
+-- Table/Column Comments
+COMMENT ON COLUMN val_netblock_collection_type.max_num_members IS 'Maximum INTEGER of members in a given collection of this type
+';
+COMMENT ON COLUMN val_netblock_collection_type.max_num_collections IS 'Maximum INTEGER of collections a given member can be a part of of this type.
+';
+COMMENT ON COLUMN val_netblock_collection_type.can_have_hierarchy IS 'Indicates if the collections can have other collections to make it hierarchical.';
+COMMENT ON COLUMN val_netblock_collection_type.netblock_single_addr_restrict IS 'all collections of this types'' member netblocks must have is_single_address = ''Y''';
+COMMENT ON COLUMN val_netblock_collection_type.netblock_ip_family_restrict IS 'all collections of this types'' member netblocks must have  and netblock collections must match this restriction, if set.';
+-- INDEXES
+
+-- CHECK CONSTRAINTS
+ALTER TABLE val_netblock_collection_type ADD CONSTRAINT check_any_yes_no_nc_singaddr_r
+	CHECK ((netblock_single_addr_restrict)::text = ANY ((ARRAY['Y'::character varying, 'N'::character varying, 'ANY'::character varying])::text[]));
+ALTER TABLE val_netblock_collection_type ADD CONSTRAINT check_ip_family_v_nblk_col
+	CHECK (netblock_ip_family_restrict = ANY (ARRAY[4, 6]));
+ALTER TABLE val_netblock_collection_type ADD CONSTRAINT check_yes_no_nct_chh
+	CHECK (can_have_hierarchy = ANY (ARRAY['Y'::bpchar, 'N'::bpchar]));
+
+-- FOREIGN KEYS FROM
+-- consider FK val_netblock_collection_type and netblock_collection
+ALTER TABLE netblock_collection
+	ADD CONSTRAINT fk_nblk_coll_v_nblk_c_typ
+	FOREIGN KEY (netblock_collection_type) REFERENCES val_netblock_collection_type(netblock_collection_type);
+-- consider FK val_netblock_collection_type and val_property
+ALTER TABLE val_property
+	ADD CONSTRAINT fk_val_prop_nblk_coll_type
+	FOREIGN KEY (prop_val_nblk_coll_type_rstrct) REFERENCES val_netblock_collection_type(netblock_collection_type);
+-- consider FK val_netblock_collection_type and val_property
+ALTER TABLE val_property
+	ADD CONSTRAINT fk_val_property_netblkcolltype
+	FOREIGN KEY (netblock_collection_type) REFERENCES val_netblock_collection_type(netblock_collection_type);
+
+-- FOREIGN KEYS TO
+
+-- TRIGGERS
+-- this used to be at the end...
+SELECT schema_support.replay_object_recreates();
+SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_netblock_collection_type');
+SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_netblock_collection_type');
+DROP TABLE IF EXISTS val_netblock_collection_type_v70;
+DROP TABLE IF EXISTS audit.val_netblock_collection_type_v70;
+-- DONE DEALING WITH TABLE val_netblock_collection_type [5428473]
+--------------------------------------------------------------------
+--------------------------------------------------------------------
+-- DEALING WITH TABLE val_network_range_type [5343986]
+-- Save grants for later reapplication
+SELECT schema_support.save_grants_for_replay('jazzhands', 'val_network_range_type', 'val_network_range_type');
+
+-- FOREIGN KEYS FROM
+ALTER TABLE network_range DROP CONSTRAINT IF EXISTS fk_netrng_netrng_typ;
+
+-- FOREIGN KEYS TO
+
+-- EXTRA-SCHEMA constraints
+SELECT schema_support.save_constraint_for_replay('jazzhands', 'val_network_range_type');
+
+-- PRIMARY and ALTERNATE KEYS
+ALTER TABLE jazzhands.val_network_range_type DROP CONSTRAINT IF EXISTS pk_val_network_range_type;
+-- INDEXES
+-- CHECK CONSTRAINTS, etc
+ALTER TABLE jazzhands.val_network_range_type DROP CONSTRAINT IF EXISTS check_prp_prmt_nrngty_ddom;
+-- TRIGGERS, etc
+DROP TRIGGER IF EXISTS trig_userlog_val_network_range_type ON jazzhands.val_network_range_type;
+DROP TRIGGER IF EXISTS trigger_audit_val_network_range_type ON jazzhands.val_network_range_type;
+DROP TRIGGER IF EXISTS trigger_validate_val_network_range_type ON jazzhands.val_network_range_type;
+SELECT schema_support.save_dependent_objects_for_replay('jazzhands', 'val_network_range_type');
+---- BEGIN audit.val_network_range_type TEARDOWN
+-- Save grants for later reapplication
+SELECT schema_support.save_grants_for_replay('audit', 'val_network_range_type', 'val_network_range_type');
+
+-- FOREIGN KEYS FROM
+
+-- FOREIGN KEYS TO
+
+-- EXTRA-SCHEMA constraints
+SELECT schema_support.save_constraint_for_replay('audit', 'val_network_range_type');
+
+-- PRIMARY and ALTERNATE KEYS
+-- INDEXES
+DROP INDEX IF EXISTS "audit"."val_network_range_type_aud#timestamp_idx";
+-- CHECK CONSTRAINTS, etc
+-- TRIGGERS, etc
+SELECT schema_support.save_dependent_objects_for_replay('audit', 'val_network_range_type');
+---- DONE audit.val_network_range_type TEARDOWN
+
+
+ALTER TABLE val_network_range_type RENAME TO val_network_range_type_v70;
+ALTER TABLE audit.val_network_range_type RENAME TO val_network_range_type_v70;
+
+CREATE TABLE val_network_range_type
+(
+	network_range_type	varchar(50) NOT NULL,
+	description	varchar(4000)  NULL,
+	dns_domain_required	character(10) NOT NULL,
+	default_dns_prefix	varchar(50)  NULL,
+	netblock_type	varchar(50)  NULL,
+	data_ins_user	varchar(255)  NULL,
+	data_ins_date	timestamp with time zone  NULL,
+	data_upd_user	varchar(255)  NULL,
+	data_upd_date	timestamp with time zone  NULL
+);
+SELECT schema_support.build_audit_table('audit', 'jazzhands', 'val_network_range_type', false);
+ALTER TABLE val_network_range_type
+	ALTER dns_domain_required
+	SET DEFAULT 'REQUIRED'::bpchar;
+INSERT INTO val_network_range_type (
+	network_range_type,
+	description,
+	dns_domain_required,
+	default_dns_prefix,
+	netblock_type,		-- new column (netblock_type)
+	data_ins_user,
+	data_ins_date,
+	data_upd_user,
+	data_upd_date
+) SELECT
+	network_range_type,
+	description,
+	dns_domain_required,
+	default_dns_prefix,
+	NULL,		-- new column (netblock_type)
+	data_ins_user,
+	data_ins_date,
+	data_upd_user,
+	data_upd_date
+FROM val_network_range_type_v70;
+
+INSERT INTO audit.val_network_range_type (
+	network_range_type,
+	description,
+	dns_domain_required,
+	default_dns_prefix,
+	netblock_type,		-- new column (netblock_type)
+	data_ins_user,
+	data_ins_date,
+	data_upd_user,
+	data_upd_date,
+	"aud#action",
+	"aud#timestamp",
+	"aud#user",
+	"aud#seq"
+) SELECT
+	network_range_type,
+	description,
+	dns_domain_required,
+	default_dns_prefix,
+	NULL,		-- new column (netblock_type)
+	data_ins_user,
+	data_ins_date,
+	data_upd_user,
+	data_upd_date,
+	"aud#action",
+	"aud#timestamp",
+	"aud#user",
+	"aud#seq"
+FROM audit.val_network_range_type_v70;
+
+ALTER TABLE val_network_range_type
+	ALTER dns_domain_required
+	SET DEFAULT 'REQUIRED'::bpchar;
+
+-- PRIMARY AND ALTERNATE KEYS
+ALTER TABLE val_network_range_type ADD CONSTRAINT pk_val_network_range_type PRIMARY KEY (network_range_type);
+
+-- Table/Column Comments
+COMMENT ON COLUMN val_network_range_type.dns_domain_required IS 'indicates how dns_domain_id is required on network_range (thus a NOT NULL constraint)';
+COMMENT ON COLUMN val_network_range_type.default_dns_prefix IS 'default dns prefix for ranges of this type, can be overridden in network_range.   Required if dns_domain_required is set.';
+-- INDEXES
+CREATE INDEX xif1val_network_range_type ON val_network_range_type USING btree (netblock_type);
+
+-- CHECK CONSTRAINTS
+ALTER TABLE val_network_range_type ADD CONSTRAINT check_prp_prmt_nrngty_ddom
+	CHECK (dns_domain_required = ANY (ARRAY['REQUIRED'::bpchar, 'PROHIBITED'::bpchar, 'ALLOWED'::bpchar]));
+
+-- FOREIGN KEYS FROM
+-- consider FK val_network_range_type and network_range
+ALTER TABLE network_range
+	ADD CONSTRAINT fk_netrng_netrng_typ
+	FOREIGN KEY (network_range_type) REFERENCES val_network_range_type(network_range_type);
+
+-- FOREIGN KEYS TO
+-- consider FK val_network_range_type and val_netblock_type
+ALTER TABLE val_network_range_type
+	ADD CONSTRAINT r_786
+	FOREIGN KEY (netblock_type) REFERENCES val_netblock_type(netblock_type);
+
+-- TRIGGERS
+-- consider NEW oid 5435844
+CREATE OR REPLACE FUNCTION jazzhands.validate_val_network_range_type()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+BEGIN
+	IF NEW.dns_domain_required = 'REQUIRED' THEN
+		PERFORM
+		FROM	network_range
+		WHERE	network_range_type = NEW.network_range_type
+		AND		dns_domain_id IS NULL;
+
+		IF FOUND THEN
+			RAISE EXCEPTION 'dns_domain_id is not set on some ranges'
+				USING ERRCODE = 'not_null_violation';
+		END IF;
+	ELSIF NEW.dns_domain_required = 'PROHIBITED' THEN
+		PERFORM
+		FROM	network_range
+		WHERE	network_range_type = NEW.network_range_type
+		AND		dns_domain_id IS NOT NULL;
+
+		IF FOUND THEN
+			RAISE EXCEPTION 'dns_domain_id is set on some ranges'
+				USING ERRCODE = 'not_null_violation';
+		END IF;
+	END IF;
+	RETURN NEW;
+END; $function$
+;
+CREATE TRIGGER trigger_validate_val_network_range_type BEFORE UPDATE OF dns_domain_required ON val_network_range_type FOR EACH ROW EXECUTE PROCEDURE validate_val_network_range_type();
+
+-- XXX - may need to include trigger function
+-- this used to be at the end...
+SELECT schema_support.replay_object_recreates();
+SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_network_range_type');
+SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_network_range_type');
+DROP TABLE IF EXISTS val_network_range_type_v70;
+DROP TABLE IF EXISTS audit.val_network_range_type_v70;
+-- DONE DEALING WITH TABLE val_network_range_type [5428520]
+--------------------------------------------------------------------
+--------------------------------------------------------------------
+-- DEALING WITH TABLE layer3_network [5342509]
+-- Save grants for later reapplication
+SELECT schema_support.save_grants_for_replay('jazzhands', 'layer3_network', 'layer3_network');
+
+-- FOREIGN KEYS FROM
+ALTER TABLE l3_network_coll_l3_network DROP CONSTRAINT IF EXISTS fk_l3netcol_l3_net_l3netid;
+
+-- FOREIGN KEYS TO
+ALTER TABLE jazzhands.layer3_network DROP CONSTRAINT IF EXISTS fk_l3_net_def_gate_nbid;
+ALTER TABLE jazzhands.layer3_network DROP CONSTRAINT IF EXISTS fk_l3net_l2net;
+ALTER TABLE jazzhands.layer3_network DROP CONSTRAINT IF EXISTS fk_l3net_rndv_pt_nblk_id;
+ALTER TABLE jazzhands.layer3_network DROP CONSTRAINT IF EXISTS fk_layer3_network_netblock_id;
+
+-- EXTRA-SCHEMA constraints
+SELECT schema_support.save_constraint_for_replay('jazzhands', 'layer3_network');
+
+-- PRIMARY and ALTERNATE KEYS
+ALTER TABLE jazzhands.layer3_network DROP CONSTRAINT IF EXISTS ak_layer3_network_netblock_id;
+ALTER TABLE jazzhands.layer3_network DROP CONSTRAINT IF EXISTS pk_layer3_network;
+-- INDEXES
+DROP INDEX IF EXISTS "jazzhands"."xif_l3_net_def_gate_nbid";
+DROP INDEX IF EXISTS "jazzhands"."xif_l3net_l2net";
+DROP INDEX IF EXISTS "jazzhands"."xif_l3net_rndv_pt_nblk_id";
+-- CHECK CONSTRAINTS, etc
+-- TRIGGERS, etc
+DROP TRIGGER IF EXISTS trig_userlog_layer3_network ON jazzhands.layer3_network;
+DROP TRIGGER IF EXISTS trigger_audit_layer3_network ON jazzhands.layer3_network;
+SELECT schema_support.save_dependent_objects_for_replay('jazzhands', 'layer3_network');
+---- BEGIN audit.layer3_network TEARDOWN
+-- Save grants for later reapplication
+SELECT schema_support.save_grants_for_replay('audit', 'layer3_network', 'layer3_network');
+
+-- FOREIGN KEYS FROM
+
+-- FOREIGN KEYS TO
+
+-- EXTRA-SCHEMA constraints
+SELECT schema_support.save_constraint_for_replay('audit', 'layer3_network');
+
+-- PRIMARY and ALTERNATE KEYS
+-- INDEXES
+DROP INDEX IF EXISTS "audit"."layer3_network_aud#timestamp_idx";
+-- CHECK CONSTRAINTS, etc
+-- TRIGGERS, etc
+SELECT schema_support.save_dependent_objects_for_replay('audit', 'layer3_network');
+---- DONE audit.layer3_network TEARDOWN
+
+
+ALTER TABLE layer3_network RENAME TO layer3_network_v70;
+ALTER TABLE audit.layer3_network RENAME TO layer3_network_v70;
+
+CREATE TABLE layer3_network
+(
+	layer3_network_id	integer NOT NULL,
+	netblock_id	integer NOT NULL,
+	layer2_network_id	integer  NULL,
+	default_gateway_netblock_id	integer  NULL,
+	rendezvous_netblock_id	integer  NULL,
+	description	varchar(255)  NULL,
+	data_ins_user	varchar(255)  NULL,
+	data_ins_date	timestamp with time zone  NULL,
+	data_upd_user	varchar(255)  NULL,
+	data_upd_date	timestamp with time zone  NULL
+);
+SELECT schema_support.build_audit_table('audit', 'jazzhands', 'layer3_network', false);
+ALTER TABLE layer3_network
+	ALTER layer3_network_id
+	SET DEFAULT nextval('layer3_network_layer3_network_id_seq'::regclass);
+INSERT INTO layer3_network (
+	layer3_network_id,
+	netblock_id,
+	layer2_network_id,
+	default_gateway_netblock_id,
+	rendezvous_netblock_id,
+	description,
+	data_ins_user,
+	data_ins_date,
+	data_upd_user,
+	data_upd_date
+) SELECT
+	layer3_network_id,
+	netblock_id,
+	layer2_network_id,
+	default_gateway_netblock_id,
+	rendezvous_netblock_id,
+	description,
+	data_ins_user,
+	data_ins_date,
+	data_upd_user,
+	data_upd_date
+FROM layer3_network_v70;
+
+INSERT INTO audit.layer3_network (
+	layer3_network_id,
+	netblock_id,
+	layer2_network_id,
+	default_gateway_netblock_id,
+	rendezvous_netblock_id,
+	description,
+	data_ins_user,
+	data_ins_date,
+	data_upd_user,
+	data_upd_date,
+	"aud#action",
+	"aud#timestamp",
+	"aud#user",
+	"aud#seq"
+) SELECT
+	layer3_network_id,
+	netblock_id,
+	layer2_network_id,
+	default_gateway_netblock_id,
+	rendezvous_netblock_id,
+	description,
+	data_ins_user,
+	data_ins_date,
+	data_upd_user,
+	data_upd_date,
+	"aud#action",
+	"aud#timestamp",
+	"aud#user",
+	"aud#seq"
+FROM audit.layer3_network_v70;
+
+ALTER TABLE layer3_network
+	ALTER layer3_network_id
+	SET DEFAULT nextval('layer3_network_layer3_network_id_seq'::regclass);
+
+-- PRIMARY AND ALTERNATE KEYS
+ALTER TABLE layer3_network ADD CONSTRAINT ak_layer3_network_netblock_id UNIQUE (netblock_id) DEFERRABLE;
+ALTER TABLE layer3_network ADD CONSTRAINT pk_layer3_network PRIMARY KEY (layer3_network_id);
+
+-- Table/Column Comments
+COMMENT ON COLUMN layer3_network.rendezvous_netblock_id IS 'Multicast Rendevous Point Address';
+-- INDEXES
+CREATE INDEX xif_l3_net_def_gate_nbid ON layer3_network USING btree (default_gateway_netblock_id);
+CREATE INDEX xif_l3net_l2net ON layer3_network USING btree (layer2_network_id);
+CREATE INDEX xif_l3net_rndv_pt_nblk_id ON layer3_network USING btree (rendezvous_netblock_id);
+
+-- CHECK CONSTRAINTS
+
+-- FOREIGN KEYS FROM
+-- consider FK layer3_network and l3_network_coll_l3_network
+ALTER TABLE l3_network_coll_l3_network
+	ADD CONSTRAINT fk_l3netcol_l3_net_l3netid
+	FOREIGN KEY (layer3_network_id) REFERENCES layer3_network(layer3_network_id);
+
+-- FOREIGN KEYS TO
+-- consider FK layer3_network and netblock
+ALTER TABLE layer3_network
+	ADD CONSTRAINT fk_l3_net_def_gate_nbid
+	FOREIGN KEY (default_gateway_netblock_id) REFERENCES netblock(netblock_id);
+-- consider FK layer3_network and layer2_network
+ALTER TABLE layer3_network
+	ADD CONSTRAINT fk_l3net_l2net
+	FOREIGN KEY (layer2_network_id) REFERENCES layer2_network(layer2_network_id);
+-- consider FK layer3_network and netblock
+ALTER TABLE layer3_network
+	ADD CONSTRAINT fk_l3net_rndv_pt_nblk_id
+	FOREIGN KEY (rendezvous_netblock_id) REFERENCES netblock(netblock_id);
+-- consider FK layer3_network and netblock
+ALTER TABLE layer3_network
+	ADD CONSTRAINT fk_layer3_network_netblock_id
+	FOREIGN KEY (netblock_id) REFERENCES netblock(netblock_id);
+
+-- TRIGGERS
+-- this used to be at the end...
+SELECT schema_support.replay_object_recreates();
+SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'layer3_network');
+SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'layer3_network');
+ALTER SEQUENCE layer3_network_layer3_network_id_seq
+	 OWNED BY layer3_network.layer3_network_id;
+DROP TABLE IF EXISTS layer3_network_v70;
+DROP TABLE IF EXISTS audit.layer3_network_v70;
+-- DONE DEALING WITH TABLE layer3_network [5427040]
+--------------------------------------------------------------------
+--------------------------------------------------------------------
+-- DEALING WITH TABLE netblock_collection [5342654]
+-- Save grants for later reapplication
+SELECT schema_support.save_grants_for_replay('jazzhands', 'netblock_collection', 'netblock_collection');
+
+-- FOREIGN KEYS FROM
+ALTER TABLE ip_group DROP CONSTRAINT IF EXISTS fk_ip_proto_netblk_coll_id;
+ALTER TABLE netblock_collection_hier DROP CONSTRAINT IF EXISTS fk_nblk_c_hier_chld_nc;
+ALTER TABLE netblock_collection_hier DROP CONSTRAINT IF EXISTS fk_nblk_c_hier_prnt_nc;
+ALTER TABLE netblock_collection_netblock DROP CONSTRAINT IF EXISTS fk_nblk_col_nblk_nbcolid;
+ALTER TABLE property DROP CONSTRAINT IF EXISTS fk_property_nblk_coll_id;
+ALTER TABLE property DROP CONSTRAINT IF EXISTS fk_property_pv_nblkcol_id;
+
+-- FOREIGN KEYS TO
+ALTER TABLE jazzhands.netblock_collection DROP CONSTRAINT IF EXISTS fk_nblk_coll_v_nblk_c_typ;
+
+-- EXTRA-SCHEMA constraints
+SELECT schema_support.save_constraint_for_replay('jazzhands', 'netblock_collection');
+
+-- PRIMARY and ALTERNATE KEYS
+ALTER TABLE jazzhands.netblock_collection DROP CONSTRAINT IF EXISTS pk_netblock_collection;
+ALTER TABLE jazzhands.netblock_collection DROP CONSTRAINT IF EXISTS uq_netblock_collection_name;
+-- INDEXES
+DROP INDEX IF EXISTS "jazzhands"."xifk_nb_col_val_nb_col_typ";
+-- CHECK CONSTRAINTS, etc
+-- TRIGGERS, etc
+DROP TRIGGER IF EXISTS trig_userlog_netblock_collection ON jazzhands.netblock_collection;
+DROP TRIGGER IF EXISTS trigger_audit_netblock_collection ON jazzhands.netblock_collection;
+DROP TRIGGER IF EXISTS trigger_validate_netblock_collection_type_change ON jazzhands.netblock_collection;
+SELECT schema_support.save_dependent_objects_for_replay('jazzhands', 'netblock_collection');
+---- BEGIN audit.netblock_collection TEARDOWN
+-- Save grants for later reapplication
+SELECT schema_support.save_grants_for_replay('audit', 'netblock_collection', 'netblock_collection');
+
+-- FOREIGN KEYS FROM
+
+-- FOREIGN KEYS TO
+
+-- EXTRA-SCHEMA constraints
+SELECT schema_support.save_constraint_for_replay('audit', 'netblock_collection');
+
+-- PRIMARY and ALTERNATE KEYS
+-- INDEXES
+DROP INDEX IF EXISTS "audit"."netblock_collection_aud#timestamp_idx";
+-- CHECK CONSTRAINTS, etc
+-- TRIGGERS, etc
+SELECT schema_support.save_dependent_objects_for_replay('audit', 'netblock_collection');
+---- DONE audit.netblock_collection TEARDOWN
+
+
+ALTER TABLE netblock_collection RENAME TO netblock_collection_v70;
+ALTER TABLE audit.netblock_collection RENAME TO netblock_collection_v70;
+
+CREATE TABLE netblock_collection
+(
+	netblock_collection_id	integer NOT NULL,
+	netblock_collection_name	varchar(255) NOT NULL,
+	netblock_collection_type	varchar(50)  NULL,
+	netblock_ip_family_restrict	integer  NULL,
+	description	varchar(255)  NULL,
+	data_ins_user	varchar(255)  NULL,
+	data_ins_date	timestamp with time zone  NULL,
+	data_upd_user	varchar(255)  NULL,
+	data_upd_date	timestamp with time zone  NULL
+);
+SELECT schema_support.build_audit_table('audit', 'jazzhands', 'netblock_collection', false);
+ALTER TABLE netblock_collection
+	ALTER netblock_collection_id
+	SET DEFAULT nextval('netblock_collection_netblock_collection_id_seq'::regclass);
+INSERT INTO netblock_collection (
+	netblock_collection_id,
+	netblock_collection_name,
+	netblock_collection_type,
+	netblock_ip_family_restrict,		-- new column (netblock_ip_family_restrict)
+	description,
+	data_ins_user,
+	data_ins_date,
+	data_upd_user,
+	data_upd_date
+) SELECT
+	netblock_collection_id,
+	netblock_collection_name,
+	netblock_collection_type,
+	NULL,		-- new column (netblock_ip_family_restrict)
+	description,
+	data_ins_user,
+	data_ins_date,
+	data_upd_user,
+	data_upd_date
+FROM netblock_collection_v70;
+
+INSERT INTO audit.netblock_collection (
+	netblock_collection_id,
+	netblock_collection_name,
+	netblock_collection_type,
+	netblock_ip_family_restrict,		-- new column (netblock_ip_family_restrict)
+	description,
+	data_ins_user,
+	data_ins_date,
+	data_upd_user,
+	data_upd_date,
+	"aud#action",
+	"aud#timestamp",
+	"aud#user",
+	"aud#seq"
+) SELECT
+	netblock_collection_id,
+	netblock_collection_name,
+	netblock_collection_type,
+	NULL,		-- new column (netblock_ip_family_restrict)
+	description,
+	data_ins_user,
+	data_ins_date,
+	data_upd_user,
+	data_upd_date,
+	"aud#action",
+	"aud#timestamp",
+	"aud#user",
+	"aud#seq"
+FROM audit.netblock_collection_v70;
+
+ALTER TABLE netblock_collection
+	ALTER netblock_collection_id
+	SET DEFAULT nextval('netblock_collection_netblock_collection_id_seq'::regclass);
+
+-- PRIMARY AND ALTERNATE KEYS
+ALTER TABLE netblock_collection ADD CONSTRAINT pk_netblock_collection PRIMARY KEY (netblock_collection_id);
+ALTER TABLE netblock_collection ADD CONSTRAINT uq_netblock_collection_name UNIQUE (netblock_collection_name, netblock_collection_type);
+
+-- Table/Column Comments
+COMMENT ON COLUMN netblock_collection.netblock_ip_family_restrict IS 'member netblocks must have  and netblock collections must match this restriction, if set.';
+-- INDEXES
+CREATE INDEX xifk_nb_col_val_nb_col_typ ON netblock_collection USING btree (netblock_collection_type);
+
+-- CHECK CONSTRAINTS
+ALTER TABLE netblock_collection ADD CONSTRAINT check_ip_family_1970633785
+	CHECK (netblock_ip_family_restrict = ANY (ARRAY[4, 6]));
+
+-- FOREIGN KEYS FROM
+-- consider FK netblock_collection and ip_group
+ALTER TABLE ip_group
+	ADD CONSTRAINT fk_ip_proto_netblk_coll_id
+	FOREIGN KEY (netblock_collection_id) REFERENCES netblock_collection(netblock_collection_id);
+-- consider FK netblock_collection and netblock_collection_hier
+ALTER TABLE netblock_collection_hier
+	ADD CONSTRAINT fk_nblk_c_hier_chld_nc
+	FOREIGN KEY (child_netblock_collection_id) REFERENCES netblock_collection(netblock_collection_id);
+-- consider FK netblock_collection and netblock_collection_hier
+ALTER TABLE netblock_collection_hier
+	ADD CONSTRAINT fk_nblk_c_hier_prnt_nc
+	FOREIGN KEY (netblock_collection_id) REFERENCES netblock_collection(netblock_collection_id);
+-- consider FK netblock_collection and netblock_collection_netblock
+ALTER TABLE netblock_collection_netblock
+	ADD CONSTRAINT fk_nblk_col_nblk_nbcolid
+	FOREIGN KEY (netblock_collection_id) REFERENCES netblock_collection(netblock_collection_id);
+-- consider FK netblock_collection and property
+ALTER TABLE property
+	ADD CONSTRAINT fk_property_nblk_coll_id
+	FOREIGN KEY (netblock_collection_id) REFERENCES netblock_collection(netblock_collection_id);
+-- consider FK netblock_collection and property
+ALTER TABLE property
+	ADD CONSTRAINT fk_property_pv_nblkcol_id
+	FOREIGN KEY (property_value_nblk_coll_id) REFERENCES netblock_collection(netblock_collection_id);
+
+-- FOREIGN KEYS TO
+-- consider FK netblock_collection and val_netblock_collection_type
+ALTER TABLE netblock_collection
+	ADD CONSTRAINT fk_nblk_coll_v_nblk_c_typ
+	FOREIGN KEY (netblock_collection_type) REFERENCES val_netblock_collection_type(netblock_collection_type);
+
+-- TRIGGERS
+-- consider NEW oid 5435696
+CREATE OR REPLACE FUNCTION jazzhands.validate_netblock_collection_type_change()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	_tally	integer;
+BEGIN
+	IF OLD.netblock_collection_type != NEW.netblock_collection_type THEN
+		SELECT	COUNT(*)
+		INTO	_tally
+		FROM	property p
+			join val_property vp USING (property_name,property_type)
+		WHERE	vp.netblock_collection_type = OLD.netblock_collection_type
+		AND	p.netblock_collection_id = NEW.netblock_collection_id;
+
+		IF _tally > 0 THEN
+			RAISE EXCEPTION 'netblock_collection % of type % is used by % restricted properties.',
+				NEW.netblock_collection_id, NEW.netblock_collection_type, _tally
+				USING ERRCODE = 'foreign_key_violation';
+		END IF;
+	END IF;
+	RETURN NEW;	
+END;
+$function$
+;
+CREATE TRIGGER trigger_validate_netblock_collection_type_change BEFORE UPDATE OF netblock_collection_type ON netblock_collection FOR EACH ROW EXECUTE PROCEDURE validate_netblock_collection_type_change();
+
+-- XXX - may need to include trigger function
+-- this used to be at the end...
+SELECT schema_support.replay_object_recreates();
+SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'netblock_collection');
+SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'netblock_collection');
+ALTER SEQUENCE netblock_collection_netblock_collection_id_seq
+	 OWNED BY netblock_collection.netblock_collection_id;
+DROP TABLE IF EXISTS netblock_collection_v70;
+DROP TABLE IF EXISTS audit.netblock_collection_v70;
+-- DONE DEALING WITH TABLE netblock_collection [5427186]
+--------------------------------------------------------------------
+--------------------------------------------------------------------
+-- DEALING WITH TABLE person_company_attr [5342872]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'person_company_attr', 'person_company_attr');
 
@@ -809,7 +1781,7 @@ ALTER TABLE person_company_attr
 	FOREIGN KEY (person_company_attr_name) REFERENCES val_person_company_attr_name(person_company_attr_name);
 
 -- TRIGGERS
--- consider NEW oid 3881193
+-- consider NEW oid 5435908
 CREATE OR REPLACE FUNCTION jazzhands.validate_pers_company_attr()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -899,10 +1871,10 @@ SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'person_company_attr');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'person_company_attr');
 DROP TABLE IF EXISTS person_company_attr_v70;
 DROP TABLE IF EXISTS audit.person_company_attr_v70;
--- DONE DEALING WITH TABLE person_company_attr [3865064]
+-- DONE DEALING WITH TABLE person_company_attr [5427405]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE v_account_manager_map [3942538]
+-- DEALING WITH TABLE v_account_manager_map [5357220]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'v_account_manager_map', 'v_account_manager_map');
 SELECT schema_support.save_dependent_objects_for_replay('jazzhands', 'v_account_manager_map');
@@ -949,7 +1921,7 @@ CREATE VIEW jazzhands.v_account_manager_map AS
      JOIN dude mp ON mp.person_id = a.manager_person_id AND mp.account_realm_id = a.account_realm_id;
 
 delete from __recreate where type = 'view' and object = 'v_account_manager_map';
--- DONE DEALING WITH TABLE v_account_manager_map [3880353]
+-- DONE DEALING WITH TABLE v_account_manager_map [5435405]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE v_l3_network_coll_expanded
@@ -982,7 +1954,7 @@ CREATE VIEW jazzhands.v_l3_network_coll_expanded AS
     l3_network_coll_recurse.rvs_array_path
    FROM l3_network_coll_recurse;
 
--- DONE DEALING WITH TABLE v_l3_network_coll_expanded [3880427]
+-- DONE DEALING WITH TABLE v_l3_network_coll_expanded [5435470]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE v_l2_network_coll_expanded
@@ -1015,10 +1987,10 @@ CREATE VIEW jazzhands.v_l2_network_coll_expanded AS
     l2_network_coll_recurse.rvs_array_path
    FROM l2_network_coll_recurse;
 
--- DONE DEALING WITH TABLE v_l2_network_coll_expanded [3880422]
+-- DONE DEALING WITH TABLE v_l2_network_coll_expanded [5435465]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE v_account_collection_audit_results [3942559]
+-- DEALING WITH TABLE v_account_collection_audit_results [5357323]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'v_account_collection_audit_results', 'v_account_collection_audit_results');
 SELECT schema_support.save_dependent_objects_for_replay('approval_utils', 'v_account_collection_audit_results');
@@ -1066,10 +2038,10 @@ CREATE VIEW approval_utils.v_account_collection_audit_results AS
    FROM membermap;
 
 delete from __recreate where type = 'view' and object = 'v_account_collection_audit_results';
--- DONE DEALING WITH TABLE v_account_collection_audit_results [3880377]
+-- DONE DEALING WITH TABLE v_account_collection_audit_results [5435426]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE v_account_collection_approval_process [3942564]
+-- DEALING WITH TABLE v_account_collection_approval_process [5357330]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'v_account_collection_approval_process', 'v_account_collection_approval_process');
 SELECT schema_support.save_dependent_objects_for_replay('approval_utils', 'v_account_collection_approval_process');
@@ -1235,7 +2207,7 @@ CREATE VIEW approval_utils.v_account_collection_approval_process AS
   ORDER BY combo.manager_login, combo.account_id, combo.approval_label;
 
 delete from __recreate where type = 'view' and object = 'v_account_collection_approval_process';
--- DONE DEALING WITH TABLE v_account_collection_approval_process [3880383]
+-- DONE DEALING WITH TABLE v_account_collection_approval_process [5435431]
 --------------------------------------------------------------------
 --
 -- Process trigger procs in jazzhands
