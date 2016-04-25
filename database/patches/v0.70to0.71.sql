@@ -1,7 +1,25 @@
+--
+-- Copyright (c) 2016 Todd Kover
+-- All rights reserved.
+--
+-- Licensed under the Apache License, Version 2.0 (the "License");
+-- you may not use this file except in compliance with the License.
+-- You may obtain a copy of the License at
+--
+--      http://www.apache.org/licenses/LICENSE-2.0
+--
+-- Unless required by applicable law or agreed to in writing, software
+-- distributed under the License is distributed on an "AS IS" BASIS,
+-- WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-- See the License for the specific language governing permissions and
+-- limitations under the License.
+
 /*
 Invoked:
 
 	--suffix=v70
+	--post
+	currency
 */
 
 \set ON_ERROR_STOP
@@ -10,6 +28,484 @@ select timeofday(), now();
 --
 -- Process middle (non-trigger) schema jazzhands
 --
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'account_change_realm_aca_realm');
+CREATE OR REPLACE FUNCTION jazzhands.account_change_realm_aca_realm()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	_tally	integer;
+BEGIN
+	SELECT	count(*)
+	INTO	_tally
+	FROM	account_collection_account
+			JOIN account_collection USING (account_collection_id)
+			JOIN val_account_collection_type vt USING (account_collection_type)
+	WHERE	vt.account_realm_id IS NOT NULL
+	AND		vt.account_realm_id != NEW.account_realm_id
+	AND		account_id = NEW.account_id;
+	
+	IF _tally > 0 THEN
+		RAISE EXCEPTION 'New account realm (%) is part of % account collections with a type restriction',
+			NEW.account_realm_id,
+			_tally
+			USING ERRCODE = 'integrity_constraint_violation';
+	END IF;
+	RETURN NEW;
+END;
+$function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'device_collection_hier_enforce');
+CREATE OR REPLACE FUNCTION jazzhands.device_collection_hier_enforce()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	dct	val_device_collection_type%ROWTYPE;
+BEGIN
+	SELECT *
+	INTO	dct
+	FROM	val_device_collection_type
+	WHERE	device_collection_type =
+		(select device_collection_type from device_collection
+			where device_collection_id = NEW.parent_device_collection_id);
+
+	IF dct.can_have_hierarchy = 'N' THEN
+		RAISE EXCEPTION 'Device Collections of type % may not be hierarcical',
+			dct.device_collection_type
+			USING ERRCODE= 'unique_violation';
+	END IF;
+	RETURN NEW;
+END;
+$function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'device_collection_member_enforce');
+CREATE OR REPLACE FUNCTION jazzhands.device_collection_member_enforce()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	dct	val_device_collection_type%ROWTYPE;
+	tally integer;
+BEGIN
+	SELECT *
+	INTO	dct
+	FROM	val_device_collection_type
+	WHERE	device_collection_type =
+		(select device_collection_type from device_collection
+			where device_collection_id = NEW.device_collection_id);
+
+	IF dct.MAX_NUM_MEMBERS IS NOT NULL THEN
+		select count(*)
+		  into tally
+		  from device_collection_device
+		  where device_collection_id = NEW.device_collection_id;
+		IF tally > dct.MAX_NUM_MEMBERS THEN
+			RAISE EXCEPTION 'Too many members'
+				USING ERRCODE = 'unique_violation';
+		END IF;
+	END IF;
+
+	IF dct.MAX_NUM_COLLECTIONS IS NOT NULL THEN
+		select count(*)
+		  into tally
+		  from device_collection_device
+		  		inner join device_collection using (device_collection_id)
+		  where device_id = NEW.device_id
+		  and	device_collection_type = dct.device_collection_type;
+		IF tally > dct.MAX_NUM_COLLECTIONS THEN
+			RAISE EXCEPTION 'Device may not be a member of more than % collections of type %',
+				dct.MAX_NUM_COLLECTIONS, dct.device_collection_type
+				USING ERRCODE = 'unique_violation';
+		END IF;
+	END IF;
+
+	RETURN NEW;
+END;
+$function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'net_int_netblock_to_nbn_compat_after');
+CREATE OR REPLACE FUNCTION jazzhands.net_int_netblock_to_nbn_compat_after()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	_tally	INTEGER;
+BEGIN
+	SELECT  count(*)
+	  INTO  _tally
+	  FROM  pg_catalog.pg_class
+	 WHERE  relname = '__network_interface_netblocks'
+	   AND  relpersistence = 't';
+
+	IF _tally = 0 THEN
+		CREATE TEMPORARY TABLE IF NOT EXISTS __network_interface_netblocks (
+			network_interface_id INTEGER, netblock_id INTEGER
+		);
+	END IF;
+
+	IF TG_OP = 'INSERT' OR TG_OP = 'UPDATE' THEN
+		SELECT count(*) INTO _tally FROM __network_interface_netblocks
+		WHERE network_interface_id = NEW.network_interface_id
+		AND netblock_id IS NOT DISTINCT FROM ( NEW.netblock_id );
+		if _tally >  0 THEN
+			RETURN NEW;
+		END IF;
+		INSERT INTO __network_interface_netblocks
+			(network_interface_id, netblock_id)
+		VALUES (NEW.network_interface_id,NEW.netblock_id);
+	ELSIF TG_OP = 'DELETE' THEN
+		SELECT count(*) INTO _tally FROM __network_interface_netblocks
+		WHERE network_interface_id = OLD.network_interface_id
+		AND netblock_id IS NOT DISTINCT FROM ( OLD.netblock_id );
+		if _tally >  0 THEN
+			RETURN OLD;
+		END IF;
+		INSERT INTO __network_interface_netblocks
+			(network_interface_id, netblock_id)
+		VALUES (OLD.network_interface_id,OLD.netblock_id);
+	END IF;
+
+	IF TG_OP = 'INSERT' THEN
+		IF NEW.netblock_id IS NOT NULL THEN
+			SELECT COUNT(*)
+			INTO _tally
+			FROM	network_interface_netblock
+			WHERE	network_interface_id = NEW.network_interface_id
+			AND		netblock_id = NEW.netblock_id;
+
+			IF _tally = 0 THEN
+				SELECT COUNT(*)
+				INTO _tally
+				FROM	network_interface_netblock
+				WHERE	network_interface_id != NEW.network_interface_id
+				AND		netblock_id = NEW.netblock_id;
+
+				IF _tally != 0  THEN
+					UPDATE network_interface_netblock
+					SET network_interface_id = NEW.network_interface_id
+					WHERE netblock_id = NEW.netblock_id;
+				ELSE
+					INSERT INTO network_interface_netblock
+						(network_interface_id, netblock_id)
+					VALUES
+						(NEW.network_interface_id, NEW.netblock_id);
+				END IF;
+			END IF;
+		END IF;
+	ELSIF TG_OP = 'UPDATE'  THEN
+		IF OLD.netblock_id is NULL and NEW.netblock_ID is NOT NULL THEN
+			SELECT COUNT(*)
+			INTO _tally
+			FROM	network_interface_netblock
+			WHERE	network_interface_id = NEW.network_interface_id
+			AND		netblock_id = NEW.netblock_id;
+
+			IF _tally = 0 THEN
+				INSERT INTO network_interface_netblock
+					(network_interface_id, netblock_id)
+				VALUES
+					(NEW.network_interface_id, NEW.netblock_id);
+			END IF;
+		ELSIF OLD.netblock_id IS NOT NULL and NEW.netblock_id is NOT NULL THEN
+			IF OLD.netblock_id != NEW.netblock_id THEN
+				UPDATE network_interface_netblock
+					SET network_interface_id = NEW.network_interface_Id,
+						netblock_id = NEW.netblock_id
+						WHERE network_interface_id = OLD.network_interface_id
+						AND netblock_id = OLD.netblock_id
+						AND netblock_id != NEW.netblock_id
+				;
+			END IF;
+		END IF;
+	ELSIF TG_OP = 'DELETE' THEN
+		IF OLD.netblock_id IS NOT NULL THEN
+			DELETE from network_interface_netblock
+				WHERE network_interface_id = OLD.network_interface_id
+				AND netblock_id = OLD.netblock_id;
+		END IF;
+		RETURN OLD;
+	END IF;
+	RETURN NEW;
+END;
+$function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'net_int_netblock_to_nbn_compat_before');
+CREATE OR REPLACE FUNCTION jazzhands.net_int_netblock_to_nbn_compat_before()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	_tally	INTEGER;
+BEGIN
+	SET CONSTRAINTS FK_NETINT_NB_NETINT_ID DEFERRED;
+	SET CONSTRAINTS FK_NETINT_NB_NBLK_ID DEFERRED;
+
+	RETURN OLD;
+END;
+$function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'network_interface_drop_tt');
+CREATE OR REPLACE FUNCTION jazzhands.network_interface_drop_tt()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	_tally INTEGER;
+BEGIN
+	SELECT  count(*)
+	  INTO  _tally
+	  FROM  pg_catalog.pg_class
+	 WHERE  relname = '__network_interface_netblocks'
+	   AND  relpersistence = 't';
+
+	SET CONSTRAINTS FK_NETINT_NB_NETINT_ID IMMEDIATE;
+	SET CONSTRAINTS FK_NETINT_NB_NBLK_ID IMMEDIATE;
+
+	IF _tally > 0 THEN
+		DROP TABLE IF EXISTS __network_interface_netblocks;
+	END IF;
+
+	IF TG_OP = 'DELETE' THEN
+		RETURN OLD;
+	ELSE
+		RETURN NEW;
+	END IF;
+END;
+$function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'validate_val_network_range_type');
+CREATE OR REPLACE FUNCTION jazzhands.validate_val_network_range_type()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+BEGIN
+	IF NEW.dns_domain_required = 'REQUIRED' THEN
+		PERFORM
+		FROM	network_range
+		WHERE	network_range_type = NEW.network_range_type
+		AND		dns_domain_id IS NULL;
+
+		IF FOUND THEN
+			RAISE EXCEPTION 'dns_domain_id is not set on some ranges'
+				USING ERRCODE = 'not_null_violation';
+		END IF;
+	ELSIF NEW.dns_domain_required = 'PROHIBITED' THEN
+		PERFORM
+		FROM	network_range
+		WHERE	network_range_type = NEW.network_range_type
+		AND		dns_domain_id IS NOT NULL;
+
+		IF FOUND THEN
+			RAISE EXCEPTION 'dns_domain_id is set on some ranges'
+				USING ERRCODE = 'integrity_constraint_violation';
+		END IF;
+	END IF;
+
+	IF NEW.netblock_type IS NOT NULL THEN
+		PERFORM
+		FROM	netblock_range nr
+				JOIN netblock start ON start.netblock_id = nr.start_netblock_id
+				JOIN netblock stop ON stop.netblock_id = nr.stop_netblock_id
+		WHERE	nr.network_range_type = NEW.network_range_type
+				(
+					start.netblock_type != NEW.netblock_type
+					OR		stop.netblock_type != NEW.netblock_type
+				);
+
+		IF FOUND THEN
+			RAISE EXCEPTION 'netblock type is not set to % on some % ranges',
+				NEW.netblock_type, NEW.network_range_type
+				USING ERRCODE = 'integrity_constraint_violation';
+		END IF;
+	END IF;
+
+	RETURN NEW;
+END; $function$
+;
+
+-- New function
+CREATE OR REPLACE FUNCTION jazzhands.device_collection_after_hooks()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+BEGIN
+	BEGIN
+		PERFORM local_hooks.device_collection_after_hooks();
+	EXCEPTION WHEN invalid_schema_name OR undefined_function THEN
+			PERFORM 1;
+	END;
+	RETURN NULL;
+END;
+$function$
+;
+
+-- New function
+CREATE OR REPLACE FUNCTION jazzhands.layer2_network_collection_after_hooks()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+BEGIN
+	BEGIN
+		PERFORM local_hooks.layer2_network_collection_after_hooks();
+	EXCEPTION WHEN invalid_schema_name OR undefined_function THEN
+			PERFORM 1;
+	END;
+	RETURN NULL;
+END;
+$function$
+;
+
+-- New function
+CREATE OR REPLACE FUNCTION jazzhands.validate_network_range_dns()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	v_nrt	val_network_range_type%ROWTYPE;
+	v_nbt	val_netblock_type.netblock_type%TYPE;
+BEGIN
+	SELECT	*
+	INTO	v_nrt
+	FROM	val_network_range_type
+	WHERE	network_range_type = NEW.network_range_type;
+
+	IF NEW.dns_domain_id IS NULL AND v_nrt.dns_domain_required = 'REQUIRED' THEN
+		RAISE EXCEPTION 'For type %, dns_domain_id is required.',
+			NEW.network_range_type
+			USING ERRCODE = 'not_null_violation';
+	ELSIF NEW.dns_domain_id IS NOT NULL AND
+			v_nrt.dns_domain_required = 'PROHIBITED' THEN
+		RAISE EXCEPTION 'For type %, dns_domain_id is prohibited.',
+			NEW.network_range_type
+			USING ERRCODE = 'integrity_constraint_violation';
+	END IF;
+
+
+	RETURN NEW;
+END; $function$
+;
+
+-- New function
+CREATE OR REPLACE FUNCTION jazzhands.validate_network_range_ips()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	v_nrt	val_network_range_type%ROWTYPE;
+	v_nbt	val_netblock_type.netblock_type%TYPE;
+BEGIN
+	SELECT	*
+	INTO	v_nrt
+	FROM	val_network_range_type
+	WHERE	network_range_type = NEW.network_range_type;
+
+	--
+	-- check to make sure type mapping works
+	--
+	IF v_nrt.netblock_type IS NOT NULL THEN
+		SELECT	netblock_type
+		INTO	v_nbt
+		FROM	netblock
+		WHERE	netblock_id = NEW.start_netblock_id;
+
+		IF FOUND THEN
+			RAISE EXCEPTION 'For range %, start netblock_type must be %, not %',
+				NEW.network_range_type, v_brt.netblock_type, v_nbt
+				USING ERRCODE = 'integrity_constraint_violation';
+		END IF;
+
+		SELECT	netblock_type
+		INTO	v_nbt
+		FROM	netblock
+		WHERE	netblock_id = NEW.stop_netblock_id;
+
+		IF FOUND THEN
+			RAISE EXCEPTION 'For range %, stop netblock_type must be %, not %',
+				NEW.network_range_type, v_brt.netblock_type, v_nbt
+				USING ERRCODE = 'integrity_constraint_violation';
+		END IF;
+	END IF;
+
+	--
+	-- Check to ensure both stop and start have is_single_address = 'Y'
+	--
+	PERFORM
+	FROM	netblock
+	WHERE	( netblock_id = NEW.start_netblock_id 
+				OR netblock_id = NEW.stop_netblock_id
+			) AND is_single_address = 'N';
+
+	IF FOUND THEN
+		RAISE EXCEPTION 'Start and stop types must single addresses'
+			USING ERRCODE = 'integrity_constraint_violation';
+	END IF;
+
+	PERFORM
+	FROM	netblock
+	WHERE	netblock_id = NEW.parent_netblock_id
+	AND can_subnet = 'Y';
+
+	IF FOUND THEN
+		RAISE EXCEPTION 'Can not set ranges on subnetable netblocks'
+			USING ERRCODE = 'integrity_constraint_violation';
+	END IF;
+
+	PERFORM
+	FROM	netblock n
+			JOIN netblock parent ON paent.netblock_id = nr.parent_netblock_id
+			JOIN netblock start ON start.netblock_id = nr.start_netblock_id
+			JOIN netblock stop ON stop.netblock_id = nr.stop_netblock_id
+	WHERE	
+			start.ip_address <<= parent.ip_address
+			or stop.ip_address <<= parent.ip_address
+	;
+			
+
+	IF FOUND THEN
+		RAISE EXCEPTION 'Start and stop must be within parents'
+			USING ERRCODE = 'integrity_constraint_violation';
+	END IF;
+
+	RETURN NEW;
+END; $function$
+;
+
 --
 -- Process middle (non-trigger) schema net_manip
 --
@@ -853,7 +1349,6 @@ $function$
 --
 -- Process middle (non-trigger) schema schema_support
 --
-DROP FUNCTION IF EXISTS schema_support.save_dependant_objects_for_replay ( schema character varying, object character varying, dropit boolean, doobjectdeps boolean );
 --
 -- Process middle (non-trigger) schema script_hooks
 --
@@ -861,7 +1356,308 @@ DROP FUNCTION IF EXISTS schema_support.save_dependant_objects_for_replay ( schem
 
 
 --------------------------------------------------------------------
--- DEALING WITH TABLE val_netblock_collection_type [5343940]
+-- DEALING WITH TABLE val_country_code [614859]
+-- Save grants for later reapplication
+SELECT schema_support.save_grants_for_replay('jazzhands', 'val_country_code', 'val_country_code');
+
+-- FOREIGN KEYS FROM
+ALTER TABLE person_contact DROP CONSTRAINT IF EXISTS fk_person_type_iso_code;
+ALTER TABLE physical_address DROP CONSTRAINT IF EXISTS fk_physaddr_iso_cc;
+
+-- FOREIGN KEYS TO
+
+-- EXTRA-SCHEMA constraints
+SELECT schema_support.save_constraint_for_replay('jazzhands', 'val_country_code');
+
+-- PRIMARY and ALTERNATE KEYS
+ALTER TABLE jazzhands.val_country_code DROP CONSTRAINT IF EXISTS pk_val_country_code;
+-- INDEXES
+-- CHECK CONSTRAINTS, etc
+-- TRIGGERS, etc
+DROP TRIGGER IF EXISTS trig_userlog_val_country_code ON jazzhands.val_country_code;
+DROP TRIGGER IF EXISTS trigger_audit_val_country_code ON jazzhands.val_country_code;
+SELECT schema_support.save_dependent_objects_for_replay('jazzhands', 'val_country_code');
+---- BEGIN audit.val_country_code TEARDOWN
+-- Save grants for later reapplication
+SELECT schema_support.save_grants_for_replay('audit', 'val_country_code', 'val_country_code');
+
+-- FOREIGN KEYS FROM
+
+-- FOREIGN KEYS TO
+
+-- EXTRA-SCHEMA constraints
+SELECT schema_support.save_constraint_for_replay('audit', 'val_country_code');
+
+-- PRIMARY and ALTERNATE KEYS
+-- INDEXES
+DROP INDEX IF EXISTS "audit"."val_country_code_aud#timestamp_idx";
+-- CHECK CONSTRAINTS, etc
+-- TRIGGERS, etc
+SELECT schema_support.save_dependent_objects_for_replay('audit', 'val_country_code');
+---- DONE audit.val_country_code TEARDOWN
+
+
+ALTER TABLE val_country_code RENAME TO val_country_code_v70;
+ALTER TABLE audit.val_country_code RENAME TO val_country_code_v70;
+
+CREATE TABLE val_country_code
+(
+	iso_country_code	character(2) NOT NULL,
+	dial_country_code	varchar(4) NOT NULL,
+	primary_iso_currency_code	character(3)  NULL,
+	country_name	varchar(255)  NULL,
+	display_priority	integer  NULL,
+	data_ins_user	varchar(255)  NULL,
+	data_ins_date	timestamp with time zone  NULL,
+	data_upd_user	varchar(255)  NULL,
+	data_upd_date	timestamp with time zone  NULL
+);
+SELECT schema_support.build_audit_table('audit', 'jazzhands', 'val_country_code', false);
+INSERT INTO val_country_code (
+	iso_country_code,
+	dial_country_code,
+	primary_iso_currency_code,		-- new column (primary_iso_currency_code)
+	country_name,
+	display_priority,
+	data_ins_user,
+	data_ins_date,
+	data_upd_user,
+	data_upd_date
+) SELECT
+	iso_country_code,
+	dial_country_code,
+	NULL,		-- new column (primary_iso_currency_code)
+	country_name,
+	display_priority,
+	data_ins_user,
+	data_ins_date,
+	data_upd_user,
+	data_upd_date
+FROM val_country_code_v70;
+
+INSERT INTO audit.val_country_code (
+	iso_country_code,
+	dial_country_code,
+	primary_iso_currency_code,		-- new column (primary_iso_currency_code)
+	country_name,
+	display_priority,
+	data_ins_user,
+	data_ins_date,
+	data_upd_user,
+	data_upd_date,
+	"aud#action",
+	"aud#timestamp",
+	"aud#user",
+	"aud#seq"
+) SELECT
+	iso_country_code,
+	dial_country_code,
+	NULL,		-- new column (primary_iso_currency_code)
+	country_name,
+	display_priority,
+	data_ins_user,
+	data_ins_date,
+	data_upd_user,
+	data_upd_date,
+	"aud#action",
+	"aud#timestamp",
+	"aud#user",
+	"aud#seq"
+FROM audit.val_country_code_v70;
+
+
+-- PRIMARY AND ALTERNATE KEYS
+ALTER TABLE val_country_code ADD CONSTRAINT pk_val_country_code PRIMARY KEY (iso_country_code);
+
+-- Table/Column Comments
+-- INDEXES
+CREATE INDEX xif1val_country_code ON val_country_code USING btree (primary_iso_currency_code);
+
+-- CHECK CONSTRAINTS
+
+-- FOREIGN KEYS FROM
+-- consider FK val_country_code and person_contact
+ALTER TABLE person_contact
+	ADD CONSTRAINT fk_person_type_iso_code
+	FOREIGN KEY (iso_country_code) REFERENCES val_country_code(iso_country_code);
+-- consider FK val_country_code and physical_address
+ALTER TABLE physical_address
+	ADD CONSTRAINT fk_physaddr_iso_cc
+	FOREIGN KEY (iso_country_code) REFERENCES val_country_code(iso_country_code);
+
+-- FOREIGN KEYS TO
+-- consider FK val_country_code and val_iso_currency_code
+-- Skipping this FK since table does not exist yet
+--ALTER TABLE val_country_code
+--	ADD CONSTRAINT r_787
+--	FOREIGN KEY (primary_iso_currency_code) REFERENCES val_iso_currency_code(iso_currency_code);
+
+
+-- TRIGGERS
+-- this used to be at the end...
+SELECT schema_support.replay_object_recreates();
+SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_country_code');
+SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_country_code');
+DROP TABLE IF EXISTS val_country_code_v70;
+DROP TABLE IF EXISTS audit.val_country_code_v70;
+-- DONE DEALING WITH TABLE val_country_code [594378]
+--------------------------------------------------------------------
+--------------------------------------------------------------------
+-- DEALING WITH NEW TABLE val_iso_currency_code
+CREATE TABLE val_iso_currency_code
+(
+	iso_currency_code	character(3) NOT NULL,
+	description	varchar(255)  NULL,
+	currency_symbol	varchar(50) NOT NULL,
+	data_ins_user	varchar(255)  NULL,
+	data_ins_date	timestamp with time zone  NULL,
+	data_upd_user	varchar(255)  NULL,
+	data_upd_date	timestamp with time zone  NULL
+);
+SELECT schema_support.build_audit_table('audit', 'jazzhands', 'val_iso_currency_code', true);
+--
+-- Copying initialization data
+--
+
+INSERT INTO val_iso_currency_code (
+iso_currency_code,description,currency_symbol
+) VALUES
+	('AFN','Afghanistan Afghani','؋'),
+	('ALL','Albania Lek','Lek'),
+	('ANG','Netherlands Antilles Guilder','ƒ'),
+	('ARS','Argentina Peso','$'),
+	('AUD','Australia Dollar','$'),
+	('AWG','Aruba Guilder','ƒ'),
+	('AZN','Azerbaijan New Manat','ман'),
+	('BAM','Bosnia and Herzegovina Convertible Marka','KM'),
+	('BBD','Barbados Dollar','$'),
+	('BGN','Bulgaria Lev','лв'),
+	('BMD','Bermuda Dollar','$'),
+	('BND','Brunei Darussalam Dollar','$'),
+	('BOB','Bolivia Bolíviano','$b'),
+	('BRL','Brazil Real','R$'),
+	('BSD','Bahamas Dollar','$'),
+	('BWP','Botswana Pula','P'),
+	('BYR','Belarus Ruble','p.'),
+	('BZD','Belize Dollar','BZ$'),
+	('CAD','Canada Dollar','$'),
+	('CHF','Switzerland Franc','CHF'),
+	('CLP','Chile Peso','$'),
+	('CNY','China Yuan Renminbi','¥'),
+	('COP','Colombia Peso','$'),
+	('CRC','Costa Rica Colon','₡'),
+	('CUP','Cuba Peso','₱'),
+	('CZK','Czech Republic Koruna','Kč'),
+	('DKK','Denmark Krone','kr'),
+	('DOP','Dominican Republic Peso','RD$'),
+	('EGP','Egypt Pound','£'),
+	('EUR','Euro Member Countries','€'),
+	('FJD','Fiji Dollar','$'),
+	('FKP','Falkland Islands (Malvinas) Pound','£'),
+	('GBP','United Kingdom Pound','£'),
+	('GGP','Guernsey Pound','£'),
+	('GHS','Ghana Cedi','¢'),
+	('GIP','Gibraltar Pound','£'),
+	('GTQ','Guatemala Quetzal','Q'),
+	('GYD','Guyana Dollar','$'),
+	('HKD','Hong Kong Dollar','$'),
+	('HNL','Honduras Lempira','L'),
+	('HRK','Croatia Kuna','kn'),
+	('HUF','Hungary Forint','Ft'),
+	('IDR','Indonesia Rupiah','Rp'),
+	('ILS','Israel Shekel','₪'),
+	('IMP','Isle of Man Pound','£'),
+	('INR','India Rupee','₹'),
+	('IRR','Iran Rial','﷼'),
+	('ISK','Iceland Krona','kr'),
+	('JEP','Jersey Pound','£'),
+	('JMD','Jamaica Dollar','J$'),
+	('JPY','Japan Yen','¥'),
+	('KGS','Kyrgyzstan Som','лв'),
+	('KHR','Cambodia Riel','៛'),
+	('KPW','Korea (North) Won','₩'),
+	('KRW','Korea (South) Won','₩'),
+	('KYD','Cayman Islands Dollar','$'),
+	('KZT','Kazakhstan Tenge','лв'),
+	('LAK','Laos Kip','₭'),
+	('LBP','Lebanon Pound','£'),
+	('LKR','Sri Lanka Rupee','₨'),
+	('LRD','Liberia Dollar','$'),
+	('MKD','Macedonia Denar','ден'),
+	('MNT','Mongolia Tughrik','₮'),
+	('MUR','Mauritius Rupee','₨'),
+	('MXN','Mexico Peso','$'),
+	('MYR','Malaysia Ringgit','RM'),
+	('MZN','Mozambique Metical','MT'),
+	('NAD','Namibia Dollar','$'),
+	('NGN','Nigeria Naira','₦'),
+	('NIO','Nicaragua Cordoba','C$'),
+	('NOK','Norway Krone','kr'),
+	('NPR','Nepal Rupee','₨'),
+	('NZD','New Zealand Dollar','$'),
+	('OMR','Oman Rial','﷼'),
+	('PAB','Panama Balboa','B/.'),
+	('PEN','Peru Sol','S/.'),
+	('PHP','Philippines Peso','₱'),
+	('PKR','Pakistan Rupee','₨'),
+	('PLN','Poland Zloty','zł'),
+	('PYG','Paraguay Guarani','Gs'),
+	('QAR','Qatar Riyal','﷼'),
+	('RON','Romania New Leu','lei'),
+	('RSD','Serbia Dinar','Дин.'),
+	('RUB','Russia Ruble','руб'),
+	('SAR','Saudi Arabia Riyal','﷼'),
+	('SBD','Solomon Islands Dollar','$'),
+	('SCR','Seychelles Rupee','₨'),
+	('SEK','Sweden Krona','kr'),
+	('SGD','Singapore Dollar','$'),
+	('SHP','Saint Helena Pound','£'),
+	('SOS','Somalia Shilling','S'),
+	('SRD','Suriname Dollar','$'),
+	('SVC','El Salvador Colon','$'),
+	('SYP','Syria Pound','£'),
+	('THB','Thailand Baht','฿'),
+	('TRY','Turkey Lira','₺'),
+	('TTD','Trinidad and Tobago Dollar','TT$'),
+	('TVD','Tuvalu Dollar','$'),
+	('TWD','Taiwan New Dollar','NT$'),
+	('UAH','Ukraine Hryvnia','₴'),
+	('USD','United States Dollar','$'),
+	('UYU','Uruguay Peso','$U'),
+	('UZS','Uzbekistan Som','лв'),
+	('VEF','Venezuela Bolivar','Bs'),
+	('VND','Viet Nam Dong','₫'),
+	('XCD','East Caribbean Dollar','$'),
+	('YER','Yemen Rial','﷼'),
+	('ZAR','South Africa Rand','R'),
+	('ZWD','Zimbabwe Dollar','Z$')
+;
+
+-- PRIMARY AND ALTERNATE KEYS
+ALTER TABLE val_iso_currency_code ADD CONSTRAINT pk_val_iso_currency_code PRIMARY KEY (iso_currency_code);
+
+-- Table/Column Comments
+-- INDEXES
+
+-- CHECK CONSTRAINTS
+
+-- FOREIGN KEYS FROM
+-- consider FK val_iso_currency_code and val_country_code
+ALTER TABLE val_country_code
+	ADD CONSTRAINT r_787
+	FOREIGN KEY (primary_iso_currency_code) REFERENCES val_iso_currency_code(iso_currency_code);
+
+-- FOREIGN KEYS TO
+
+-- TRIGGERS
+-- this used to be at the end...
+SELECT schema_support.replay_object_recreates();
+SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_iso_currency_code');
+SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_iso_currency_code');
+-- DONE DEALING WITH TABLE val_iso_currency_code [594537]
+--------------------------------------------------------------------
+--------------------------------------------------------------------
+-- DEALING WITH TABLE val_netblock_collection_type [615078]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'val_netblock_collection_type', 'val_netblock_collection_type');
 
@@ -1040,10 +1836,10 @@ SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_netblock_collectio
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_netblock_collection_type');
 DROP TABLE IF EXISTS val_netblock_collection_type_v70;
 DROP TABLE IF EXISTS audit.val_netblock_collection_type_v70;
--- DONE DEALING WITH TABLE val_netblock_collection_type [5428473]
+-- DONE DEALING WITH TABLE val_netblock_collection_type [594606]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE val_network_range_type [5343986]
+-- DEALING WITH TABLE val_network_range_type [615124]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'val_network_range_type', 'val_network_range_type');
 
@@ -1186,7 +1982,7 @@ ALTER TABLE val_network_range_type
 	FOREIGN KEY (netblock_type) REFERENCES val_netblock_type(netblock_type);
 
 -- TRIGGERS
--- consider NEW oid 5435844
+-- consider NEW oid 604748
 CREATE OR REPLACE FUNCTION jazzhands.validate_val_network_range_type()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -1212,13 +2008,32 @@ BEGIN
 
 		IF FOUND THEN
 			RAISE EXCEPTION 'dns_domain_id is set on some ranges'
-				USING ERRCODE = 'not_null_violation';
+				USING ERRCODE = 'integrity_constraint_violation';
 		END IF;
 	END IF;
+
+	IF NEW.netblock_type IS NOT NULL THEN
+		PERFORM
+		FROM	netblock_range nr
+				JOIN netblock start ON start.netblock_id = nr.start_netblock_id
+				JOIN netblock stop ON stop.netblock_id = nr.stop_netblock_id
+		WHERE	nr.network_range_type = NEW.network_range_type
+				(
+					start.netblock_type != NEW.netblock_type
+					OR		stop.netblock_type != NEW.netblock_type
+				);
+
+		IF FOUND THEN
+			RAISE EXCEPTION 'netblock type is not set to % on some % ranges',
+				NEW.netblock_type, NEW.network_range_type
+				USING ERRCODE = 'integrity_constraint_violation';
+		END IF;
+	END IF;
+
 	RETURN NEW;
 END; $function$
 ;
-CREATE TRIGGER trigger_validate_val_network_range_type BEFORE UPDATE OF dns_domain_required ON val_network_range_type FOR EACH ROW EXECUTE PROCEDURE validate_val_network_range_type();
+CREATE CONSTRAINT TRIGGER trigger_validate_val_network_range_type AFTER UPDATE OF dns_domain_required, netblock_type ON val_network_range_type DEFERRABLE INITIALLY IMMEDIATE FOR EACH ROW EXECUTE PROCEDURE validate_val_network_range_type();
 
 -- XXX - may need to include trigger function
 -- this used to be at the end...
@@ -1227,10 +2042,10 @@ SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_network_range_type
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_network_range_type');
 DROP TABLE IF EXISTS val_network_range_type_v70;
 DROP TABLE IF EXISTS audit.val_network_range_type_v70;
--- DONE DEALING WITH TABLE val_network_range_type [5428520]
+-- DONE DEALING WITH TABLE val_network_range_type [594653]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE layer3_network [5342509]
+-- DEALING WITH TABLE layer3_network [613647]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'layer3_network', 'layer3_network');
 
@@ -1404,10 +2219,10 @@ ALTER SEQUENCE layer3_network_layer3_network_id_seq
 	 OWNED BY layer3_network.layer3_network_id;
 DROP TABLE IF EXISTS layer3_network_v70;
 DROP TABLE IF EXISTS audit.layer3_network_v70;
--- DONE DEALING WITH TABLE layer3_network [5427040]
+-- DONE DEALING WITH TABLE layer3_network [593161]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE netblock_collection [5342654]
+-- DEALING WITH TABLE netblock_collection [613792]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'netblock_collection', 'netblock_collection');
 
@@ -1577,7 +2392,7 @@ ALTER TABLE netblock_collection
 	FOREIGN KEY (netblock_collection_type) REFERENCES val_netblock_collection_type(netblock_collection_type);
 
 -- TRIGGERS
--- consider NEW oid 5435696
+-- consider NEW oid 604365
 CREATE OR REPLACE FUNCTION jazzhands.validate_netblock_collection_type_change()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -1616,10 +2431,10 @@ ALTER SEQUENCE netblock_collection_netblock_collection_id_seq
 	 OWNED BY netblock_collection.netblock_collection_id;
 DROP TABLE IF EXISTS netblock_collection_v70;
 DROP TABLE IF EXISTS audit.netblock_collection_v70;
--- DONE DEALING WITH TABLE netblock_collection [5427186]
+-- DONE DEALING WITH TABLE netblock_collection [593307]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE person_company_attr [5342872]
+-- DEALING WITH TABLE person_company_attr [614010]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'person_company_attr', 'person_company_attr');
 
@@ -1781,7 +2596,7 @@ ALTER TABLE person_company_attr
 	FOREIGN KEY (person_company_attr_name) REFERENCES val_person_company_attr_name(person_company_attr_name);
 
 -- TRIGGERS
--- consider NEW oid 5435908
+-- consider NEW oid 604862
 CREATE OR REPLACE FUNCTION jazzhands.validate_pers_company_attr()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -1871,10 +2686,10 @@ SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'person_company_attr');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'person_company_attr');
 DROP TABLE IF EXISTS person_company_attr_v70;
 DROP TABLE IF EXISTS audit.person_company_attr_v70;
--- DONE DEALING WITH TABLE person_company_attr [5427405]
+-- DONE DEALING WITH TABLE person_company_attr [593526]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE v_account_manager_map [5357220]
+-- DEALING WITH TABLE v_account_manager_map [622007]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'v_account_manager_map', 'v_account_manager_map');
 SELECT schema_support.save_dependent_objects_for_replay('jazzhands', 'v_account_manager_map');
@@ -1921,7 +2736,7 @@ CREATE VIEW jazzhands.v_account_manager_map AS
      JOIN dude mp ON mp.person_id = a.manager_person_id AND mp.account_realm_id = a.account_realm_id;
 
 delete from __recreate where type = 'view' and object = 'v_account_manager_map';
--- DONE DEALING WITH TABLE v_account_manager_map [5435405]
+-- DONE DEALING WITH TABLE v_account_manager_map [603620]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE v_l3_network_coll_expanded
@@ -1954,7 +2769,7 @@ CREATE VIEW jazzhands.v_l3_network_coll_expanded AS
     l3_network_coll_recurse.rvs_array_path
    FROM l3_network_coll_recurse;
 
--- DONE DEALING WITH TABLE v_l3_network_coll_expanded [5435470]
+-- DONE DEALING WITH TABLE v_l3_network_coll_expanded [603699]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE v_l2_network_coll_expanded
@@ -1987,10 +2802,10 @@ CREATE VIEW jazzhands.v_l2_network_coll_expanded AS
     l2_network_coll_recurse.rvs_array_path
    FROM l2_network_coll_recurse;
 
--- DONE DEALING WITH TABLE v_l2_network_coll_expanded [5435465]
+-- DONE DEALING WITH TABLE v_l2_network_coll_expanded [603693]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE v_account_collection_audit_results [5357323]
+-- DEALING WITH TABLE v_account_collection_audit_results [622028]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'v_account_collection_audit_results', 'v_account_collection_audit_results');
 SELECT schema_support.save_dependent_objects_for_replay('approval_utils', 'v_account_collection_audit_results');
@@ -2038,10 +2853,10 @@ CREATE VIEW approval_utils.v_account_collection_audit_results AS
    FROM membermap;
 
 delete from __recreate where type = 'view' and object = 'v_account_collection_audit_results';
--- DONE DEALING WITH TABLE v_account_collection_audit_results [5435426]
+-- DONE DEALING WITH TABLE v_account_collection_audit_results [603649]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE v_account_collection_approval_process [5357330]
+-- DEALING WITH TABLE v_account_collection_approval_process [622033]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'v_account_collection_approval_process', 'v_account_collection_approval_process');
 SELECT schema_support.save_dependent_objects_for_replay('approval_utils', 'v_account_collection_approval_process');
@@ -2207,10 +3022,10 @@ CREATE VIEW approval_utils.v_account_collection_approval_process AS
   ORDER BY combo.manager_login, combo.account_id, combo.approval_label;
 
 delete from __recreate where type = 'view' and object = 'v_account_collection_approval_process';
--- DONE DEALING WITH TABLE v_account_collection_approval_process [5435431]
+-- DONE DEALING WITH TABLE v_account_collection_approval_process [603654]
 --------------------------------------------------------------------
 --
--- Process trigger procs in jazzhands
+-- Process drops in jazzhands
 --
 -- Changed function
 SELECT schema_support.save_grants_for_replay('jazzhands', 'account_change_realm_aca_realm');
@@ -2482,6 +3297,61 @@ END;
 $function$
 ;
 
+DROP TRIGGER IF EXISTS trigger_validate_network_range ON jazzhands.network_range;
+DROP FUNCTION IF EXISTS jazzhands.validate_network_range (  );
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'validate_val_network_range_type');
+CREATE OR REPLACE FUNCTION jazzhands.validate_val_network_range_type()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+BEGIN
+	IF NEW.dns_domain_required = 'REQUIRED' THEN
+		PERFORM
+		FROM	network_range
+		WHERE	network_range_type = NEW.network_range_type
+		AND		dns_domain_id IS NULL;
+
+		IF FOUND THEN
+			RAISE EXCEPTION 'dns_domain_id is not set on some ranges'
+				USING ERRCODE = 'not_null_violation';
+		END IF;
+	ELSIF NEW.dns_domain_required = 'PROHIBITED' THEN
+		PERFORM
+		FROM	network_range
+		WHERE	network_range_type = NEW.network_range_type
+		AND		dns_domain_id IS NOT NULL;
+
+		IF FOUND THEN
+			RAISE EXCEPTION 'dns_domain_id is set on some ranges'
+				USING ERRCODE = 'integrity_constraint_violation';
+		END IF;
+	END IF;
+
+	IF NEW.netblock_type IS NOT NULL THEN
+		PERFORM
+		FROM	netblock_range nr
+				JOIN netblock start ON start.netblock_id = nr.start_netblock_id
+				JOIN netblock stop ON stop.netblock_id = nr.stop_netblock_id
+		WHERE	nr.network_range_type = NEW.network_range_type
+				(
+					start.netblock_type != NEW.netblock_type
+					OR		stop.netblock_type != NEW.netblock_type
+				);
+
+		IF FOUND THEN
+			RAISE EXCEPTION 'netblock type is not set to % on some % ranges',
+				NEW.netblock_type, NEW.network_range_type
+				USING ERRCODE = 'integrity_constraint_violation';
+		END IF;
+	END IF;
+
+	RETURN NEW;
+END; $function$
+;
+
 -- New function
 CREATE OR REPLACE FUNCTION jazzhands.device_collection_after_hooks()
  RETURNS trigger
@@ -2518,69 +3388,971 @@ END;
 $function$
 ;
 
+-- New function
+CREATE OR REPLACE FUNCTION jazzhands.validate_network_range_dns()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	v_nrt	val_network_range_type%ROWTYPE;
+	v_nbt	val_netblock_type.netblock_type%TYPE;
+BEGIN
+	SELECT	*
+	INTO	v_nrt
+	FROM	val_network_range_type
+	WHERE	network_range_type = NEW.network_range_type;
+
+	IF NEW.dns_domain_id IS NULL AND v_nrt.dns_domain_required = 'REQUIRED' THEN
+		RAISE EXCEPTION 'For type %, dns_domain_id is required.',
+			NEW.network_range_type
+			USING ERRCODE = 'not_null_violation';
+	ELSIF NEW.dns_domain_id IS NOT NULL AND
+			v_nrt.dns_domain_required = 'PROHIBITED' THEN
+		RAISE EXCEPTION 'For type %, dns_domain_id is prohibited.',
+			NEW.network_range_type
+			USING ERRCODE = 'integrity_constraint_violation';
+	END IF;
+
+
+	RETURN NEW;
+END; $function$
+;
+
+-- New function
+CREATE OR REPLACE FUNCTION jazzhands.validate_network_range_ips()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	v_nrt	val_network_range_type%ROWTYPE;
+	v_nbt	val_netblock_type.netblock_type%TYPE;
+BEGIN
+	SELECT	*
+	INTO	v_nrt
+	FROM	val_network_range_type
+	WHERE	network_range_type = NEW.network_range_type;
+
+	--
+	-- check to make sure type mapping works
+	--
+	IF v_nrt.netblock_type IS NOT NULL THEN
+		SELECT	netblock_type
+		INTO	v_nbt
+		FROM	netblock
+		WHERE	netblock_id = NEW.start_netblock_id;
+
+		IF FOUND THEN
+			RAISE EXCEPTION 'For range %, start netblock_type must be %, not %',
+				NEW.network_range_type, v_brt.netblock_type, v_nbt
+				USING ERRCODE = 'integrity_constraint_violation';
+		END IF;
+
+		SELECT	netblock_type
+		INTO	v_nbt
+		FROM	netblock
+		WHERE	netblock_id = NEW.stop_netblock_id;
+
+		IF FOUND THEN
+			RAISE EXCEPTION 'For range %, stop netblock_type must be %, not %',
+				NEW.network_range_type, v_brt.netblock_type, v_nbt
+				USING ERRCODE = 'integrity_constraint_violation';
+		END IF;
+	END IF;
+
+	--
+	-- Check to ensure both stop and start have is_single_address = 'Y'
+	--
+	PERFORM
+	FROM	netblock
+	WHERE	( netblock_id = NEW.start_netblock_id 
+				OR netblock_id = NEW.stop_netblock_id
+			) AND is_single_address = 'N';
+
+	IF FOUND THEN
+		RAISE EXCEPTION 'Start and stop types must single addresses'
+			USING ERRCODE = 'integrity_constraint_violation';
+	END IF;
+
+	PERFORM
+	FROM	netblock
+	WHERE	netblock_id = NEW.parent_netblock_id
+	AND can_subnet = 'Y';
+
+	IF FOUND THEN
+		RAISE EXCEPTION 'Can not set ranges on subnetable netblocks'
+			USING ERRCODE = 'integrity_constraint_violation';
+	END IF;
+
+	PERFORM
+	FROM	netblock n
+			JOIN netblock parent ON paent.netblock_id = nr.parent_netblock_id
+			JOIN netblock start ON start.netblock_id = nr.start_netblock_id
+			JOIN netblock stop ON stop.netblock_id = nr.stop_netblock_id
+	WHERE	
+			start.ip_address <<= parent.ip_address
+			or stop.ip_address <<= parent.ip_address
+	;
+			
+
+	IF FOUND THEN
+		RAISE EXCEPTION 'Start and stop must be within parents'
+			USING ERRCODE = 'integrity_constraint_violation';
+	END IF;
+
+	RETURN NEW;
+END; $function$
+;
+
 --
--- Process trigger procs in net_manip
+-- Process drops in net_manip
 --
 --
--- Process trigger procs in network_strings
+-- Process drops in network_strings
 --
 --
--- Process trigger procs in time_util
+-- Process drops in time_util
 --
 --
--- Process trigger procs in dns_utils
+-- Process drops in dns_utils
 --
 --
--- Process trigger procs in person_manip
+-- Process drops in person_manip
 --
 --
--- Process trigger procs in auto_ac_manip
+-- Process drops in auto_ac_manip
 --
 --
--- Process trigger procs in company_manip
+-- Process drops in company_manip
 --
 --
--- Process trigger procs in token_utils
+-- Process drops in token_utils
 --
 --
--- Process trigger procs in port_support
+-- Process drops in port_support
 --
 --
--- Process trigger procs in port_utils
+-- Process drops in port_utils
 --
 --
--- Process trigger procs in device_utils
+-- Process drops in device_utils
+--
+-- Changed function
+SELECT schema_support.save_grants_for_replay('device_utils', 'retire_device');
+-- Dropped in case type changes.
+DROP FUNCTION IF EXISTS device_utils.retire_device ( in_device_id integer, retire_modules boolean );
+CREATE OR REPLACE FUNCTION device_utils.retire_device(in_device_id integer, retire_modules boolean DEFAULT false)
+ RETURNS boolean
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	tally		INTEGER;
+	_r			RECORD;
+	_d			DEVICE%ROWTYPE;
+	_mgrid		DEVICE.DEVICE_ID%TYPE;
+	_purgedev	boolean;
+BEGIN
+	_purgedev := false;
+
+	BEGIN
+		PERFORM local_hooks.device_retire_early(in_Device_Id, false);
+	EXCEPTION WHEN invalid_schema_name OR undefined_function THEN
+		PERFORM 1;
+	END;
+
+	SELECT * INTO _d FROM device WHERE device_id = in_Device_id;
+	delete from dns_record where netblock_id in (
+		select netblock_id 
+		from network_interface where device_id = in_Device_id
+	);
+
+	delete from network_interface_purpose where device_id = in_Device_id;
+
+	WITH ni AS  (
+		delete from network_interface where device_id = in_Device_id
+		RETURNING *
+	) delete from network_interface_netblock where network_interface_id 
+		IN (
+			SELECT network_interface_id
+		 	FROM ni
+		); 
+
+	PERFORM device_utils.purge_physical_ports( in_Device_id);
+--	PERFORM device_utils.purge_power_ports( in_Device_id);
+
+	delete from property where device_collection_id in (
+		SELECT	dc.device_collection_id 
+		  FROM	device_collection dc
+				INNER JOIN device_collection_device dcd
+		 			USING (device_collection_id)
+		WHERE	dc.device_collection_type = 'per-device'
+		  AND	dcd.device_id = in_Device_id
+	);
+
+	delete from device_collection_device where device_id = in_Device_id;
+	delete from snmp_commstr where device_id = in_Device_id;
+
+		
+	IF _d.rack_location_id IS NOT NULL  THEN
+		UPDATE device SET rack_location_id = NULL 
+		WHERE device_id = in_Device_id;
+
+		-- This should not be permitted based on constraints, but in case
+		-- that constraint had to be disabled...
+		SELECT	count(*)
+		  INTO	tally
+		  FROM	device
+		 WHERE	rack_location_id = _d.RACK_LOCATION_ID;
+
+		IF tally = 0 THEN
+			DELETE FROM rack_location 
+			WHERE rack_location_id = _d.RACK_LOCATION_ID;
+		END IF;
+	END IF;
+
+	IF _d.chassis_location_id IS NOT NULL THEN
+		RAISE EXCEPTION 'Retiring modules is not supported yet.';
+	END IF;
+
+	SELECT	manager_device_id
+	INTO	_mgrid
+	 FROM	device_management_controller
+	WHERE	device_id = in_Device_id AND device_mgmt_control_type = 'bmc'
+	LIMIT 1;
+
+	IF _mgrid IS NOT NULL THEN
+		DELETE FROM device_management_controller
+		WHERE	device_id = in_Device_id AND device_mgmt_control_type = 'bmc'
+			AND manager_device_id = _mgrid;
+
+		PERFORM device_utils.retire_device( manager_device_id)
+		  FROM	device_management_controller
+		WHERE	device_id = in_Device_id AND device_mgmt_control_type = 'bmc';
+	END IF;
+
+	BEGIN
+		PERFORM local_hooks.device_retire_late(in_Device_Id, false);
+	EXCEPTION WHEN invalid_schema_name OR undefined_function THEN
+		PERFORM 1;
+	END;
+
+	SELECT count(*)
+	INTO tally
+	FROM device_note
+	WHERE device_id = in_Device_id;
+
+	--
+	-- If there is no notes or serial number its save to remove
+	-- 
+	IF tally = 0 AND _d.ASSET_ID is NULL THEN
+		_purgedev := true;
+	END IF;
+
+	IF _purgedev THEN
+		--
+		-- If there is an fk violation, we just preserve the record but
+		-- delete all the identifying characteristics
+		--
+		BEGIN
+			DELETE FROM device where device_id = in_Device_Id;
+			return false;
+		EXCEPTION WHEN foreign_key_violation THEN
+			PERFORM 1;
+		END;
+	END IF;
+
+	UPDATE device SET 
+		device_name =NULL,
+		service_environment_id = (
+			select service_environment_id from service_environment
+			where service_environment_name = 'unallocated'),
+		device_status = 'removed',
+		voe_symbolic_track_id = NULL,
+		is_monitored = 'N',
+		should_fetch_config = 'N',
+		description = NULL
+	WHERE device_id = in_Device_id;
+
+	return true;
+END;
+$function$
+;
+
+--
+-- Process drops in netblock_utils
+--
+-- Changed function
+SELECT schema_support.save_grants_for_replay('netblock_utils', 'find_free_netblocks');
+-- Dropped in case type changes.
+DROP FUNCTION IF EXISTS netblock_utils.find_free_netblocks ( parent_netblock_list integer[], netmask_bits integer, single_address boolean, allocation_method text, max_addresses integer, desired_ip_address inet, rnd_masklen_threshold integer, rnd_max_count integer );
+CREATE OR REPLACE FUNCTION netblock_utils.find_free_netblocks(parent_netblock_list integer[], netmask_bits integer DEFAULT NULL::integer, single_address boolean DEFAULT false, allocation_method text DEFAULT NULL::text, max_addresses integer DEFAULT 1024, desired_ip_address inet DEFAULT NULL::inet, rnd_masklen_threshold integer DEFAULT 110, rnd_max_count integer DEFAULT 1024)
+ RETURNS TABLE(ip_address inet, netblock_type character varying, ip_universe_id integer)
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+	parent_nbid		jazzhands.netblock.netblock_id%TYPE;
+	netblock_rec	jazzhands.netblock%ROWTYPE;
+	netrange_rec	RECORD;
+	inet_list		inet[];
+	current_ip		inet;
+	saved_method	text;
+	min_ip			inet;
+	max_ip			inet;
+	matches			integer;
+	rnd_matches		integer;
+	max_rnd_value	bigint;
+	rnd_value		bigint;
+	family_bits		integer;
+BEGIN
+	matches := 0;
+	saved_method = allocation_method;
+
+	IF allocation_method IS NOT NULL AND allocation_method
+			NOT IN ('top', 'bottom', 'random', 'default') THEN
+		RAISE 'address_type must be one of top, bottom, random, or default'
+		USING ERRCODE = 'invalid_parameter_value';
+	END IF;
+
+	--
+	-- Sanitize masklen input.  This is a little complicated.
+	--
+	-- If a single address is desired, we always use a /32 or /128
+	-- in the parent loop and everything else is ignored
+	--
+	-- Otherwise, if netmask_bits is passed, that wins, otherwise
+	-- the netmask of whatever is passed with desired_ip_address wins
+	--
+	-- If none of these are the case, then things are wrong and we
+	-- bail
+	--
+
+	IF NOT single_address THEN 
+		IF desired_ip_address IS NOT NULL AND netmask_bits IS NULL THEN
+			netmask_bits := masklen(desired_ip_address);
+		ELSIF desired_ip_address IS NOT NULL AND 
+				netmask_bits IS NOT NULL THEN
+			desired_ip_address := set_masklen(desired_ip_address,
+				netmask_bits);
+		END IF;
+		IF netmask_bits IS NULL THEN
+			RAISE EXCEPTION 'netmask_bits must be set'
+			USING ERRCODE = 'invalid_parameter_value';
+		END IF;
+		IF allocation_method = 'random' THEN
+			RAISE EXCEPTION 'random netblocks may only be returned for single addresses'
+			USING ERRCODE = 'invalid_parameter_value';
+		END IF;
+	END IF;
+
+	FOREACH parent_nbid IN ARRAY parent_netblock_list LOOP
+		rnd_matches := 0;
+		--
+		-- Restore this, because we may have overrridden it for a previous
+		-- block
+		--
+		allocation_method = saved_method;
+		SELECT 
+			* INTO netblock_rec
+		FROM
+			jazzhands.netblock n
+		WHERE
+			n.netblock_id = parent_nbid;
+
+		IF NOT FOUND THEN
+			RAISE EXCEPTION 'Netblock % does not exist', parent_nbid;
+		END IF;
+
+		family_bits := 
+			(CASE family(netblock_rec.ip_address) WHEN 4 THEN 32 ELSE 128 END);
+
+		-- If desired_ip_address is passed, then allocation_method is
+		-- irrelevant
+
+		IF desired_ip_address IS NOT NULL THEN
+			--
+			-- If the IP address is not the same family as the parent block,
+			-- we aren't going to find it
+			--
+			IF family(desired_ip_address) != 
+					family(netblock_rec.ip_address) THEN
+				CONTINUE;
+			END IF;
+			allocation_method := 'bottom';
+		END IF;
+
+		--
+		-- If allocation_method is 'default' or NULL, then use 'bottom'
+		-- unless it's for a single IPv6 address in a netblock larger than 
+		-- rnd_masklen_threshold
+		--
+		IF allocation_method IS NULL OR allocation_method = 'default' THEN
+			allocation_method := 
+				CASE WHEN 
+					single_address AND 
+					family(netblock_rec.ip_address) = 6 AND
+					masklen(netblock_rec.ip_address) <= rnd_masklen_threshold
+				THEN
+					'random'
+				ELSE
+					'bottom'
+				END;
+		END IF;
+
+		IF allocation_method = 'random' AND 
+				family_bits - masklen(netblock_rec.ip_address) < 2 THEN
+			-- Random allocation doesn't work if we don't have enough
+			-- bits to play with, so just do sequential.
+			allocation_method := 'bottom';
+		END IF;
+
+		IF single_address THEN 
+			netmask_bits := family_bits;
+			IF desired_ip_address IS NOT NULL THEN
+				desired_ip_address := set_masklen(desired_ip_address,
+					masklen(netblock_rec.ip_address));
+			END IF;
+		ELSIF netmask_bits <= masklen(netblock_rec.ip_address) THEN
+			-- If the netmask is not for a smaller netblock than this parent,
+			-- then bounce to the next one, because maybe it's larger
+			RAISE DEBUG
+				'netblock (%) is not larger than netmask_bits of % - skipping',
+				masklen(netblock_rec.ip_address),
+				netmask_bits;
+			CONTINUE;
+		END IF;
+
+		IF netmask_bits > family_bits THEN
+			RAISE EXCEPTION 'netmask_bits must be no more than % for netblock %',
+				family_bits,
+				netblock_rec.ip_address;
+		END IF;
+
+		--
+		-- Short circuit the check if we're looking for a specific address
+		-- and it's not in this netblock
+		--
+
+		IF desired_ip_address IS NOT NULL AND
+				NOT (desired_ip_address <<= netblock_rec.ip_address) THEN
+			RAISE DEBUG 'desired_ip_address % is not in netblock %',
+				desired_ip_address,
+				netblock_rec.ip_address;
+			CONTINUE;
+		END IF;
+
+		IF single_address AND netblock_rec.can_subnet = 'Y' THEN
+			RAISE EXCEPTION 'single addresses may not be assigned to to a block where can_subnet is Y';
+		END IF;
+
+		IF (NOT single_address) AND netblock_rec.can_subnet = 'N' THEN
+			RAISE EXCEPTION 'Netblock % (%) may not be subnetted',
+				netblock_rec.ip_address,
+				netblock_rec.netblock_id;
+		END IF;
+
+		RAISE DEBUG 'Searching netblock % (%) using the % allocation method',
+			netblock_rec.netblock_id,
+			netblock_rec.ip_address,
+			allocation_method;
+
+		IF desired_ip_address IS NOT NULL THEN
+			min_ip := desired_ip_address;
+			max_ip := desired_ip_address + 1;
+		ELSE
+			min_ip := netblock_rec.ip_address;
+			max_ip := broadcast(min_ip) + 1;
+		END IF;
+
+		IF allocation_method = 'top' THEN
+			current_ip := network(set_masklen(max_ip - 1, netmask_bits));
+		ELSIF allocation_method = 'random' THEN
+			max_rnd_value := (x'7fffffffffffffff'::bigint >> CASE 
+				WHEN family_bits - masklen(netblock_rec.ip_address) >= 63
+				THEN 0
+				ELSE 63 - (family_bits - masklen(netblock_rec.ip_address))
+				END) - 2;
+			-- random() appears to only do 32-bits, which is dumb
+			-- I'm pretty sure that all of the casts are not required here,
+			-- but better to make sure
+			current_ip := min_ip + 
+					((((random() * x'7fffffff'::bigint)::bigint << 32) + 
+					(random() * x'ffffffff'::bigint)::bigint + 1)
+					% max_rnd_value) + 1;
+		ELSE -- it's 'bottom'
+			current_ip := set_masklen(min_ip, netmask_bits);
+		END IF;
+
+		-- For single addresses, make the netmask match the netblock of the
+		-- containing block, and skip the network and broadcast addresses
+		-- We shouldn't need to skip for IPv6 addresses, but some things
+		-- apparently suck
+
+		IF single_address THEN
+			current_ip := set_masklen(current_ip, 
+				masklen(netblock_rec.ip_address));
+			--
+			-- If we're not allocating a single /31 or /32 for IPv4 or
+			-- /127 or /128 for IPv6, then we want to skip the all-zeros
+			-- and all-ones addresses
+			--
+			IF masklen(netblock_rec.ip_address) < (family_bits - 1) AND
+					desired_ip_address IS NULL THEN
+				current_ip := current_ip + 
+					CASE WHEN allocation_method = 'top' THEN -1 ELSE 1 END;
+				min_ip := min_ip + 1;
+				max_ip := max_ip - 1;
+			END IF;
+		END IF;
+
+		RAISE DEBUG 'Starting with IP address % with step masklen of %',
+			current_ip,
+			netmask_bits;
+
+		WHILE (
+				current_ip >= min_ip AND
+				current_ip < max_ip AND
+				matches < max_addresses AND
+				rnd_matches < rnd_max_count
+		) LOOP
+			RAISE DEBUG '   Checking netblock %', current_ip;
+
+			IF single_address THEN
+				--
+				-- Check to see if netblock is in a network_range, and if it is,
+				-- then set the value to the top or bottom of the range, or
+				-- another random value as appropriate
+				--
+				SELECT 
+					network_range_id,
+					start_nb.ip_address AS start_ip_address,
+					stop_nb.ip_address AS stop_ip_address
+				INTO netrange_rec
+				FROM
+					jazzhands.network_range nr,
+					jazzhands.netblock start_nb,
+					jazzhands.netblock stop_nb
+				WHERE
+					nr.start_netblock_id = start_nb.netblock_id AND
+					nr.stop_netblock_id = stop_nb.netblock_id AND
+					nr.parent_netblock_id = netblock_rec.netblock_id AND
+					start_nb.ip_address <= current_ip AND
+					stop_nb.ip_address >= current_ip;
+
+				IF FOUND THEN
+					current_ip := CASE 
+						WHEN allocation_method = 'bottom' THEN
+							netrange_rec.stop_ip_address + 1
+						WHEN allocation_method = 'top' THEN
+							netrange_rec.start_ip_address - 1
+						ELSE min_ip + ((
+							((random() * x'7fffffff'::bigint)::bigint << 32) 
+							+ 
+							(random() * x'ffffffff'::bigint)::bigint + 1
+							) % max_rnd_value) + 1 
+					END;
+					CONTINUE;
+				END IF;
+			END IF;
+							
+				
+			PERFORM * FROM jazzhands.netblock n WHERE
+				n.ip_universe_id = netblock_rec.ip_universe_id AND
+				n.netblock_type = netblock_rec.netblock_type AND
+				-- A block with the parent either contains or is contained
+				-- by this block
+				n.parent_netblock_id = netblock_rec.netblock_id AND
+				CASE WHEN single_address THEN
+					n.ip_address = current_ip
+				ELSE
+					(n.ip_address >>= current_ip OR current_ip >>= n.ip_address)
+				END;
+			IF NOT FOUND AND (inet_list IS NULL OR
+					NOT (current_ip = ANY(inet_list))) THEN
+				find_free_netblocks.netblock_type :=
+					netblock_rec.netblock_type;
+				find_free_netblocks.ip_universe_id :=
+					netblock_rec.ip_universe_id;
+				find_free_netblocks.ip_address := current_ip;
+				RETURN NEXT;
+				inet_list := array_append(inet_list, current_ip);
+				matches := matches + 1;
+				-- Reset random counter if we found something
+				rnd_matches := 0;
+			ELSIF allocation_method = 'random' THEN
+				-- Increase random counter if we didn't find something
+				rnd_matches := rnd_matches + 1;
+			END IF;
+
+			-- Select the next IP address
+			current_ip := 
+				CASE WHEN single_address THEN
+					CASE 
+						WHEN allocation_method = 'bottom' THEN current_ip + 1
+						WHEN allocation_method = 'top' THEN current_ip - 1
+						ELSE min_ip + ((
+							((random() * x'7fffffff'::bigint)::bigint << 32) 
+							+ 
+							(random() * x'ffffffff'::bigint)::bigint + 1
+							) % max_rnd_value) + 1 
+					END
+				ELSE
+					CASE WHEN allocation_method = 'bottom' THEN 
+						network(broadcast(current_ip) + 1)
+					ELSE 
+						network(current_ip - 1)
+					END
+				END;
+		END LOOP;
+	END LOOP;
+	RETURN;
+END;
+$function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('netblock_utils', 'list_unallocated_netblocks');
+-- Dropped in case type changes.
+DROP FUNCTION IF EXISTS netblock_utils.list_unallocated_netblocks ( netblock_id integer, ip_address inet, ip_universe_id integer, netblock_type text );
+CREATE OR REPLACE FUNCTION netblock_utils.list_unallocated_netblocks(netblock_id integer DEFAULT NULL::integer, ip_address inet DEFAULT NULL::inet, ip_universe_id integer DEFAULT 0, netblock_type text DEFAULT 'default'::text)
+ RETURNS TABLE(ip_addr inet)
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+	ip_array		inet[];
+	netblock_rec	RECORD;
+	parent_nbid		jazzhands.netblock.netblock_id%TYPE;
+	family_bits		integer;
+	idx				integer;
+	subnettable		boolean;
+BEGIN
+	subnettable := true;
+	IF netblock_id IS NOT NULL THEN
+		SELECT * INTO netblock_rec FROM jazzhands.netblock n WHERE n.netblock_id = 
+			list_unallocated_netblocks.netblock_id;
+		IF NOT FOUND THEN
+			RAISE EXCEPTION 'netblock_id % not found', netblock_id;
+		END IF;
+		IF netblock_rec.is_single_address = 'Y' THEN
+			RETURN;
+		END IF;
+		ip_address := netblock_rec.ip_address;
+		ip_universe_id := netblock_rec.ip_universe_id;
+		netblock_type := netblock_rec.netblock_type;
+		subnettable := CASE WHEN netblock_rec.can_subnet = 'N' 
+			THEN false ELSE true
+			END;
+	ELSIF ip_address IS NOT NULL THEN
+		ip_universe_id := 0;
+		netblock_type := 'default';
+	ELSE
+		RAISE EXCEPTION 'netblock_id or ip_address must be passed';
+	END IF;
+	IF (subnettable) THEN
+		SELECT ARRAY(
+			SELECT 
+				n.ip_address
+			FROM
+				netblock n
+			WHERE
+				n.ip_address <<= list_unallocated_netblocks.ip_address AND
+				n.ip_universe_id = list_unallocated_netblocks.ip_universe_id AND
+				n.netblock_type = list_unallocated_netblocks.netblock_type AND
+				is_single_address = 'N' AND
+				can_subnet = 'N'
+			ORDER BY
+				n.ip_address
+		) INTO ip_array;
+	ELSE
+		SELECT ARRAY(
+			SELECT 
+				set_masklen(n.ip_address, 
+					CASE WHEN family(n.ip_address) = 4 THEN 32
+					ELSE 128
+					END)
+			FROM
+				netblock n
+			WHERE
+				n.ip_address <<= list_unallocated_netblocks.ip_address AND
+				n.ip_address != list_unallocated_netblocks.ip_address AND
+				n.ip_universe_id = list_unallocated_netblocks.ip_universe_id AND
+				n.netblock_type = list_unallocated_netblocks.netblock_type
+			ORDER BY
+				n.ip_address
+		) INTO ip_array;
+	END IF;
+
+	IF array_length(ip_array, 1) IS NULL THEN
+		ip_addr := ip_address;
+		RETURN NEXT;
+		RETURN;
+	END IF;
+
+	ip_array := array_prepend(
+		list_unallocated_netblocks.ip_address - 1, 
+		array_append(
+			ip_array, 
+			broadcast(list_unallocated_netblocks.ip_address) + 1
+			));
+
+	idx := 1;
+	WHILE idx < array_length(ip_array, 1) LOOP
+		RETURN QUERY SELECT cin.ip_addr FROM
+			netblock_utils.calculate_intermediate_netblocks(ip_array[idx], ip_array[idx + 1]) cin;
+		idx := idx + 1;
+	END LOOP;
+
+	RETURN;
+END;
+$function$
+;
+
+--
+-- Process drops in netblock_manip
+--
+-- New function
+CREATE OR REPLACE FUNCTION netblock_manip.create_network_range(start_ip_address inet, stop_ip_address inet, network_range_type character varying, parent_netblock_id integer DEFAULT NULL::integer, description character varying DEFAULT NULL::character varying, allow_assigned boolean DEFAULT false)
+ RETURNS network_range
+ LANGUAGE plpgsql
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	par_netblock	RECORD;
+	start_netblock	RECORD;
+	stop_netblock	RECORD;
+	netrange		RECORD;
+	nrtype			ALIAS FOR network_range_type;
+	pnbid			ALIAS FOR parent_netblock_id;
+BEGIN
+	--
+	-- If the network range already exists, then just return it, even if the
+	--
+	SELECT 
+		nr.* INTO netrange
+	FROM
+		network_range nr JOIN
+		netblock startnb ON (nr.start_netblock_id = startnb.netblock_id) JOIN
+		netblock stopnb ON (nr.stop_netblock_id = stopnb.netblock_id)
+	WHERE
+		nr.network_range_type = nrtype AND
+		host(startnb.ip_address) = host(start_ip_address) AND
+		host(stopnb.ip_address) = host(stop_ip_address) AND
+		CASE WHEN pnbid IS NOT NULL THEN 
+			(pnbid = nr.parent_netblock_id)
+		ELSE
+			true
+		END;
+
+	IF FOUND THEN
+		RETURN netrange;
+	END IF;
+
+	--
+	-- If any other network ranges exist that overlap this, then error
+	--
+	PERFORM 
+		*
+	FROM
+		network_range nr JOIN
+		netblock startnb ON (nr.start_netblock_id = startnb.netblock_id) JOIN
+		netblock stopnb ON (nr.stop_netblock_id = stopnb.netblock_id)
+	WHERE
+		nr.network_range_type = nrtype AND ((
+			host(startnb.ip_address)::inet <= host(start_ip_address)::inet AND
+			host(stopnb.ip_address)::inet >= host(start_ip_address)::inet
+		) OR (
+			host(startnb.ip_address)::inet <= host(stop_ip_address)::inet AND
+			host(stopnb.ip_address)::inet >= host(stop_ip_address)::inet
+		));
+
+	IF FOUND THEN
+		RAISE 'create_network_range: a network_range of type % already exists that has addresses between % and %',
+			nrtype, start_ip_address, stop_ip_address
+			USING ERRCODE = 'check_violation';
+	END IF;
+
+	IF parent_netblock_id IS NOT NULL THEN
+		SELECT * INTO par_netblock WHERE netblock_id = parent_netblock_id;
+		IF NOT FOUND THEN
+			RAISE 'create_network_range: parent_netblock_id % does not exist',
+				parent_netblock_id USING ERRCODE = 'foreign_key_violation';
+		END IF;
+		IF par_netblock.can_subnet != 'N' OR 
+				par_netblock.is_single_address != 'N' THEN
+			RAISE 'create_network_range: parent netblock % must not be subnettable or a single address',
+				par_netblock.netblock_id USING ERRCODE = 'check_violation';
+		END IF;
+	ELSE
+		SELECT * INTO par_netblock FROM netblock WHERE netblock_id = (
+			SELECT 
+				*
+			FROM
+				netblock_utils.find_best_parent_id(
+					in_ipaddress := start_ip_address
+				)
+		);
+
+		IF NOT FOUND THEN
+			RAISE 'create_network_range: valid parent netblock for start_ip_address % does not exist',
+				start_ip_address USING ERRCODE = 'check_violation';
+		END IF;
+	END IF;
+	
+	IF NOT (start_ip_address <<= par_netblock.ip_address) THEN
+		RAISE 'create_network_range: start_ip_address % is not contained by parent netblock % (%)',
+			start_ip_address, par_netblock.ip_address,
+			par_netblock.netblock_id USING ERRCODE = 'check_violation';
+	END IF;
+
+	IF NOT (stop_ip_address <<= par_netblock.ip_address) THEN
+		RAISE 'create_network_range: stop_ip_address % is not contained by parent netblock % (%)',
+			stop_ip_address, par_netblock.ip_address,
+			par_netblock.netblock_id USING ERRCODE = 'check_violation';
+	END IF;
+
+	IF NOT (start_ip_address <= stop_ip_address) THEN
+		RAISE 'create_network_range: start_ip_address % is not lower than stop_ip_address %',
+			start_ip_address, stop_ip_address
+			USING ERRCODE = 'check_violation';
+	END IF;
+
+	--
+	-- Validate that there are not currently any addresses assigned in the
+	-- range, unless allow_assigned is set
+	--
+	IF NOT allow_assigned THEN
+		PERFORM 
+			*
+		FROM
+			netblock n
+		WHERE
+			n.parent_netblock_id = par_netblock.netblock_id AND
+			host(n.ip_address)::inet > host(start_ip_address)::inet AND
+			host(n.ip_address)::inet < host(stop_ip_address)::inet;
+
+		IF FOUND THEN
+			RAISE 'create_network_range: netblocks are already present for parent netblock % betweeen % and %',
+			par_netblock.netblock_id,
+			start_ip_address, stop_ip_address
+			USING ERRCODE = 'check_violation';
+		END IF;
+	END IF;
+
+	--
+	-- Ok, well, we should be able to insert things now
+	--
+
+	SELECT
+		*
+	FROM
+		netblock n
+	INTO
+		start_netblock
+	WHERE
+		host(n.ip_address)::inet = start_ip_address AND
+		n.netblock_type = 'adhoc' AND
+		n.can_subnet = 'N' AND
+		n.is_single_address = 'Y' AND
+		n.ip_universe_id = par_netblock.ip_universe_id;
+
+	IF NOT FOUND THEN
+		INSERT INTO netblock (
+			ip_address,
+			netblock_type,
+			is_single_address,
+			can_subnet,
+			netblock_status,
+			ip_universe_id
+		) VALUES (
+			host(start_ip_address)::inet,
+			'adhoc',
+			'Y',
+			'N',
+			'Allocated',
+			par_netblock.ip_universe_id
+		) RETURNING * INTO start_netblock;
+	END IF;
+
+	SELECT
+		*
+	FROM
+		netblock n
+	INTO
+		stop_netblock
+	WHERE
+		host(n.ip_address)::inet = stop_ip_address AND
+		n.netblock_type = 'adhoc' AND
+		n.can_subnet = 'N' AND
+		n.is_single_address = 'Y' AND
+		n.ip_universe_id = par_netblock.ip_universe_id;
+
+	IF NOT FOUND THEN
+		INSERT INTO netblock (
+			ip_address,
+			netblock_type,
+			is_single_address,
+			can_subnet,
+			netblock_status,
+			ip_universe_id
+		) VALUES (
+			host(stop_ip_address)::inet,
+			'adhoc',
+			'Y',
+			'N',
+			'Allocated',
+			par_netblock.ip_universe_id
+		) RETURNING * INTO stop_netblock;
+	END IF;
+
+	INSERT INTO network_range (
+		network_range_type,
+		description,
+		parent_netblock_id,
+		start_netblock_id,
+		stop_netblock_id
+	) VALUES (
+		nrtype,
+		description,
+		par_netblock.netblock_id,
+		start_netblock.netblock_id,
+		stop_netblock.netblock_id
+	) RETURNING * INTO netrange;
+
+	RETURN netrange;
+
+	RETURN NULL;
+END;
+$function$
+;
+
+--
+-- Process drops in physical_address_utils
 --
 --
--- Process trigger procs in netblock_utils
+-- Process drops in component_utils
 --
 --
--- Process trigger procs in netblock_manip
+-- Process drops in snapshot_manip
 --
 --
--- Process trigger procs in physical_address_utils
+-- Process drops in lv_manip
 --
 --
--- Process trigger procs in component_utils
+-- Process drops in approval_utils
 --
 --
--- Process trigger procs in snapshot_manip
+-- Process drops in account_collection_manip
 --
 --
--- Process trigger procs in lv_manip
---
---
--- Process trigger procs in approval_utils
---
---
--- Process trigger procs in account_collection_manip
---
---
--- Process trigger procs in schema_support
+-- Process drops in schema_support
 --
 DROP FUNCTION IF EXISTS schema_support.save_dependant_objects_for_replay ( schema character varying, object character varying, dropit boolean, doobjectdeps boolean );
 --
--- Process trigger procs in script_hooks
+-- Process drops in script_hooks
 --
 -- Dropping obsoleted sequences....
 
@@ -2597,6 +4369,24 @@ CREATE TRIGGER trigger_member_device_collection_after_hooks AFTER INSERT OR DELE
 CREATE TRIGGER trigger_hier_device_collection_after_hooks AFTER INSERT OR DELETE OR UPDATE ON device_collection_hier FOR EACH STATEMENT EXECUTE PROCEDURE device_collection_after_hooks();
 CREATE TRIGGER trigger_member_layer2_network_collection_after_hooks AFTER INSERT OR DELETE OR UPDATE ON l2_network_coll_l2_network FOR EACH STATEMENT EXECUTE PROCEDURE layer2_network_collection_after_hooks();
 CREATE TRIGGER trigger_hier_layer2_network_collection_after_hooks AFTER INSERT OR DELETE OR UPDATE ON layer2_network_collection_hier FOR EACH STATEMENT EXECUTE PROCEDURE layer2_network_collection_after_hooks();
+DROP TRIGGER IF EXISTS trigger_validate_network_range ON network_range;
+CREATE CONSTRAINT TRIGGER trigger_validate_network_range_dns AFTER INSERT OR UPDATE OF dns_domain_id ON network_range DEFERRABLE INITIALLY IMMEDIATE FOR EACH ROW EXECUTE PROCEDURE validate_network_range_dns();
+CREATE CONSTRAINT TRIGGER trigger_validate_network_range_ips AFTER INSERT OR UPDATE OF start_netblock_id, stop_netblock_id, parent_netblock_id ON network_range DEFERRABLE INITIALLY IMMEDIATE FOR EACH ROW EXECUTE PROCEDURE validate_network_range_dns();
+
+
+-- BEGIN Misc that does not apply to above
+WITH x AS (
+	SELECT lpad(iso_currency_code, 2, '') as iso_country_code,
+		iso_currency_code
+	FROM val_iso_currency_code
+) UPDATE val_country_code count
+SET primary_iso_currency_code = x.iso_currency_code
+FROm x
+WHERE x.iso_country_code = count.iso_country_code;
+
+
+
+-- END Misc that does not apply to above
 
 
 -- Clean Up
