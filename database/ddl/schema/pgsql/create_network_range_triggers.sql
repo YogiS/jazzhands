@@ -89,18 +89,20 @@ BEGIN
 		SELECT	netblock_type
 		INTO	v_nbt
 		FROM	netblock
-		WHERE	netblock_id = NEW.start_netblock_id;
+		WHERE	netblock_id = NEW.start_netblock_id
+		AND		netblock_type != v_nrt.netblock_type;
 
 		IF FOUND THEN
 			RAISE EXCEPTION 'For range %, start netblock_type must be %, not %',
-				NEW.network_range_type, v_brt.netblock_type, v_nbt
+				NEW.network_range_type, v_nrt.netblock_type, v_nbt
 				USING ERRCODE = 'integrity_constraint_violation';
 		END IF;
 
 		SELECT	netblock_type
 		INTO	v_nbt
 		FROM	netblock
-		WHERE	netblock_id = NEW.stop_netblock_id;
+		WHERE	netblock_id = NEW.stop_netblock_id
+		AND		netblock_type != v_nrt.netblock_type;
 
 		IF FOUND THEN
 			RAISE EXCEPTION 'For range %, stop netblock_type must be %, not %',
@@ -119,7 +121,7 @@ BEGIN
 			) AND is_single_address = 'N';
 
 	IF FOUND THEN
-		RAISE EXCEPTION 'Start and stop types must single addresses'
+		RAISE EXCEPTION 'Start and stop types must be single addresses'
 			USING ERRCODE = 'integrity_constraint_violation';
 	END IF;
 
@@ -134,15 +136,15 @@ BEGIN
 	END IF;
 
 	PERFORM
-	FROM	netblock n
-			JOIN netblock parent ON paent.netblock_id = nr.parent_netblock_id
-			JOIN netblock start ON start.netblock_id = nr.start_netblock_id
-			JOIN netblock stop ON stop.netblock_id = nr.stop_netblock_id
+	FROM	netblock parent
+			JOIN netblock start ON start.netblock_id = NEW.start_netblock_id
+			JOIN netblock stop ON stop.netblock_id = NEW.stop_netblock_id
 	WHERE	
-			start.ip_address <<= parent.ip_address
-			or stop.ip_address <<= parent.ip_address
+			parent.netblock_id = NEW.parent_netblock_id
+			AND NOT ( host(start.ip_address)::inet <<= parent.ip_address
+				AND host(stop.ip_address)::inet <<= parent.ip_address
+			)
 	;
-			
 
 	IF FOUND THEN
 		RAISE EXCEPTION 'Start and stop must be within parents'
@@ -162,7 +164,7 @@ CREATE CONSTRAINT TRIGGER trigger_validate_network_range_ips
 	ON network_range
 	DEFERRABLE INITIALLY IMMEDIATE
 	FOR EACH ROW EXECUTE PROCEDURE
-		jazzhands.validate_network_range_dns();
+		jazzhands.validate_network_range_ips();
 
 
 ----------------------------------------------------------------------------
