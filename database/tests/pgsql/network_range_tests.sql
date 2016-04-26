@@ -127,7 +127,7 @@ BEGIN
 
 	RAISE NOTICE '++ Now, Tests..';
 
-	RAISE NOTICE 'Checking to see if prohibited dns domain fails...';
+	RAISE NOTICE 'Checking if prohibited dns domain fails...';
 	BEGIN
 		INSERT INTO network_range (
 			network_range_type, description, parent_netblock_id,
@@ -141,7 +141,7 @@ BEGIN
 		RAISE NOTICE '... It did';
 	END;
 
-	RAISE NOTICE 'Checking to see if required dns domain fails...';
+	RAISE NOTICE 'Checking if required dns domain fails...';
 	BEGIN
 		INSERT INTO network_range (
 			network_range_type, description, parent_netblock_id,
@@ -155,7 +155,7 @@ BEGIN
 		RAISE NOTICE '... It did';
 	END;
 
-	RAISE NOTICE 'Checking to see if required dns domain succeeds...';
+	RAISE NOTICE 'Checking if required dns domain succeeds...';
 	INSERT INTO network_range (
 		network_range_type, description, parent_netblock_id,
 		start_netblock_id, stop_netblock_id, dns_prefix, dns_domain_id
@@ -165,7 +165,7 @@ BEGIN
 	) RETURNING * INTO _nr1;
 	RAISE NOTICE '... IT DID!';
 
-	RAISE NOTICE 'Checking to see if prohibited dns domain succeeds...';
+	RAISE NOTICE 'Checking if prohibited dns domain succeeds...';
 	INSERT INTO network_range (
 		network_range_type, description, parent_netblock_id,
 		start_netblock_id, stop_netblock_id, dns_prefix, dns_domain_id
@@ -175,7 +175,7 @@ BEGIN
 	) RETURNING * INTO _nr1;
 	RAISE NOTICE '... IT DID!';
 
-	RAISE NOTICE 'Checking to see if can_subnet = Y start fails...';
+	RAISE NOTICE 'Checking if can_subnet = Y start fails...';
 	BEGIN
 		INSERT INTO network_range (
 			network_range_type, description, parent_netblock_id,
@@ -189,7 +189,7 @@ BEGIN
 		RAISE NOTICE '... It did';
 	END;
 
-	RAISE NOTICE 'Checking to see if is_single_address start fails...';
+	RAISE NOTICE 'Checking if is_single_address start fails...';
 	BEGIN
 		INSERT INTO network_range (
 			network_range_type, description, parent_netblock_id,
@@ -203,7 +203,7 @@ BEGIN
 		RAISE NOTICE '... It did';
 	END;
 
-	RAISE NOTICE 'Checking to see if is_single_address stop fails...';
+	RAISE NOTICE 'Checking if is_single_address stop fails...';
 	BEGIN
 		INSERT INTO network_range (
 			network_range_type, description, parent_netblock_id,
@@ -217,7 +217,7 @@ BEGIN
 		RAISE NOTICE '... It did';
 	END;
 
-	RAISE NOTICE 'Checking to see if start not in parent fails...';
+	RAISE NOTICE 'Checking if start not in parent fails...';
 	BEGIN
 		INSERT INTO network_range (
 			network_range_type, description, parent_netblock_id,
@@ -231,7 +231,7 @@ BEGIN
 		RAISE NOTICE '... It did';
 	END;
 
-	RAISE NOTICE 'Checking to see if stop not in parent fails...';
+	RAISE NOTICE 'Checking if stop not in parent fails...';
 	BEGIN
 		INSERT INTO network_range (
 			network_range_type, description, parent_netblock_id,
@@ -245,7 +245,7 @@ BEGIN
 		RAISE NOTICE '... It did';
 	END;
 
-	RAISE NOTICE 'Checking to see if bad netblock_type fails...';
+	RAISE NOTICE 'Checking if bad netblock_type fails...';
 	BEGIN
 		INSERT INTO network_range (
 			network_range_type, description, parent_netblock_id,
@@ -259,7 +259,7 @@ BEGIN
 		RAISE NOTICE '... It did';
 	END;
 
-	RAISE NOTICE 'Checking to see if good netblock_type Succeeds...';
+	RAISE NOTICE 'Checking if good netblock_type Succeeds...';
 	INSERT INTO network_range (
 		network_range_type, description, parent_netblock_id,
 		start_netblock_id, stop_netblock_id
@@ -268,6 +268,66 @@ BEGIN
 		_nb_start.netblock_id, _nb_stop.netblock_id
 	) RETURNING * INTO _nr1;
 	RAISE NOTICE '... It did';
+
+	RAISE NOTICE 'Checking if changing start ip fails...';
+	BEGIN
+		UPDATE	netblock
+		SET	ip_address = '10.0.0.1'
+		WHERE	netblock_id = _nr1.start_netblock_id;
+		RAISE EXCEPTION '... IT DID NOT.';
+	EXCEPTION WHEN integrity_constraint_violation THEN
+		RAISE NOTICE '... It did';
+	END;
+
+	RAISE NOTICE 'Checking if changing stop ip fails...';
+	BEGIN
+		UPDATE	netblock
+		SET	ip_address = '10.0.0.1'
+		WHERE	netblock_id = _nr1.stop_netblock_id;
+		RAISE EXCEPTION '... IT DID NOT.';
+	EXCEPTION WHEN integrity_constraint_violation THEN
+		RAISE NOTICE '... It did';
+	END;
+
+	RAISE NOTICE 'Checking if changing start.is_single_address fails...';
+	BEGIN
+		UPDATE	netblock
+		SET	is_single_address = 'N'
+		WHERE	netblock_id = _nr1.start_netblock_id;
+		RAISE EXCEPTION '... IT DID NOT.';
+	EXCEPTION WHEN integrity_constraint_violation THEN
+		RAISE NOTICE '... It did';
+	END;
+
+	RAISE NOTICE 'Checking if changing stop.is_single_address fails...';
+	BEGIN
+		UPDATE	netblock
+		SET	is_single_address = 'N'
+		WHERE	netblock_id = _nr1.stop_netblock_id;
+		RAISE EXCEPTION '... IT DID NOT.';
+	EXCEPTION WHEN integrity_constraint_violation THEN
+		RAISE NOTICE '... It did';
+	END;
+
+	RAISE NOTICE 'Checking if changing start.network_type fails...';
+	BEGIN
+		UPDATE	netblock
+		SET	netblock_type = 'default'
+		WHERE	netblock_id = _nr1.start_netblock_id;
+		RAISE EXCEPTION '... IT DID NOT.';
+	EXCEPTION WHEN integrity_constraint_violation THEN
+		RAISE NOTICE '... It did';
+	END;
+
+	RAISE NOTICE 'Checking if changing stop.network_type fails...';
+	BEGIN
+		UPDATE	netblock
+		SET	netblock_type = 'default'
+		WHERE	netblock_id = _nr1.stop_netblock_id;
+		RAISE EXCEPTION '... IT DID NOT.';
+	EXCEPTION WHEN integrity_constraint_violation THEN
+		RAISE NOTICE '... It did';
+	END;
 
 	RAISE NOTICE 'Cleaning up...';
 	RETURN true;

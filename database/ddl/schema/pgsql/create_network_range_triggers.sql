@@ -232,3 +232,127 @@ CREATE CONSTRAINT TRIGGER trigger_validate_val_network_range_type
 		jazzhands.validate_val_network_range_type();
 
 ----------------------------------------------------------------------------
+--
+-- if a type is switching to 'Y', make sure that this does not create
+-- invalid data.
+--
+CREATE OR REPLACE FUNCTION validate_val_network_range_type()
+RETURNS TRIGGER
+AS $$
+BEGIN
+	IF NEW.dns_domain_required = 'REQUIRED' THEN
+		PERFORM
+		FROM	network_range
+		WHERE	network_range_type = NEW.network_range_type
+		AND		dns_domain_id IS NULL;
+
+		IF FOUND THEN
+			RAISE EXCEPTION 'dns_domain_id is not set on some ranges'
+				USING ERRCODE = 'not_null_violation';
+		END IF;
+	ELSIF NEW.dns_domain_required = 'PROHIBITED' THEN
+		PERFORM
+		FROM	network_range
+		WHERE	network_range_type = NEW.network_range_type
+		AND		dns_domain_id IS NOT NULL;
+
+		IF FOUND THEN
+			RAISE EXCEPTION 'dns_domain_id is set on some ranges'
+				USING ERRCODE = 'integrity_constraint_violation';
+		END IF;
+	END IF;
+
+	IF NEW.netblock_type IS NOT NULL THEN
+		PERFORM
+		FROM	netblock_range nr
+				JOIN netblock start ON start.netblock_id = nr.start_netblock_id
+				JOIN netblock stop ON stop.netblock_id = nr.stop_netblock_id
+		WHERE	nr.network_range_type = NEW.network_range_type
+				(
+					start.netblock_type != NEW.netblock_type
+					OR		stop.netblock_type != NEW.netblock_type
+				);
+
+		IF FOUND THEN
+			RAISE EXCEPTION 'netblock type is not set to % on some % ranges',
+				NEW.netblock_type, NEW.network_range_type
+				USING ERRCODE = 'integrity_constraint_violation';
+		END IF;
+	END IF;
+
+	RETURN NEW;
+END; $$
+SET search_path=jazzhands
+LANGUAGE plpgsql
+SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS trigger_validate_val_network_range_type
+	ON val_network_range_type;
+CREATE CONSTRAINT TRIGGER trigger_validate_val_network_range_type
+	AFTER UPDATE OF dns_domain_required, netblock_type
+	ON val_network_range_type
+	DEFERRABLE INITIALLY IMMEDIATE
+	FOR EACH ROW EXECUTE PROCEDURE
+		jazzhands.validate_val_network_range_type();
+
+----------------------------------------------------------------------------
+----------------------------------------------------------------------------
+--
+-- netblock changes (back to netblock_range)
+--
+----------------------------------------------------------------------------
+----------------------------------------------------------------------------
+----------------------------------------------------------------------------
+--
+-- if a netblock is changing interesting fields, make sure it still works if
+-- it is in any network ranges.
+--
+CREATE OR REPLACE FUNCTION validate_netblock_to_range_changes()
+RETURNS TRIGGER
+AS $$
+BEGIN
+	PERFORM
+	FROM	network_range nr
+			JOIN netblock p on p.netblock_id = nr.parent_netblock_id
+			JOIN netblock start on start.netblock_id = nr.start_netblock_id
+			JOIN netblock stop on stop.netblock_id = nr.stop_netblock_id
+			JOIN val_network_range_type vnrt USING (network_range_type)
+	WHERE	( p.netblock_id = NEW.netblock_id 
+				OR start.netblock_id = NEW.netblock_id
+				OR stop.netblock_id = NEW.netblock_id
+			) AND (
+					p.can_subnet = 'Y'
+				OR 	start.is_single_address = 'N'
+				OR 	stop.is_single_address = 'N'
+				OR NOT (
+					host(start.ip_address)::inet <<= p.ip_address
+					AND host(stop.ip_address)::inet <<= p.ip_address
+				)
+				OR ( vnrt.netblock_type IS NOT NULL
+				OR NOT 
+					( start.netblock_type IS NOT DISTINCT FROM vnrt.netblock_type
+					AND	stop.netblock_type IS NOT DISTINCT FROM vnrt.netblock_type
+					)
+				)
+			)
+	;
+
+	IF FOUND THEN
+		RAISE EXCEPTION 'Netblock changes conflict with network range requirements '
+			USING ERRCODE = 'integrity_constraint_violation';
+	END IF;
+	RETURN NEW;
+END; $$
+SET search_path=jazzhands
+LANGUAGE plpgsql
+SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS trigger_validate_netblock_to_range_changes
+	ON netblock;
+CREATE CONSTRAINT TRIGGER trigger_validate_netblock_to_range_changes
+	AFTER UPDATE OF ip_address, is_single_address, can_subnet, netblock_type
+	ON netblock
+	DEFERRABLE INITIALLY IMMEDIATE
+	FOR EACH ROW EXECUTE PROCEDURE
+	jazzhands.validate_netblock_to_range_changes();
+
