@@ -551,6 +551,15 @@ END; $function$
 ;
 
 --
+-- Process middle (non-trigger) schema bidder
+--
+--
+-- Process middle (non-trigger) schema api
+--
+--
+-- Process middle (non-trigger) schema schema_support
+--
+--
 -- Process middle (non-trigger) schema net_manip
 --
 --
@@ -1224,11 +1233,6 @@ BEGIN
 			RAISE 'create_network_range: parent_netblock_id % does not exist',
 				parent_netblock_id USING ERRCODE = 'foreign_key_violation';
 		END IF;
-		IF par_netblock.can_subnet != 'N' OR 
-				par_netblock.is_single_address != 'N' THEN
-			RAISE 'create_network_range: parent netblock % must not be subnettable or a single address',
-				par_netblock.netblock_id USING ERRCODE = 'check_violation';
-		END IF;
 	ELSE
 		SELECT * INTO par_netblock FROM netblock WHERE netblock_id = (
 			SELECT 
@@ -1244,7 +1248,13 @@ BEGIN
 				start_ip_address USING ERRCODE = 'check_violation';
 		END IF;
 	END IF;
-	
+
+	IF par_netblock.can_subnet != 'N' OR 
+			par_netblock.is_single_address != 'N' THEN
+		RAISE 'create_network_range: parent netblock % must not be subnettable or a single address',
+			par_netblock.netblock_id USING ERRCODE = 'check_violation';
+	END IF;
+
 	IF NOT (start_ip_address <<= par_netblock.ip_address) THEN
 		RAISE 'create_network_range: start_ip_address % is not contained by parent netblock % (%)',
 			start_ip_address, par_netblock.ip_address,
@@ -1297,7 +1307,7 @@ BEGIN
 		start_netblock
 	WHERE
 		host(n.ip_address)::inet = start_ip_address AND
-		n.netblock_type = 'adhoc' AND
+		n.netblock_type = 'network_range' AND
 		n.can_subnet = 'N' AND
 		n.is_single_address = 'Y' AND
 		n.ip_universe_id = par_netblock.ip_universe_id;
@@ -1312,7 +1322,7 @@ BEGIN
 			ip_universe_id
 		) VALUES (
 			host(start_ip_address)::inet,
-			'adhoc',
+			'network_range',
 			'Y',
 			'N',
 			'Allocated',
@@ -1328,7 +1338,7 @@ BEGIN
 		stop_netblock
 	WHERE
 		host(n.ip_address)::inet = stop_ip_address AND
-		n.netblock_type = 'adhoc' AND
+		n.netblock_type = 'network_range' AND
 		n.can_subnet = 'N' AND
 		n.is_single_address = 'Y' AND
 		n.ip_universe_id = par_netblock.ip_universe_id;
@@ -1343,7 +1353,7 @@ BEGIN
 			ip_universe_id
 		) VALUES (
 			host(stop_ip_address)::inet,
-			'adhoc',
+			'network_range',
 			'Y',
 			'N',
 			'Allocated',
@@ -1391,7 +1401,7 @@ $function$
 -- Process middle (non-trigger) schema account_collection_manip
 --
 --
--- Process middle (non-trigger) schema schema_support
+-- Process middle (non-trigger) schema salesforce
 --
 --
 -- Process middle (non-trigger) schema script_hooks
@@ -1400,7 +1410,7 @@ $function$
 
 
 --------------------------------------------------------------------
--- DEALING WITH TABLE val_country_code [941420]
+-- DEALING WITH TABLE val_country_code [960929]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'val_country_code', 'val_country_code');
 
@@ -1544,7 +1554,7 @@ SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_country_code');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_country_code');
 DROP TABLE IF EXISTS val_country_code_v70;
 DROP TABLE IF EXISTS audit.val_country_code_v70;
--- DONE DEALING WITH TABLE val_country_code [942792]
+-- DONE DEALING WITH TABLE val_country_code [970865]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE val_iso_currency_code
@@ -1698,10 +1708,10 @@ ALTER TABLE val_country_code
 SELECT schema_support.replay_object_recreates();
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_iso_currency_code');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_iso_currency_code');
--- DONE DEALING WITH TABLE val_iso_currency_code [943085]
+-- DONE DEALING WITH TABLE val_iso_currency_code [971033]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE val_netblock_collection_type [941813]
+-- DEALING WITH TABLE val_netblock_collection_type [961148]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'val_netblock_collection_type', 'val_netblock_collection_type');
 
@@ -1880,10 +1890,10 @@ SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_netblock_collectio
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_netblock_collection_type');
 DROP TABLE IF EXISTS val_netblock_collection_type_v70;
 DROP TABLE IF EXISTS audit.val_netblock_collection_type_v70;
--- DONE DEALING WITH TABLE val_netblock_collection_type [943201]
+-- DONE DEALING WITH TABLE val_netblock_collection_type [971106]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE val_network_range_type [941897]
+-- DEALING WITH TABLE val_network_range_type [961194]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'val_network_range_type', 'val_network_range_type');
 
@@ -2026,7 +2036,7 @@ ALTER TABLE val_network_range_type
 	FOREIGN KEY (netblock_type) REFERENCES val_netblock_type(netblock_type);
 
 -- TRIGGERS
--- consider NEW oid 957354
+-- consider NEW oid 978553
 CREATE OR REPLACE FUNCTION jazzhands.validate_val_network_range_type()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -2086,10 +2096,10 @@ SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_network_range_type
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_network_range_type');
 DROP TABLE IF EXISTS val_network_range_type_v70;
 DROP TABLE IF EXISTS audit.val_network_range_type_v70;
--- DONE DEALING WITH TABLE val_network_range_type [943332]
+-- DONE DEALING WITH TABLE val_network_range_type [971180]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE layer3_network [939070]
+-- DEALING WITH TABLE layer3_network [959715]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'layer3_network', 'layer3_network');
 
@@ -2263,10 +2273,10 @@ ALTER SEQUENCE layer3_network_layer3_network_id_seq
 	 OWNED BY layer3_network.layer3_network_id;
 DROP TABLE IF EXISTS layer3_network_v70;
 DROP TABLE IF EXISTS audit.layer3_network_v70;
--- DONE DEALING WITH TABLE layer3_network [940217]
+-- DONE DEALING WITH TABLE layer3_network [969644]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE netblock_collection [939348]
+-- DEALING WITH TABLE netblock_collection [959860]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'netblock_collection', 'netblock_collection');
 
@@ -2436,7 +2446,7 @@ ALTER TABLE netblock_collection
 	FOREIGN KEY (netblock_collection_type) REFERENCES val_netblock_collection_type(netblock_collection_type);
 
 -- TRIGGERS
--- consider NEW oid 957202
+-- consider NEW oid 978401
 CREATE OR REPLACE FUNCTION jazzhands.validate_netblock_collection_type_change()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -2475,10 +2485,10 @@ ALTER SEQUENCE netblock_collection_netblock_collection_id_seq
 	 OWNED BY netblock_collection.netblock_collection_id;
 DROP TABLE IF EXISTS netblock_collection_v70;
 DROP TABLE IF EXISTS audit.netblock_collection_v70;
--- DONE DEALING WITH TABLE netblock_collection [940504]
+-- DONE DEALING WITH TABLE netblock_collection [969790]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE person_company_attr [939804]
+-- DEALING WITH TABLE person_company_attr [960078]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'person_company_attr', 'person_company_attr');
 
@@ -2640,7 +2650,7 @@ ALTER TABLE person_company_attr
 	FOREIGN KEY (person_company_attr_name) REFERENCES val_person_company_attr_name(person_company_attr_name);
 
 -- TRIGGERS
--- consider NEW oid 957431
+-- consider NEW oid 978630
 CREATE OR REPLACE FUNCTION jazzhands.validate_pers_company_attr()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -2730,10 +2740,10 @@ SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'person_company_attr');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'person_company_attr');
 DROP TABLE IF EXISTS person_company_attr_v70;
 DROP TABLE IF EXISTS audit.person_company_attr_v70;
--- DONE DEALING WITH TABLE person_company_attr [940996]
+-- DONE DEALING WITH TABLE person_company_attr [970009]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE v_account_manager_map [955245]
+-- DEALING WITH TABLE v_account_manager_map [968073]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'v_account_manager_map', 'v_account_manager_map');
 SELECT schema_support.save_dependent_objects_for_replay('jazzhands', 'v_account_manager_map');
@@ -2780,7 +2790,7 @@ CREATE VIEW jazzhands.v_account_manager_map AS
      JOIN dude mp ON mp.person_id = a.manager_person_id AND mp.account_realm_id = a.account_realm_id;
 
 delete from __recreate where type = 'view' and object = 'v_account_manager_map';
--- DONE DEALING WITH TABLE v_account_manager_map [956829]
+-- DONE DEALING WITH TABLE v_account_manager_map [978101]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE v_l3_network_coll_expanded
@@ -2813,7 +2823,7 @@ CREATE VIEW jazzhands.v_l3_network_coll_expanded AS
     l3_network_coll_recurse.rvs_array_path
    FROM l3_network_coll_recurse;
 
--- DONE DEALING WITH TABLE v_l3_network_coll_expanded [956915]
+-- DONE DEALING WITH TABLE v_l3_network_coll_expanded [978167]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE v_l2_network_coll_expanded
@@ -2846,10 +2856,10 @@ CREATE VIEW jazzhands.v_l2_network_coll_expanded AS
     l2_network_coll_recurse.rvs_array_path
    FROM l2_network_coll_recurse;
 
--- DONE DEALING WITH TABLE v_l2_network_coll_expanded [956909]
+-- DONE DEALING WITH TABLE v_l2_network_coll_expanded [978162]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE v_account_collection_audit_results [955298]
+-- DEALING WITH TABLE v_account_collection_audit_results [968094]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'v_account_collection_audit_results', 'v_account_collection_audit_results');
 SELECT schema_support.save_dependent_objects_for_replay('approval_utils', 'v_account_collection_audit_results');
@@ -2897,10 +2907,10 @@ CREATE VIEW approval_utils.v_account_collection_audit_results AS
    FROM membermap;
 
 delete from __recreate where type = 'view' and object = 'v_account_collection_audit_results';
--- DONE DEALING WITH TABLE v_account_collection_audit_results [956858]
+-- DONE DEALING WITH TABLE v_account_collection_audit_results [978123]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE v_account_collection_approval_process [955315]
+-- DEALING WITH TABLE v_account_collection_approval_process [968099]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'v_account_collection_approval_process', 'v_account_collection_approval_process');
 SELECT schema_support.save_dependent_objects_for_replay('approval_utils', 'v_account_collection_approval_process');
@@ -3066,7 +3076,7 @@ CREATE VIEW approval_utils.v_account_collection_approval_process AS
   ORDER BY combo.manager_login, combo.account_id, combo.approval_label;
 
 delete from __recreate where type = 'view' and object = 'v_account_collection_approval_process';
--- DONE DEALING WITH TABLE v_account_collection_approval_process [956865]
+-- DONE DEALING WITH TABLE v_account_collection_approval_process [978128]
 --------------------------------------------------------------------
 --
 -- Process drops in jazzhands
@@ -3595,6 +3605,16 @@ BEGIN
 END; $function$
 ;
 
+--
+-- Process drops in bidder
+--
+--
+-- Process drops in api
+--
+--
+-- Process drops in schema_support
+--
+DROP FUNCTION IF EXISTS schema_support.save_dependant_objects_for_replay ( schema character varying, object character varying, dropit boolean, doobjectdeps boolean );
 --
 -- Process drops in net_manip
 --
@@ -4269,11 +4289,6 @@ BEGIN
 			RAISE 'create_network_range: parent_netblock_id % does not exist',
 				parent_netblock_id USING ERRCODE = 'foreign_key_violation';
 		END IF;
-		IF par_netblock.can_subnet != 'N' OR 
-				par_netblock.is_single_address != 'N' THEN
-			RAISE 'create_network_range: parent netblock % must not be subnettable or a single address',
-				par_netblock.netblock_id USING ERRCODE = 'check_violation';
-		END IF;
 	ELSE
 		SELECT * INTO par_netblock FROM netblock WHERE netblock_id = (
 			SELECT 
@@ -4289,7 +4304,13 @@ BEGIN
 				start_ip_address USING ERRCODE = 'check_violation';
 		END IF;
 	END IF;
-	
+
+	IF par_netblock.can_subnet != 'N' OR 
+			par_netblock.is_single_address != 'N' THEN
+		RAISE 'create_network_range: parent netblock % must not be subnettable or a single address',
+			par_netblock.netblock_id USING ERRCODE = 'check_violation';
+	END IF;
+
 	IF NOT (start_ip_address <<= par_netblock.ip_address) THEN
 		RAISE 'create_network_range: start_ip_address % is not contained by parent netblock % (%)',
 			start_ip_address, par_netblock.ip_address,
@@ -4342,7 +4363,7 @@ BEGIN
 		start_netblock
 	WHERE
 		host(n.ip_address)::inet = start_ip_address AND
-		n.netblock_type = 'adhoc' AND
+		n.netblock_type = 'network_range' AND
 		n.can_subnet = 'N' AND
 		n.is_single_address = 'Y' AND
 		n.ip_universe_id = par_netblock.ip_universe_id;
@@ -4357,7 +4378,7 @@ BEGIN
 			ip_universe_id
 		) VALUES (
 			host(start_ip_address)::inet,
-			'adhoc',
+			'network_range',
 			'Y',
 			'N',
 			'Allocated',
@@ -4373,7 +4394,7 @@ BEGIN
 		stop_netblock
 	WHERE
 		host(n.ip_address)::inet = stop_ip_address AND
-		n.netblock_type = 'adhoc' AND
+		n.netblock_type = 'network_range' AND
 		n.can_subnet = 'N' AND
 		n.is_single_address = 'Y' AND
 		n.ip_universe_id = par_netblock.ip_universe_id;
@@ -4388,7 +4409,7 @@ BEGIN
 			ip_universe_id
 		) VALUES (
 			host(stop_ip_address)::inet,
-			'adhoc',
+			'network_range',
 			'Y',
 			'N',
 			'Allocated',
@@ -4436,9 +4457,8 @@ $function$
 -- Process drops in account_collection_manip
 --
 --
--- Process drops in schema_support
+-- Process drops in salesforce
 --
-DROP FUNCTION IF EXISTS schema_support.save_dependant_objects_for_replay ( schema character varying, object character varying, dropit boolean, doobjectdeps boolean );
 --
 -- Process drops in script_hooks
 --
