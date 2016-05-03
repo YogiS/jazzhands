@@ -1410,7 +1410,7 @@ $function$
 
 
 --------------------------------------------------------------------
--- DEALING WITH TABLE val_country_code [960929]
+-- DEALING WITH TABLE val_country_code [982179]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'val_country_code', 'val_country_code');
 
@@ -1554,7 +1554,7 @@ SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_country_code');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_country_code');
 DROP TABLE IF EXISTS val_country_code_v70;
 DROP TABLE IF EXISTS audit.val_country_code_v70;
--- DONE DEALING WITH TABLE val_country_code [970865]
+-- DONE DEALING WITH TABLE val_country_code [1020764]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE val_iso_currency_code
@@ -1708,10 +1708,10 @@ ALTER TABLE val_country_code
 SELECT schema_support.replay_object_recreates();
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_iso_currency_code');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_iso_currency_code');
--- DONE DEALING WITH TABLE val_iso_currency_code [971033]
+-- DONE DEALING WITH TABLE val_iso_currency_code [1020923]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE val_netblock_collection_type [961148]
+-- DEALING WITH TABLE val_netblock_collection_type [982398]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'val_netblock_collection_type', 'val_netblock_collection_type');
 
@@ -1890,10 +1890,10 @@ SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_netblock_collectio
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_netblock_collection_type');
 DROP TABLE IF EXISTS val_netblock_collection_type_v70;
 DROP TABLE IF EXISTS audit.val_netblock_collection_type_v70;
--- DONE DEALING WITH TABLE val_netblock_collection_type [971106]
+-- DONE DEALING WITH TABLE val_netblock_collection_type [1020992]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE val_network_range_type [961194]
+-- DEALING WITH TABLE val_network_range_type [982444]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'val_network_range_type', 'val_network_range_type');
 
@@ -2036,7 +2036,7 @@ ALTER TABLE val_network_range_type
 	FOREIGN KEY (netblock_type) REFERENCES val_netblock_type(netblock_type);
 
 -- TRIGGERS
--- consider NEW oid 978553
+-- consider NEW oid 1028400
 CREATE OR REPLACE FUNCTION jazzhands.validate_val_network_range_type()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -2096,10 +2096,10 @@ SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_network_range_type
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_network_range_type');
 DROP TABLE IF EXISTS val_network_range_type_v70;
 DROP TABLE IF EXISTS audit.val_network_range_type_v70;
--- DONE DEALING WITH TABLE val_network_range_type [971180]
+-- DONE DEALING WITH TABLE val_network_range_type [1021039]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE layer3_network [959715]
+-- DEALING WITH TABLE layer3_network [980967]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'layer3_network', 'layer3_network');
 
@@ -2273,10 +2273,10 @@ ALTER SEQUENCE layer3_network_layer3_network_id_seq
 	 OWNED BY layer3_network.layer3_network_id;
 DROP TABLE IF EXISTS layer3_network_v70;
 DROP TABLE IF EXISTS audit.layer3_network_v70;
--- DONE DEALING WITH TABLE layer3_network [969644]
+-- DONE DEALING WITH TABLE layer3_network [1019550]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE netblock_collection [959860]
+-- DEALING WITH TABLE netblock_collection [981112]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'netblock_collection', 'netblock_collection');
 
@@ -2446,7 +2446,7 @@ ALTER TABLE netblock_collection
 	FOREIGN KEY (netblock_collection_type) REFERENCES val_netblock_collection_type(netblock_collection_type);
 
 -- TRIGGERS
--- consider NEW oid 978401
+-- consider NEW oid 1028248
 CREATE OR REPLACE FUNCTION jazzhands.validate_netblock_collection_type_change()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -2485,10 +2485,10 @@ ALTER SEQUENCE netblock_collection_netblock_collection_id_seq
 	 OWNED BY netblock_collection.netblock_collection_id;
 DROP TABLE IF EXISTS netblock_collection_v70;
 DROP TABLE IF EXISTS audit.netblock_collection_v70;
--- DONE DEALING WITH TABLE netblock_collection [969790]
+-- DONE DEALING WITH TABLE netblock_collection [1019696]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE person_company_attr [960078]
+-- DEALING WITH TABLE person_company_attr [981330]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'person_company_attr', 'person_company_attr');
 
@@ -2650,7 +2650,7 @@ ALTER TABLE person_company_attr
 	FOREIGN KEY (person_company_attr_name) REFERENCES val_person_company_attr_name(person_company_attr_name);
 
 -- TRIGGERS
--- consider NEW oid 978630
+-- consider NEW oid 1028477
 CREATE OR REPLACE FUNCTION jazzhands.validate_pers_company_attr()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -2740,10 +2740,10 @@ SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'person_company_attr');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'person_company_attr');
 DROP TABLE IF EXISTS person_company_attr_v70;
 DROP TABLE IF EXISTS audit.person_company_attr_v70;
--- DONE DEALING WITH TABLE person_company_attr [970009]
+-- DONE DEALING WITH TABLE person_company_attr [1019915]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE v_account_manager_map [968073]
+-- DEALING WITH TABLE v_account_manager_map [989323]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'v_account_manager_map', 'v_account_manager_map');
 SELECT schema_support.save_dependent_objects_for_replay('jazzhands', 'v_account_manager_map');
@@ -2757,7 +2757,9 @@ CREATE VIEW jazzhands.v_account_manager_map AS
             a_1.account_realm_id,
             COALESCE(p.preferred_first_name, p.first_name) AS first_name,
             COALESCE(p.preferred_last_name, p.last_name) AS last_name,
-            pc.manager_person_id
+            p.middle_name,
+            pc.manager_person_id,
+            pc.employee_id
            FROM account a_1
              JOIN person_company pc USING (company_id, person_id)
              JOIN person p USING (person_id)
@@ -2770,7 +2772,9 @@ CREATE VIEW jazzhands.v_account_manager_map AS
             dude_base.account_realm_id,
             dude_base.first_name,
             dude_base.last_name,
+            dude_base.middle_name,
             dude_base.manager_person_id,
+            dude_base.employee_id,
             concat(dude_base.first_name, ' ', dude_base.last_name, ' (', dude_base.login, ')') AS human_readable
            FROM dude_base
         )
@@ -2781,16 +2785,82 @@ CREATE VIEW jazzhands.v_account_manager_map AS
     a.account_realm_id,
     a.first_name,
     a.last_name,
+    a.middle_name,
     a.manager_person_id,
+    a.employee_id,
     a.human_readable,
     mp.account_id AS manager_account_id,
     mp.login AS manager_login,
-    concat(mp.first_name, ' ', mp.last_name, ' (', mp.login, ')') AS manager_human_readable
+    concat(mp.first_name, ' ', mp.last_name, ' (', mp.login, ')') AS manager_human_readable,
+    mp.last_name AS manager_last_name,
+    mp.middle_name AS manager_middle_name,
+    mp.first_name AS manger_first_name,
+    mp.employee_id AS manager_employee_id,
+    mp.company_id AS manager_company_id
    FROM dude a
      JOIN dude mp ON mp.person_id = a.manager_person_id AND mp.account_realm_id = a.account_realm_id;
 
 delete from __recreate where type = 'view' and object = 'v_account_manager_map';
--- DONE DEALING WITH TABLE v_account_manager_map [978101]
+-- DONE DEALING WITH TABLE v_account_manager_map [1027947]
+--------------------------------------------------------------------
+--------------------------------------------------------------------
+-- DEALING WITH NEW TABLE v_person_company
+DROP VIEW IF EXISTS jazzhands.v_person_company;
+CREATE VIEW jazzhands.v_person_company AS
+ SELECT person_company.company_id,
+    person_company.person_id,
+    person_company.person_company_status,
+    person_company.person_company_relation,
+    person_company.is_exempt,
+    person_company.is_management,
+    person_company.is_full_time,
+    person_company.description,
+    person_company.employee_id,
+    person_company.payroll_id,
+    person_company.external_hr_id,
+    person_company.position_title,
+    person_company.badge_system_id,
+    person_company.hire_date,
+    person_company.termination_date,
+    person_company.manager_person_id,
+    person_company.supervisor_person_id,
+    person_company.nickname,
+    person_company.data_ins_user,
+    person_company.data_ins_date,
+    person_company.data_upd_user,
+    person_company.data_upd_date
+   FROM person_company;
+
+-- DONE DEALING WITH TABLE v_person_company [1028023]
+--------------------------------------------------------------------
+--------------------------------------------------------------------
+-- DEALING WITH NEW TABLE v_person
+DROP VIEW IF EXISTS jazzhands.v_person;
+CREATE VIEW jazzhands.v_person AS
+ SELECT person.person_id,
+    person.description,
+    COALESCE(person.preferred_first_name, person.first_name) AS first_name,
+    person.middle_name,
+    COALESCE(person.preferred_last_name, person.last_name) AS last_name,
+    person.name_suffix,
+    person.gender,
+    person.preferred_first_name,
+    person.preferred_last_name,
+    person.first_name AS legal_first_name,
+    person.last_name AS legal_last_name,
+    person.nickname,
+    person.birth_date,
+    person.diet,
+    person.shirt_size,
+    person.pant_size,
+    person.hat_size,
+    person.data_ins_user,
+    person.data_ins_date,
+    person.data_upd_user,
+    person.data_upd_date
+   FROM person;
+
+-- DONE DEALING WITH TABLE v_person [1028019]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE v_l3_network_coll_expanded
@@ -2823,7 +2893,7 @@ CREATE VIEW jazzhands.v_l3_network_coll_expanded AS
     l3_network_coll_recurse.rvs_array_path
    FROM l3_network_coll_recurse;
 
--- DONE DEALING WITH TABLE v_l3_network_coll_expanded [978167]
+-- DONE DEALING WITH TABLE v_l3_network_coll_expanded [1028014]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE v_l2_network_coll_expanded
@@ -2856,10 +2926,10 @@ CREATE VIEW jazzhands.v_l2_network_coll_expanded AS
     l2_network_coll_recurse.rvs_array_path
    FROM l2_network_coll_recurse;
 
--- DONE DEALING WITH TABLE v_l2_network_coll_expanded [978162]
+-- DONE DEALING WITH TABLE v_l2_network_coll_expanded [1028009]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE v_account_collection_audit_results [968094]
+-- DEALING WITH TABLE v_account_collection_audit_results [989344]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'v_account_collection_audit_results', 'v_account_collection_audit_results');
 SELECT schema_support.save_dependent_objects_for_replay('approval_utils', 'v_account_collection_audit_results');
@@ -2877,11 +2947,18 @@ CREATE VIEW approval_utils.v_account_collection_audit_results AS
             a.account_realm_id,
             a.first_name,
             a.last_name,
+            a.middle_name,
             a.manager_person_id,
+            a.employee_id,
             a.human_readable,
             a.manager_account_id,
             a.manager_login,
-            a.manager_human_readable
+            a.manager_human_readable,
+            a.manager_last_name,
+            a.manager_middle_name,
+            a.manger_first_name,
+            a.manager_employee_id,
+            a.manager_company_id
            FROM v_account_manager_map a
              JOIN approval_utils.v_account_collection_account_audit_map aca USING (account_id)
              JOIN account_collection ac USING (account_collection_id)
@@ -2899,18 +2976,25 @@ CREATE VIEW approval_utils.v_account_collection_audit_results AS
     membermap.account_realm_id,
     membermap.first_name,
     membermap.last_name,
+    membermap.middle_name,
     membermap.manager_person_id,
+    membermap.employee_id,
     membermap.human_readable,
     membermap.manager_account_id,
     membermap.manager_login,
-    membermap.manager_human_readable
+    membermap.manager_human_readable,
+    membermap.manager_last_name,
+    membermap.manager_middle_name,
+    membermap.manger_first_name,
+    membermap.manager_employee_id,
+    membermap.manager_company_id
    FROM membermap;
 
 delete from __recreate where type = 'view' and object = 'v_account_collection_audit_results';
--- DONE DEALING WITH TABLE v_account_collection_audit_results [978123]
+-- DONE DEALING WITH TABLE v_account_collection_audit_results [1027968]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE v_account_collection_approval_process [968099]
+-- DEALING WITH TABLE v_account_collection_approval_process [989349]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'v_account_collection_approval_process', 'v_account_collection_approval_process');
 SELECT schema_support.save_dependent_objects_for_replay('approval_utils', 'v_account_collection_approval_process');
@@ -2929,11 +3013,18 @@ CREATE VIEW approval_utils.v_account_collection_approval_process AS
                     mm.account_realm_id,
                     mm.first_name,
                     mm.last_name,
+                    mm.middle_name,
                     mm.manager_person_id,
+                    mm.employee_id,
                     mm.human_readable,
                     mm.manager_account_id,
                     mm.manager_login,
                     mm.manager_human_readable,
+                    mm.manager_last_name,
+                    mm.manager_middle_name,
+                    mm.manger_first_name,
+                    mm.manager_employee_id,
+                    mm.manager_company_id,
                     mx.approval_process_id,
                     mx.first_apprvl_process_chain_id,
                     mx.approval_process_name,
@@ -3076,7 +3167,7 @@ CREATE VIEW approval_utils.v_account_collection_approval_process AS
   ORDER BY combo.manager_login, combo.account_id, combo.approval_label;
 
 delete from __recreate where type = 'view' and object = 'v_account_collection_approval_process';
--- DONE DEALING WITH TABLE v_account_collection_approval_process [978128]
+-- DONE DEALING WITH TABLE v_account_collection_approval_process [1027975]
 --------------------------------------------------------------------
 --
 -- Process drops in jazzhands
