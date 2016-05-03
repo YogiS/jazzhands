@@ -1410,7 +1410,7 @@ $function$
 
 
 --------------------------------------------------------------------
--- DEALING WITH TABLE val_country_code [1061937]
+-- DEALING WITH TABLE val_country_code [1102873]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'val_country_code', 'val_country_code');
 
@@ -1554,7 +1554,7 @@ SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_country_code');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_country_code');
 DROP TABLE IF EXISTS val_country_code_v70;
 DROP TABLE IF EXISTS audit.val_country_code_v70;
--- DONE DEALING WITH TABLE val_country_code [1071929]
+-- DONE DEALING WITH TABLE val_country_code [1112809]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE val_iso_currency_code
@@ -1708,10 +1708,10 @@ ALTER TABLE val_country_code
 SELECT schema_support.replay_object_recreates();
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_iso_currency_code');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_iso_currency_code');
--- DONE DEALING WITH TABLE val_iso_currency_code [1072088]
+-- DONE DEALING WITH TABLE val_iso_currency_code [1112975]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE val_netblock_collection_type [1062156]
+-- DEALING WITH TABLE val_netblock_collection_type [1103092]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'val_netblock_collection_type', 'val_netblock_collection_type');
 
@@ -1890,10 +1890,10 @@ SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_netblock_collectio
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_netblock_collection_type');
 DROP TABLE IF EXISTS val_netblock_collection_type_v70;
 DROP TABLE IF EXISTS audit.val_netblock_collection_type_v70;
--- DONE DEALING WITH TABLE val_netblock_collection_type [1072157]
+-- DONE DEALING WITH TABLE val_netblock_collection_type [1113044]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE val_network_range_type [1062202]
+-- DEALING WITH TABLE val_network_range_type [1103138]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'val_network_range_type', 'val_network_range_type');
 
@@ -2036,7 +2036,7 @@ ALTER TABLE val_network_range_type
 	FOREIGN KEY (netblock_type) REFERENCES val_netblock_type(netblock_type);
 
 -- TRIGGERS
--- consider NEW oid 1079569
+-- consider NEW oid 1120502
 CREATE OR REPLACE FUNCTION jazzhands.validate_val_network_range_type()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -2096,10 +2096,10 @@ SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_network_range_type
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_network_range_type');
 DROP TABLE IF EXISTS val_network_range_type_v70;
 DROP TABLE IF EXISTS audit.val_network_range_type_v70;
--- DONE DEALING WITH TABLE val_network_range_type [1072204]
+-- DONE DEALING WITH TABLE val_network_range_type [1113091]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE layer3_network [1060724]
+-- DEALING WITH TABLE layer3_network [1101661]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'layer3_network', 'layer3_network');
 
@@ -2273,10 +2273,10 @@ ALTER SEQUENCE layer3_network_layer3_network_id_seq
 	 OWNED BY layer3_network.layer3_network_id;
 DROP TABLE IF EXISTS layer3_network_v70;
 DROP TABLE IF EXISTS audit.layer3_network_v70;
--- DONE DEALING WITH TABLE layer3_network [1070715]
+-- DONE DEALING WITH TABLE layer3_network [1111592]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE netblock_collection [1060869]
+-- DEALING WITH TABLE netblock_collection [1101806]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'netblock_collection', 'netblock_collection');
 
@@ -2446,7 +2446,7 @@ ALTER TABLE netblock_collection
 	FOREIGN KEY (netblock_collection_type) REFERENCES val_netblock_collection_type(netblock_collection_type);
 
 -- TRIGGERS
--- consider NEW oid 1079408
+-- consider NEW oid 1120350
 CREATE OR REPLACE FUNCTION jazzhands.validate_netblock_collection_type_change()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -2485,10 +2485,10 @@ ALTER SEQUENCE netblock_collection_netblock_collection_id_seq
 	 OWNED BY netblock_collection.netblock_collection_id;
 DROP TABLE IF EXISTS netblock_collection_v70;
 DROP TABLE IF EXISTS audit.netblock_collection_v70;
--- DONE DEALING WITH TABLE netblock_collection [1070861]
+-- DONE DEALING WITH TABLE netblock_collection [1111738]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE person_company_attr [1061087]
+-- DEALING WITH TABLE person_company_attr [1102024]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'person_company_attr', 'person_company_attr');
 
@@ -2650,7 +2650,7 @@ ALTER TABLE person_company_attr
 	FOREIGN KEY (person_company_attr_name) REFERENCES val_person_company_attr_name(person_company_attr_name);
 
 -- TRIGGERS
--- consider NEW oid 1079646
+-- consider NEW oid 1120579
 CREATE OR REPLACE FUNCTION jazzhands.validate_pers_company_attr()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -2740,10 +2740,10 @@ SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'person_company_attr');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'person_company_attr');
 DROP TABLE IF EXISTS person_company_attr_v70;
 DROP TABLE IF EXISTS audit.person_company_attr_v70;
--- DONE DEALING WITH TABLE person_company_attr [1071080]
+-- DONE DEALING WITH TABLE person_company_attr [1111957]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE v_account_manager_map [1069081]
+-- DEALING WITH TABLE v_account_manager_map [1110021]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'v_account_manager_map', 'v_account_manager_map');
 SELECT schema_support.save_dependent_objects_for_replay('jazzhands', 'v_account_manager_map');
@@ -2801,7 +2801,7 @@ CREATE VIEW jazzhands.v_account_manager_map AS
      JOIN dude mp ON mp.person_id = a.manager_person_id AND mp.account_realm_id = a.account_realm_id;
 
 delete from __recreate where type = 'view' and object = 'v_account_manager_map';
--- DONE DEALING WITH TABLE v_account_manager_map [1079108]
+-- DONE DEALING WITH TABLE v_account_manager_map [1120051]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE v_person_company
@@ -2831,7 +2831,7 @@ CREATE VIEW jazzhands.v_person_company AS
     person_company.data_upd_date
    FROM person_company;
 
--- DONE DEALING WITH TABLE v_person_company [1079182]
+-- DONE DEALING WITH TABLE v_person_company [1120125]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE v_person
@@ -2860,7 +2860,7 @@ CREATE VIEW jazzhands.v_person AS
     person.data_upd_date
    FROM person;
 
--- DONE DEALING WITH TABLE v_person [1079178]
+-- DONE DEALING WITH TABLE v_person [1120121]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE v_l3_network_coll_expanded
@@ -2893,7 +2893,7 @@ CREATE VIEW jazzhands.v_l3_network_coll_expanded AS
     l3_network_coll_recurse.rvs_array_path
    FROM l3_network_coll_recurse;
 
--- DONE DEALING WITH TABLE v_l3_network_coll_expanded [1079173]
+-- DONE DEALING WITH TABLE v_l3_network_coll_expanded [1120116]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE v_l2_network_coll_expanded
@@ -2926,10 +2926,10 @@ CREATE VIEW jazzhands.v_l2_network_coll_expanded AS
     l2_network_coll_recurse.rvs_array_path
    FROM l2_network_coll_recurse;
 
--- DONE DEALING WITH TABLE v_l2_network_coll_expanded [1079168]
+-- DONE DEALING WITH TABLE v_l2_network_coll_expanded [1120111]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE v_account_collection_audit_results [1069102]
+-- DEALING WITH TABLE v_account_collection_audit_results [1110042]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'v_account_collection_audit_results', 'v_account_collection_audit_results');
 SELECT schema_support.save_dependent_objects_for_replay('approval_utils', 'v_account_collection_audit_results');
@@ -2991,10 +2991,10 @@ CREATE VIEW approval_utils.v_account_collection_audit_results AS
    FROM membermap;
 
 delete from __recreate where type = 'view' and object = 'v_account_collection_audit_results';
--- DONE DEALING WITH TABLE v_account_collection_audit_results [1079129]
+-- DONE DEALING WITH TABLE v_account_collection_audit_results [1120072]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE v_account_collection_approval_process [1069107]
+-- DEALING WITH TABLE v_account_collection_approval_process [1110047]
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'v_account_collection_approval_process', 'v_account_collection_approval_process');
 SELECT schema_support.save_dependent_objects_for_replay('approval_utils', 'v_account_collection_approval_process');
@@ -3167,7 +3167,7 @@ CREATE VIEW approval_utils.v_account_collection_approval_process AS
   ORDER BY combo.manager_login, combo.account_id, combo.approval_label;
 
 delete from __recreate where type = 'view' and object = 'v_account_collection_approval_process';
--- DONE DEALING WITH TABLE v_account_collection_approval_process [1079134]
+-- DONE DEALING WITH TABLE v_account_collection_approval_process [1120077]
 --------------------------------------------------------------------
 --
 -- Process drops in jazzhands
@@ -4564,16 +4564,24 @@ $function$
 -- fk constraints
 -- index
 -- triggers
+DROP TRIGGER IF EXISTS trigger_member_device_collection_after_hooks ON device_collection_device;
 CREATE TRIGGER trigger_member_device_collection_after_hooks AFTER INSERT OR DELETE OR UPDATE ON device_collection_device FOR EACH STATEMENT EXECUTE PROCEDURE device_collection_after_hooks();
+DROP TRIGGER IF EXISTS trigger_hier_device_collection_after_hooks ON device_collection_hier;
 CREATE TRIGGER trigger_hier_device_collection_after_hooks AFTER INSERT OR DELETE OR UPDATE ON device_collection_hier FOR EACH STATEMENT EXECUTE PROCEDURE device_collection_after_hooks();
+DROP TRIGGER IF EXISTS trigger_member_layer2_network_collection_after_hooks ON l2_network_coll_l2_network;
 CREATE TRIGGER trigger_member_layer2_network_collection_after_hooks AFTER INSERT OR DELETE OR UPDATE ON l2_network_coll_l2_network FOR EACH STATEMENT EXECUTE PROCEDURE layer2_network_collection_after_hooks();
+DROP TRIGGER IF EXISTS trigger_hier_layer2_network_collection_after_hooks ON layer2_network_collection_hier;
 CREATE TRIGGER trigger_hier_layer2_network_collection_after_hooks AFTER INSERT OR DELETE OR UPDATE ON layer2_network_collection_hier FOR EACH STATEMENT EXECUTE PROCEDURE layer2_network_collection_after_hooks();
+DROP TRIGGER IF EXISTS trigger_validate_netblock_to_range_changes ON netblock;
 CREATE CONSTRAINT TRIGGER trigger_validate_netblock_to_range_changes AFTER UPDATE OF ip_address, is_single_address, can_subnet, netblock_type ON netblock DEFERRABLE INITIALLY IMMEDIATE FOR EACH ROW EXECUTE PROCEDURE validate_netblock_to_range_changes();
 DROP TRIGGER IF EXISTS trigger_net_int_netblock_to_nbn_compat_after ON network_interface;
 CREATE TRIGGER trigger_net_int_netblock_to_nbn_compat_after AFTER INSERT OR UPDATE OF network_interface_id, netblock_id ON network_interface FOR EACH ROW EXECUTE PROCEDURE net_int_netblock_to_nbn_compat_after();
+DROP TRIGGER IF EXISTS trigger_net_int_netblock_to_nbn_compat_before_del ON network_interface;
 CREATE TRIGGER trigger_net_int_netblock_to_nbn_compat_before_del BEFORE DELETE ON network_interface FOR EACH ROW EXECUTE PROCEDURE net_int_netblock_to_nbn_compat_after();
 DROP TRIGGER IF EXISTS trigger_validate_network_range ON network_range;
+DROP TRIGGER IF EXISTS trigger_validate_network_range_dns ON network_range;
 CREATE CONSTRAINT TRIGGER trigger_validate_network_range_dns AFTER INSERT OR UPDATE OF dns_domain_id ON network_range DEFERRABLE INITIALLY IMMEDIATE FOR EACH ROW EXECUTE PROCEDURE validate_network_range_dns();
+DROP TRIGGER IF EXISTS trigger_validate_network_range_ips ON network_range;
 CREATE CONSTRAINT TRIGGER trigger_validate_network_range_ips AFTER INSERT OR UPDATE OF start_netblock_id, stop_netblock_id, parent_netblock_id ON network_range DEFERRABLE INITIALLY IMMEDIATE FOR EACH ROW EXECUTE PROCEDURE validate_network_range_ips();
 
 
