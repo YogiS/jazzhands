@@ -186,8 +186,10 @@ DECLARE
 BEGIN
 	SELECT company_id INTO cid FROM company WHERE company_name = 'Arista';
 	IF NOT FOUND THEN
-		INSERT INTO company (company_name) VALUES ('Arista') RETURNING
-			company_id INTO cid;
+		SELECT company_manip.add_company(
+			_company_name := 'Arista',
+			_company_types := ARRAY['hardware provider']
+		) INTO cid;
 	END IF;
 	FOREACH p SLICE 1 IN ARRAY ARRAY[
 		['7050SX-64','10GSFP+Ethernet','48','4','0','1'],
