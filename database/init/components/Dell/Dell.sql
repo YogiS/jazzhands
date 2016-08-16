@@ -19,7 +19,10 @@ DO $$
 BEGIN
 	PERFORM * FROM company WHERE company_name = 'Dell';
 	IF NOT FOUND THEN
-		INSERT INTO company (company_name) VALUEs ('Dell');
+		PERFORM company_manip.add_company(
+			_company_name := 'Dell',
+			_company_types := ARRAY['hardware provider']
+		);
 	END IF;
 END; $$ language plpgsql;
 
