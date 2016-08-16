@@ -130,6 +130,7 @@ CREATE TRIGGER trigger_dns_record_update_nontime
 CREATE OR REPLACE FUNCTION dns_a_rec_validation() RETURNS TRIGGER AS $$
 DECLARE
 	_ip		netblock.ip_address%type;
+	_sing	netblock.is_single_address%type;
 BEGIN
 	IF NEW.dns_type in ('A', 'AAAA') AND NEW.netblock_id IS NULL THEN
 		RAISE EXCEPTION 'Attempt to set % record without a Netblock',
@@ -155,8 +156,8 @@ BEGIN
 
 	-- XXX need to deal with changing a netblock type and breaking dns_record.. 
 	IF NEW.netblock_id IS NOT NULL THEN
-		SELECT ip_address 
-		  INTO _ip 
+		SELECT ip_address, is_single_address
+		  INTO _ip, _sing
 		  FROM netblock
 		 WHERE netblock_id = NEW.netblock_id;
 
@@ -169,6 +170,12 @@ BEGIN
 			RAISE EXCEPTION 'AAAA records must be assigned to non-IPv6 records'
 				USING ERRCODE = 'JH200';
 		END IF;
+
+		IF _sing = 'N' AND NEW.dns_type IN ('A','AAAA') THEN
+			RAISE EXCEPTION 'Non-single addresses may not have % records', NEW.dns_type 
+				USING ERRCODE = 'foreign_key_violation';
+		END IF;
+
 	END IF;
 
 	RETURN NEW;
@@ -183,6 +190,68 @@ CREATE TRIGGER trigger_dns_a_rec_validation
 	ON dns_record 
 	FOR EACH ROW 
 	EXECUTE PROCEDURE dns_a_rec_validation();
+---------------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION nb_dns_a_rec_validation() RETURNS TRIGGER AS $$
+DECLARE
+	_tal	integer;
+BEGIN
+	IF family(OLD.ip_address) != family(NEW.ip_address) THEN
+		IF family(NEW.ip_address) == 6 THEN
+			SELECT count(*)
+			INTO	_tal
+			FROM	dns_record
+			WHERE	netblock_id = NEW.netblock_id
+			AND		dns_type = 'A';
+
+			IF _tal > 0 THEN
+				RAISE EXCEPTION 'A records must be assigned to IPv4 records'
+					USING ERRCODE = 'JH200';
+			END IF;
+		END IF;
+	END IF;
+
+	IF family(OLD.ip_address) != family(NEW.ip_address) THEN
+		IF family(NEW.ip_address) == 4 THEN
+			SELECT count(*)
+			INTO	_tal
+			FROM	dns_record
+			WHERE	netblock_id = NEW.netblock_id
+			AND		dns_type = 'AAAA';
+
+			IF _tal > 0 THEN
+				RAISE EXCEPTION 'AAAA records must be assigned to IPv6 records'
+					USING ERRCODE = 'JH200';
+			END IF;
+		END IF;
+	END IF;
+
+	IF NEW.is_single_address = 'N' THEN
+			SELECT count(*)
+			INTO	_tal
+			FROM	dns_record
+			WHERE	netblock_id = NEW.netblock_id
+			AND		dns_type IN ('A', 'AAAA');
+
+		IF _tal > 0 THEN
+			RAISE EXCEPTION 'Non-single addresses may not have % records', NEW.dns_type 
+				USING ERRCODE = 'foreign_key_violation';
+		END IF;
+	END IF;
+
+	RETURN NEW;
+END;
+$$
+SET search_path=jazzhands
+LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS trigger_nb_dns_a_rec_validation ON netblock;
+CREATE TRIGGER trigger_nb_dns_a_rec_validation 
+	BEFORE UPDATE OF ip_address, is_single_address
+	ON netblock 
+	FOR EACH ROW 
+	EXECUTE PROCEDURE nb_dns_a_rec_validation();
+
 
 ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION dns_non_a_rec_validation() RETURNS TRIGGER AS $$
