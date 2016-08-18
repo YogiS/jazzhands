@@ -475,7 +475,7 @@ BEGIN
 				SELECT company_manip.add_company(
 					_company_name := pci_vendor_name,
 					_company_types := ARRAY['hardware provider'],
-					 _description := 'PCI vendor auto-insert')
+					 _description := 'PCI vendor auto-insert'
 				) INTO comp_id;
 			END IF;
 
@@ -514,7 +514,7 @@ BEGIN
 				SELECT company_manip.add_company(
 					_company_name := pci_sub_vendor_name,
 					_company_types := ARRAY['hardware provider'],
-					 _description := 'PCI vendor auto-insert')
+					 _description := 'PCI vendor auto-insert'
 				) INTO comp_id;
 			END IF;
 
