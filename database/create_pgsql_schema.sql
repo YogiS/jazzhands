@@ -23,6 +23,7 @@
 -- set serveroutput on
 select now();
 
+\ir ddl/schema/pgsql/create_schema_support_tables.sql
 \ir ddl/schema/pgsql/create_schema_support.sql
 
 \ir ddl/schema/pgsql/create_schema_pgsql.sql

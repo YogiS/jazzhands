@@ -753,7 +753,7 @@ DECLARE
 BEGIN
 	PERFORM schema_support.prepare_for_object_replay();
 
-	FOR _r in 	
+	FOR _r in
 		SELECT n.nspname, c.relname, trg.tgname,
 				pg_get_triggerdef(trg.oid, true) as def
 		FROM pg_trigger trg
@@ -1371,6 +1371,232 @@ END;
 $$ LANGUAGE plpgsql;
 
 ----------------------------------------------------------------------------
+-- BEGIN materialized view refresh automation support
+----------------------------------------------------------------------------
+
+--
+-- These functions are used to better automate refreshing of materialized
+-- views.  They are meant to be called by the schema owners and not by
+-- mere mortals, which may mean writing wrapper functions
+--
+-- schema_support.relation_last_changed(table,schema,debug) can be used to
+--	tell the last time a table, view or materialized view was updated
+--	based on audit tables.  For views and materialized views, it will
+--	recursively rifle through dependent tables to find the answer. Note
+--	that if a dependency does not have an audit table (such as another
+--	materialized view or caching/log table), the functions will just
+--	assume they are current.
+--
+--	Also note that the recursive check is not terribly smart, so if
+--	dependant tables had data changed that was not in the object that
+--	called it, it will still trigger yes even if the view didn't really
+--	change.
+--
+-- mv_last_updated()/set_mv_last_updated() are largely used internally.
+--
+-- schema_support.refresh_mv_if_needed(table,schema,debug) is used to
+--	refresh a materialized view if tables internal to schema_support
+--	reflect that it has not refreshed since the dependant objects were
+--	refreshed.  There appears to be no place in the system catalog to 
+--	tell when a materialized view was last changed, so if the internal
+--	tables are out of date, a refresh could happen.
+--
+--	Note that calls to this in different transactions will block, thus
+--	if two things go to rebuild, they will happen serially.  In that
+--	case, if there are no changes in a blocking transaction, the code
+--	is arranged such that it will return immediately and not try to
+--	rebuild the materialized view, so this should result in less churn.
+
+--
+-- refiles through internal tables to figure out when an mv or similar was
+-- updated; runs as DEFINER to hide objects.
+--
+CREATE OR REPLACE FUNCTION schema_support.mv_last_updated (
+	relation TEXT, 
+	schema TEXT DEFAULT 'jazzhands', 
+	debug boolean DEFAULT false 
+) RETURNS TIMESTAMP AS $$
+DECLARE
+	rv	timestamp;
+BEGIN
+	IF debug THEN
+		RAISE NOTICE 'selecting for update...';
+	END IF;
+
+	SELECT	refresh
+	INTO	rv
+	FROM	schema_support.mv_refresh r
+	WHERE	r.schema = mv_last_updated.schema
+	AND	r.view = relation
+	FOR UPDATE;
+
+	IF debug THEN
+		RAISE NOTICE 'returning %', rv;
+	END IF;
+
+	RETURN rv;
+END;
+$$
+SET search_path=schema_support
+LANGUAGE plpgsql SECURITY DEFINER;
+
+--
+-- updates internal tables to set last update. 
+-- runs as DEFINER to hide objects.
+--
+CREATE OR REPLACE FUNCTION schema_support.set_mv_last_updated (
+	relation TEXT, 
+	schema TEXT DEFAULT 'jazzhands', 
+	debug boolean DEFAULT false 
+) RETURNS TIMESTAMP AS $$
+DECLARE
+	rv	timestamp;
+BEGIN
+	INSERT INTO schema_support.mv_refresh AS r (
+		schema, view, refresh
+	) VALUES (
+		set_mv_last_updated.schema, relation, now()
+	) ON CONFLICT ON CONSTRAINT mv_refresh_pkey DO UPDATE
+		SET		refresh = now()
+		WHERE	r.schema = set_mv_last_updated.schema
+		AND		r.view = relation
+	;
+
+	RETURN rv;
+END;
+$$
+SET search_path=schema_support
+LANGUAGE plpgsql SECURITY DEFINER;
+
+--
+-- figures out the last time an object changed based on the audit tables
+-- for the object.  This assumes that the schema -> audit mapping is found
+-- in schema_support.schema_audit_map, otherwise raises an exception.
+--
+CREATE OR REPLACE FUNCTION schema_support.relation_last_changed (
+	relation TEXT, 
+	schema TEXT DEFAULT 'jazzhands', 
+	debug boolean DEFAULT false 
+) RETURNS TIMESTAMP AS $$
+DECLARE
+	audsch	text;
+	rk	char;
+	rv	timestamp;
+	ts	timestamp;
+	obj	text;
+	objaud text;
+BEGIN
+	SELECT	audit_schema
+	INTO	audsch
+	FROM	schema_support.schema_audit_map m
+	WHERE	m.schema = relation_last_changed.schema;
+
+	IF NOT FOUND THEN
+		RAISE EXCEPTION 'Schema % not configured for this', schema;
+	END IF;
+
+	SELECT 	relkind
+	INTO	rk
+	FROM	pg_catalog.pg_class c
+		JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+	WHERE	n.nspname = relation_last_changed.schema
+	AND	c.relname = relation_last_changed.relation;
+
+	IF NOT FOUND THEN
+		RAISE EXCEPTION 'No such object %.%', schema, relation;
+	END IF;
+
+	IF rk = 'r' THEN
+		EXECUTE '
+			SELECT	max("aud#timestamp")
+			FROM	'||quote_ident(audsch)||'.'||quote_ident(relation)
+		INTO rv;
+
+		IF rv IS NULL THEN
+			RETURN '-infinity'::interval;
+		ELSE
+			RETURN rv;
+		END IF;
+	END IF;
+
+	IF rk = 'v' OR rk = 'm' THEN
+		FOR obj,objaud IN WITH RECURSIVE recur AS (
+				SELECT distinct rewrite.ev_class as root_oid, d.refobjid as oid
+				FROM pg_depend d
+        			JOIN pg_rewrite rewrite ON d.objid = rewrite.oid
+					JOIN pg_class c on rewrite.ev_class = c.oid
+					JOIN pg_namespace n on n.oid = c.relnamespace
+				WHERE c.relname = relation
+				AND n.nspname = relation_last_changed.schema
+				AND d.refobjsubid > 0
+			UNION ALL
+				SELECT recur.root_oid, d.refobjid as oid
+				FROM pg_depend d
+        			JOIN pg_rewrite rewrite ON d.objid = rewrite.oid
+				JOIN recur ON recur.oid = rewrite.ev_class
+				AND d.refobjsubid > 0
+			), list AS ( select distinct m.audit_schema, c.relname, c.relkind, recur.*
+				FROM pg_class c
+					JOIN recur on recur.oid = c.oid
+					JOIN pg_namespace n on c.relnamespace = n.oid
+					JOIN schema_support.schema_audit_map m
+						ON m.schema = n.nspname
+				WHERE relkind = 'r'
+			) SELECT relname, audit_schema from list
+		LOOP
+			-- if there is no audit table, assume its kept current.  This is
+			-- likely some sort of cache table.  XXX - should probably be
+			-- updated to use the materialized view update bits
+			BEGIN
+				EXECUTE 'SELECT max("aud#timestamp") 
+					FROM '||quote_ident(objaud)||'.'|| quote_ident(obj) 
+					INTO ts;
+				IF debug THEN
+					RAISE NOTICE '%.% -> %', objaud, obj, ts;
+				END IF;
+				IF rv IS NULL OR ts > rv THEN
+					rv := ts;
+				END IF;
+			EXCEPTION WHEN undefined_table THEN
+				IF debug THEN
+					RAISE NOTICE 'skipping %.%', schema, obj;
+				END IF;
+			END;
+		END LOOP;
+		RETURN rv;
+	END IF;
+
+	RAISE EXCEPTION 'Unable to process relkind %', rk;
+END;
+$$
+SET search_path=schema_support
+LANGUAGE plpgsql SECURITY INVOKER;
+
+CREATE OR REPLACE FUNCTION schema_support.refresh_mv_if_needed (
+	relation TEXT, 
+	schema TEXT DEFAULT 'jazzhands', 
+	debug boolean DEFAULT false 
+) RETURNS void AS $$
+DECLARE 
+	lastref	timestamp;
+	lastdat	timestamp;
+BEGIN
+	SELECT coalesce(schema_support.mv_last_updated(relation, schema,debug),'-infinity') INTO lastref;
+	SELECT coalesce(schema_support.relation_last_changed(relation, schema,debug),'-infinity') INTO lastdat;
+	IF lastdat > lastref THEN
+		EXECUTE 'REFRESH MATERIALIZED VIEW ' || quote_ident(schema)||'.'||quote_ident(relation);
+		PERFORM schema_support.set_mv_last_updated(relation, schema);
+	END IF;
+	RETURN;
+END;
+$$
+SET search_path=schema_support
+LANGUAGE plpgsql SECURITY INVOKER;
+
+
+----------------------------------------------------------------------------
+-- END materialized view support
+----------------------------------------------------------------------------
 
 
 
@@ -1445,6 +1671,9 @@ restriction.  It does not cascade or otherwise do anything with foreign keys.
 
 
 -------------------------------------------------------------------------------
+--
+-- No longer want to call this on every invocation
+--
 -- select schema_support.rebuild_stamp_triggers();
 -- SELECT schema_support.build_audit_tables();
 
