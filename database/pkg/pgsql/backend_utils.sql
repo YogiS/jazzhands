@@ -38,6 +38,7 @@ BEGIN
 END;
 $$;
 
+		COMMENT ON SCHEMA backend_utils IS 'part of jazzhands';
 ------------------------------------------------------------------------------
 
 --

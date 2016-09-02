@@ -17,7 +17,9 @@
 /*
 Invoked:
 
-	--suffix=v71
+	-suffix=v71
+	--pre
+	pre
 	--pre
 	../opensource/database/ddl/schema/pgsql/create_schema_support_tables.sql
 	--post
@@ -29,6 +31,13 @@ Invoked:
 \set ON_ERROR_STOP
 SELECT schema_support.begin_maintenance();
 select timeofday(), now();
+
+
+-- BEGIN Misc that does not apply to above
+DROP INDEX IF EXISTS ak_netblock_params;
+
+
+-- END Misc that does not apply to above
 
 
 -- BEGIN Misc that does not apply to above
@@ -4258,6 +4267,7 @@ $function$
 -- Processing tables with no structural changes
 -- Some of these may be redundant
 -- fk constraints
+ALTER TABLE netblock DROP CONSTRAINT IF EXISTS ak_netblock_params;
 ALTER TABLE netblock
 	ADD CONSTRAINT ak_netblock_params
 	UNIQUE (ip_address, netblock_type, ip_universe_id, is_single_address);
@@ -4322,6 +4332,7 @@ BEGIN
 	IF _tal = 0 THEN
 		DROP SCHEMA IF EXISTS backend_utils;
 		CREATE SCHEMA backend_utils AUTHORIZATION jazzhands;
+		COMMENT ON SCHEMA backend_utils IS 'part of jazzhands';
 	END IF;
 END;
 $$;
