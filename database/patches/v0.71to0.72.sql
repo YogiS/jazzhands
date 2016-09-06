@@ -25,6 +25,20 @@ Invoked:
 	--post
 	../opensource/database/pkg/pgsql/backend_utils.sql
 	--post
+	../opensource/database/ddl//views/create_layer1_connection.sql
+	--post
+	../opensource/database/ddl//views/create_physical_port.sql
+	--post
+	../opensource/database/ddl//views/create_v_dev_col_user_prop_expanded.sql
+	--post
+	../opensource/database/ddl//views/pgsql/create_v_unix_group_overrides.sql
+	--post
+	../opensource/database/ddl//views/create_v_hotpants_account_attribute.sql
+	--post
+	../opensource/database/ddl//views/create_v_dns_changes_pending.sql
+	--post
+	../opensource/database/ddl//views/pgsql/create_v_unix_account_overrides.sql
+	--post
 	post
 	--first
 	schema_support
@@ -2984,10 +2998,11 @@ CREATE OR REPLACE FUNCTION schema_support.rebuild_audit_table(aud_schema charact
  LANGUAGE plpgsql
 AS $function$
 DECLARE
-	idx	 text[];
-	keys text[];
-	cols text[];
-	i	text;
+	idx		text[];
+	keys	text[];
+	cols	text[];
+	i		text;
+	seq		integer;
 BEGIN
 	-- rename all the old indexes and constraints on the old audit table
 	SELECT	array_agg(c2.relname)
@@ -3098,6 +3113,19 @@ BEGIN
 		|| ' ORDER BY '
 		|| quote_ident('aud#seq');
 
+	--
+	-- fix sequence primary key to have the correct next value
+	-- 
+	EXECUTE 'SELECT max("aud#seq") FROM	 '
+			|| quote_ident(aud_schema) || '.'
+			|| quote_ident(table_name) INTO seq;
+	IF seq IS NOT NULL THEN
+		EXECUTE 'ALTER SEQUENCE '
+			|| quote_ident(aud_schema) || '.'
+			|| quote_ident(table_name || '_seq')
+			|| ' RESTART WITH ' || seq;
+	END IF;
+
 	EXECUTE 'DROP TABLE '
 		|| quote_ident(aud_schema) || '.'
 		|| quote_ident('__old__' || table_name);
@@ -3110,7 +3138,7 @@ BEGIN
 		|| quote_ident('_old_' || table_name || '_seq');
 
 	--
-	-- drop constraints and indexes found before
+	-- drop indexes found before that did not get dropped.
 	--
 	FOR i IN SELECT	c2.relname
 		  FROM	pg_catalog.pg_index i
@@ -3132,7 +3160,7 @@ BEGIN
 			|| quote_ident(aud_schema) || '.'
 			|| quote_ident('_' || i);
 	END LOOP;
-	
+
 
 	--
 	-- recreate audit trigger
@@ -3385,7 +3413,7 @@ CREATE MATERIALIZED VIEW jazzhands.mv_unix_passwd_mappings AS
     v_unix_passwd_mappings.extra_groups
    FROM v_unix_passwd_mappings;
 
--- DONE DEALING WITH TABLE mv_unix_passwd_mappings [1777290]
+-- DONE DEALING WITH TABLE mv_unix_passwd_mappings [1877319]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE mv_unix_group_mappings
@@ -3401,10 +3429,10 @@ CREATE MATERIALIZED VIEW jazzhands.mv_unix_group_mappings AS
     v_unix_group_mappings.members
    FROM v_unix_group_mappings;
 
--- DONE DEALING WITH TABLE mv_unix_group_mappings [1777297]
+-- DONE DEALING WITH TABLE mv_unix_group_mappings [1877326]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE v_person_company_audit_map [1677188]
+-- DEALING WITH TABLE v_person_company_audit_map [2115153]
 SELECT schema_support.save_dependent_objects_for_replay
         ('audit', 'person_company');
 SELECT schema_support.rebuild_audit_table
@@ -3483,15 +3511,15 @@ CREATE VIEW approval_utils.v_person_company_audit_map AS
   WHERE all_audrecs.rownum = 1;
 
 delete from __recreate where type = 'view' and object = 'v_person_company_audit_map';
--- DONE DEALING WITH TABLE v_person_company_audit_map [1777335]
+-- DONE DEALING WITH TABLE v_person_company_audit_map [1877364]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE v_account_collection_account_audit_map [1677183]
+-- DEALING WITH TABLE v_account_collection_account_audit_map [2115148]
+
 SELECT schema_support.save_dependent_objects_for_replay
         ('audit', 'account_collection_account');
 SELECT schema_support.rebuild_audit_table
         ('audit', 'jazzhands', 'account_collection_account');
-
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'v_account_collection_account_audit_map', 'v_account_collection_account_audit_map');
 SELECT schema_support.save_dependent_objects_for_replay('approval_utils', 'v_account_collection_account_audit_map');
@@ -3539,7 +3567,7 @@ CREATE VIEW approval_utils.v_account_collection_account_audit_map AS
   WHERE all_audrecs.rownum = 1;
 
 delete from __recreate where type = 'view' and object = 'v_account_collection_account_audit_map';
--- DONE DEALING WITH TABLE v_account_collection_account_audit_map [1777330]
+-- DONE DEALING WITH TABLE v_account_collection_account_audit_map [1877359]
 --------------------------------------------------------------------
 --
 -- Process drops in jazzhands
@@ -6418,10 +6446,11 @@ CREATE OR REPLACE FUNCTION schema_support.rebuild_audit_table(aud_schema charact
  LANGUAGE plpgsql
 AS $function$
 DECLARE
-	idx	 text[];
-	keys text[];
-	cols text[];
-	i	text;
+	idx		text[];
+	keys	text[];
+	cols	text[];
+	i		text;
+	seq		integer;
 BEGIN
 	-- rename all the old indexes and constraints on the old audit table
 	SELECT	array_agg(c2.relname)
@@ -6532,6 +6561,19 @@ BEGIN
 		|| ' ORDER BY '
 		|| quote_ident('aud#seq');
 
+	--
+	-- fix sequence primary key to have the correct next value
+	-- 
+	EXECUTE 'SELECT max("aud#seq") FROM	 '
+			|| quote_ident(aud_schema) || '.'
+			|| quote_ident(table_name) INTO seq;
+	IF seq IS NOT NULL THEN
+		EXECUTE 'ALTER SEQUENCE '
+			|| quote_ident(aud_schema) || '.'
+			|| quote_ident(table_name || '_seq')
+			|| ' RESTART WITH ' || seq;
+	END IF;
+
 	EXECUTE 'DROP TABLE '
 		|| quote_ident(aud_schema) || '.'
 		|| quote_ident('__old__' || table_name);
@@ -6544,7 +6586,7 @@ BEGIN
 		|| quote_ident('_old_' || table_name || '_seq');
 
 	--
-	-- drop constraints and indexes found before
+	-- drop indexes found before that did not get dropped.
 	--
 	FOR i IN SELECT	c2.relname
 		  FROM	pg_catalog.pg_index i
@@ -6566,7 +6608,7 @@ BEGIN
 			|| quote_ident(aud_schema) || '.'
 			|| quote_ident('_' || i);
 	END LOOP;
-	
+
 
 	--
 	-- recreate audit trigger
@@ -6928,12 +6970,617 @@ grant execute on all functions in schema backend_utils to iud_role;
 
 
 -- BEGIN Misc that does not apply to above
+-- Copyright (c) 2015, Todd M. Kover, Matthew D. Ragan
+-- All rights reserved.
+--
+-- Licensed under the Apache License, Version 2.0 (the "License");
+-- you may not use this file except in compliance with the License.
+-- You may obtain a copy of the License at
+--
+--       http://www.apache.org/licenses/LICENSE-2.0
+--
+-- Unless required by applicable law or agreed to in writing, software
+-- distributed under the License is distributed on an "AS IS" BASIS,
+-- WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-- See the License for the specific language governing permissions and
+-- limitations under the License.
+--
+-- $Id$
+--
+
+--
+-- XXX NOTE: need to migrate network_interface.physical_port_id
+--
+
+create or replace view layer1_connection
+AS
+WITH conn_props AS (
+	SELECT inter_component_connection_id,
+			component_property_name, component_property_type,
+			property_value
+	FROM	component_property
+	WHERE	component_property_type IN ('serial-connection')
+), tcpsrv_device_id AS (
+	SELECT inter_component_connection_id, device_id
+	FROM	component_property
+			INNER JOIN device USING (component_id)
+	WHERE	component_property_type = 'tcpsrv-connections'
+	AND		component_property_name = 'tcpsrv_device_id'
+) , tcpsrv_enabled AS (
+	SELECT inter_component_connection_id, property_value
+	FROM	component_property
+	WHERE	component_property_type = 'tcpsrv-connections'
+	AND		component_property_name = 'tcpsrv_enabled'
+) SELECT	
+	icc.inter_component_connection_id  AS layer1_connection_id,
+	icc.slot1_id			AS physical_port1_id,
+	icc.slot2_id			AS physical_port2_id,
+	icc.circuit_id,
+	baud.property_value::integer			AS baud,
+	dbits.property_value::integer		AS data_bits,
+	sbits.property_value::integer		AS stop_bits,
+	parity.property_value		AS parity,
+	flow.property_value			AS flow_control,
+	tcpsrv.device_id			AS tcpsrv_device_id,
+	coalesce(tcpsrvon.property_value,'N')::char(1)	AS is_tcpsrv_enabled,
+	icc.data_ins_user,
+	icc.data_ins_date,
+	icc.data_upd_user,
+	icc.data_upd_date
+FROM inter_component_connection icc
+	INNER JOIN slot s1 ON icc.slot1_id = s1.slot_id
+	INNER JOIN slot_type st1 ON st1.slot_type_id = s1.slot_type_id
+	INNER JOIN slot s2 ON icc.slot2_id = s2.slot_id
+	INNER JOIN slot_type st2 ON st2.slot_type_id = s2.slot_type_id
+	LEFT JOIN tcpsrv_device_id tcpsrv USING (inter_component_connection_id)
+	LEFT JOIN tcpsrv_enabled tcpsrvon USING (inter_component_connection_id)
+	LEFT JOIN conn_props baud ON baud.inter_component_connection_id =
+		icc.inter_component_connection_id AND
+		baud.component_property_name = 'baud'
+	LEFT JOIN conn_props dbits ON dbits.inter_component_connection_id =
+		icc.inter_component_connection_id AND
+		dbits.component_property_name = 'data-bits'
+	LEFT JOIN conn_props sbits ON sbits.inter_component_connection_id =
+		icc.inter_component_connection_id AND
+		sbits.component_property_name = 'stop-bits'
+	LEFT JOIN conn_props parity ON parity.inter_component_connection_id =
+		icc.inter_component_connection_id AND
+		parity.component_property_name = 'parity'
+	LEFT JOIN conn_props flow ON flow.inter_component_connection_id =
+		icc.inter_component_connection_id AND
+		flow.component_property_name = 'flow-control'
+ WHERE  st1.slot_function in ('network', 'serial', 'patchpanel')
+	OR
+ 	st1.slot_function in ('network', 'serial', 'patchpanel')
+;
+
+
+-- END Misc that does not apply to above
+
+
+-- BEGIN Misc that does not apply to above
+-- Copyright (c) 2015, Todd M. Kover, Matthew D. Ragan
+-- All rights reserved.
+--
+-- Licensed under the Apache License, Version 2.0 (the "License");
+-- you may not use this file except in compliance with the License.
+-- You may obtain a copy of the License at
+--
+--       http://www.apache.org/licenses/LICENSE-2.0
+--
+-- Unless required by applicable law or agreed to in writing, software
+-- distributed under the License is distributed on an "AS IS" BASIS,
+-- WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-- See the License for the specific language governing permissions and
+-- limitations under the License.
+--
+-- $Id$
+--
+
+--
+-- XXX NOTE: need to migrate network_interface.physical_port_id
+--
+
+create or replace view physical_port
+AS
+SELECT	
+	sl.slot_id			AS physical_port_id,
+	d.device_id,
+	sl.slot_name			AS port_name,
+	st.slot_function		AS port_type,
+	sl.description,
+	st.slot_physical_interface_type	AS port_plug_style,
+	NULL::text			AS port_medium,
+	NULL::text			AS port_protocol,
+	NULL::text			AS port_speed,
+	sl.physical_label,
+	NULL::text			AS port_purpose,
+	NULL::integer			AS logical_port_id,
+	NULL::integer			AS tcp_port,
+	CASE WHEN ct.is_removable = 'Y' THEN 'N' ELSE 'Y' END AS is_hardwired,
+	sl.data_ins_user,
+	sl.data_ins_date,
+	sl.data_upd_user,
+	sl.data_upd_date
+  FROM	slot sl 
+	INNER JOIN slot_type st USING (slot_type_id)
+	INNER JOIN v_device_slots d USING (slot_id)
+	INNER JOIN component c ON (sl.component_id = c.component_id)
+	INNER JOIN component_type ct USING (component_type_id)
+ WHERE	st.slot_function in ('network', 'serial', 'patchpanel')
+;
+
+
+-- END Misc that does not apply to above
+
+
+-- BEGIN Misc that does not apply to above
+-- Copyright (c) 2005-2010, Vonage Holdings Corp.
+-- All rights reserved.
+--
+-- Redistribution and use in source and binary forms, with or without
+-- modification, are permitted provided that the following conditions are met:
+--     * Redistributions of source code must retain the above copyright
+--       notice, this list of conditions and the following disclaimer.
+--     * Redistributions in binary form must reproduce the above copyright
+--       notice, this list of conditions and the following disclaimer in the
+--       documentation and/or other materials provided with the distribution.
+--
+-- THIS SOFTWARE IS PROVIDED BY VONAGE HOLDINGS CORP. ''AS IS'' AND ANY
+-- EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+-- WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+-- DISCLAIMED. IN NO EVENT SHALL VONAGE HOLDINGS CORP. BE LIABLE FOR ANY
+-- DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+-- (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+-- LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+-- ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+-- (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+-- SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+--
+-- $Id$
+--
+
+-- Copyright (c) 2015, Todd M. Kover
+-- All rights reserved.
+--
+-- Licensed under the Apache License, Version 2.0 (the "License");
+-- you may not use this file except in compliance with the License.
+-- You may obtain a copy of the License at
+--
+--       http://www.apache.org/licenses/LICENSE-2.0
+--
+-- Unless required by applicable law or agreed to in writing, software
+-- distributed under the License is distributed on an "AS IS" BASIS,
+-- WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-- See the License for the specific language governing permissions and
+-- limitations under the License.
+
+
+-- This view maps users to device collections and lists properties
+-- assigned to the users in order of their priorities.
+
+CREATE OR REPLACE VIEW v_dev_col_user_prop_expanded AS
+SELECT	
+	property_id,
+	dchd.device_collection_id,
+	a.account_id, a.login, a.account_status,
+	ar.account_realm_id, ar.account_realm_name,
+	a.is_enabled,
+	upo.property_type property_type,
+	upo.property_name property_name, 
+	upo.property_rank property_rank, 
+	coalesce(Property_Value_Password_Type, Property_Value) AS property_value,
+	CASE WHEN upn.is_multivalue = 'N' THEN 0
+		ELSE 1 END is_multivalue,
+	CASE WHEN pdt.property_data_type = 'boolean' THEN 1 ELSE 0 END is_boolean
+FROM	v_acct_coll_acct_expanded_detail uued
+	INNER JOIN Account_Collection u 
+		USING (account_collection_id)
+	INNER JOIN v_property upo ON 
+		upo.Account_Collection_id = u.Account_Collection_id
+		AND upo.property_type in (
+			'CCAForceCreation', 'CCARight', 'ConsoleACL', 'RADIUS', 
+			'TokenMgmt', 'UnixPasswdFileValue', 'UserMgmt', 'cca', 
+			'feed-attributes', 'wwwgroup', 'HOTPants')
+	INNER JOIN val_property upn
+		ON upo.property_name = upn.property_name
+		AND upo.property_type = upn.property_type
+	INNER JOIN val_property_data_type pdt
+		ON upn.property_data_type = pdt.property_data_type
+	INNER JOIN account a ON uued.account_id = a.account_id
+	INNER JOIN account_realm ar ON a.account_realm_id = ar.account_realm_id
+	LEFT JOIN v_device_coll_hier_detail dchd
+  		ON (dchd.parent_device_collection_id = upo.device_collection_id)
+ORDER BY device_collection_level,
+   CASE WHEN u.Account_Collection_type = 'per-account' THEN 0
+	WHEN u.Account_Collection_type = 'property' THEN 1
+	WHEN u.Account_Collection_type = 'systems' THEN 2
+	ELSE 3 END,
+  CASE WHEN uued.assign_method = 'Account_CollectionAssignedToPerson' THEN 0
+	WHEN uued.assign_method = 'Account_CollectionAssignedToDept' THEN 1
+	WHEN uued.assign_method = 
+	'ParentAccount_CollectionOfAccount_CollectionAssignedToPerson' THEN 2
+	WHEN uued.assign_method = 
+	'ParentAccount_CollectionOfAccount_CollectionAssignedToDept' THEN 2
+	WHEN uued.assign_method = 
+	'Account_CollectionAssignedToParentDept' THEN 3
+	WHEN uued.assign_method = 
+	'ParentAccount_CollectionOfAccount_CollectionAssignedToParentDep' 
+			THEN 3
+        ELSE 6 END,
+  uued.dept_level, uued.acct_coll_level, dchd.device_collection_id, 
+  u.Account_Collection_id;
+
+
+-- END Misc that does not apply to above
+
+
+-- BEGIN Misc that does not apply to above
+-- Copyright (c) 2014, Todd M. Kover
+-- All rights reserved.
+--
+-- Licensed under the Apache License, Version 2.0 (the "License");
+-- you may not use this file except in compliance with the License.
+-- You may obtain a copy of the License at
+--
+--       http://www.apache.org/licenses/LICENSE-2.0
+--
+-- Unless required by applicable law or agreed to in writing, software
+-- distributed under the License is distributed on an "AS IS" BASIS,
+-- WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-- See the License for the specific language governing permissions and
+-- limitations under the License.
+--
+-- $Id$
+--
+
+--
+-- This query pulls out all the device collection overrides for account
+-- collections.
+--
+-- NOTE:  This view does not attempt to validate if a user has any
+-- association with a device collection, just if a user is there, what
+-- properties are set.  Its primary use is by other views.
+--
+CREATE OR REPLACE VIEW v_unix_group_overrides
+AS
+WITH perdevtomclass AS  (
+	SELECT  hdc.device_collection_id as host_device_collection_id,
+			mdc.device_collection_id as mclass_device_collection_id,
+			device_id
+	FROM    device_collection hdc
+			INNER JOIN device_collection_device hdcd USING (device_collection_id)
+			INNER JOIN device_collection_device mdcd USING (device_id)
+			INNER JOIN device_collection mdc on
+                        mdcd.device_collection_id = mdc.device_collection_id
+	WHERE   hdc.device_collection_type = 'per-device'
+	AND     mdc.device_collection_type = 'mclass'
+), dcmap AS (
+	SELECT device_collection_id, parent_device_collection_id,
+		 device_collection_level
+		 FROM v_device_coll_hier_detail
+	UNION
+	SELECT  p.host_device_collection_id as device_collection_id,
+			d.parent_device_collection_id,
+			d.device_collection_level
+	FROM perdevtomclass p
+		INNER JOIN v_device_coll_hier_detail d ON
+			d.device_collection_id = p.mclass_device_collection_id
+) 
+SELECT device_collection_id, account_collection_id,
+	array_agg(setting ORDER BY rn) AS setting
+FROM (
+	SELECT *, row_number() over () AS rn FROM (
+		SELECT device_collection_id, account_collection_id,
+				unnest(ARRAY[property_name, property_value]) AS setting
+		FROM (
+			SELECT  dchd.device_collection_id, 
+					acpe.account_collection_id,
+					p.property_name, 
+					coalesce(p.property_value, 
+						p.property_value_password_type) as property_value,
+					row_number() OVER (partition by 
+							dchd.device_collection_id,
+							acpe.account_collection_id,
+							acpe.property_name
+							ORDER BY dchd.device_collection_level, assign_rank,
+								property_id
+					) AS ord
+			FROM    v_acct_coll_prop_expanded acpe
+				INNER JOIN unix_group ug USING (account_collection_id)
+				INNER JOIN v_property p USING (property_id)
+				INNER JOIN dcmap dchd
+					ON dchd.parent_device_collection_id = 
+						p.device_collection_id
+			WHERE	p.property_type IN ('UnixPasswdFileValue', 
+						'UnixGroupFileProperty',
+						'MclassUnixProp')
+			AND		p.property_name NOT IN 
+					('UnixLogin','UnixGroup','UnixGroupMemberOverride')
+		) dc_acct_prop_list
+		WHERE ord = 1
+	) select_for_ordering
+) property_list
+GROUP BY device_collection_id, account_collection_id
+;
+
+
+-- END Misc that does not apply to above
+
+
+-- BEGIN Misc that does not apply to above
+-- Copyright (c) 2016, Todd M. Kover
+-- All rights reserved.
+--
+-- Licensed under the Apache License, Version 2.0 (the "License");
+-- you may not use this file except in compliance with the License.
+-- You may obtain a copy of the License at
+--
+--       http://www.apache.org/licenses/LICENSE-2.0
+--
+-- Unless required by applicable law or agreed to in writing, software
+-- distributed under the License is distributed on an "AS IS" BASIS,
+-- WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-- See the License for the specific language governing permissions and
+-- limitations under the License.
+
+-- This likely needs to die in favor of making hotpants less aware of device
+-- collection
+
+CREATE OR REPLACE VIEW v_hotpants_account_attribute AS
+SELECT	property_id,
+	account_id,
+	device_collection_id,
+	login,
+	property_name,
+	property_type,
+	property_value,
+	property_rank,
+	is_boolean
+FROM	v_dev_col_user_prop_expanded 
+	INNER JOIN Device_Collection USING (Device_Collection_ID)
+WHERE	is_enabled = 'Y'
+AND	(
+		Device_Collection_Type IN ('HOTPants-app', 'HOTPants')
+	OR
+		Property_Type IN ('RADIUS', 'HOTPants') 
+	)
+;
+
+
+-- END Misc that does not apply to above
+
+
+-- BEGIN Misc that does not apply to above
+--
+-- Copyright (c) 2015, Todd M. Kover
+-- All rights reserved.
+--
+-- Licensed under the Apache License, Version 2.0 (the "License");
+-- you may not use this file except in compliance with the License.
+-- You may obtain a copy of the License at
+--
+--       http://www.apache.org/licenses/LICENSE-2.0
+--
+-- Unless required by applicable law or agreed to in writing, software
+-- distributed under the License is distributed on an "AS IS" BASIS,
+-- WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-- See the License for the specific language governing permissions and
+-- limitations under the License.
+--
+-- $Id$
+--
+
+--
+-- This is used by the zonegen software
+--
+
+CREATE OR REPLACE VIEW v_dns_changes_pending AS
+WITH chg AS (
+	SELECT dns_change_record_id, dns_domain_id,
+		case WHEN family(ip_address)  = 4 THEN set_masklen(ip_address, 24)
+			ELSE set_masklen(ip_address, 64) END as ip_address,
+		dns_utils.get_domain_from_cidr(ip_address) as cidrdns
+	FROM dns_change_record
+	WHERE ip_address is not null
+) SELECT DISTINCT *
+FROM (
+	SELECT	chg.dns_change_record_id, n.dns_domain_id,
+		n.should_generate, n.last_generated,
+		n.soa_name, chg.ip_address
+	FROM   chg
+		INNER JOIN dns_domain n on chg.cidrdns = n.soa_name
+	UNION
+	SELECT  chg.dns_change_record_id, d.dns_domain_id,
+		d.should_generate, d.last_generated,
+		d.soa_name, NULL
+	FROM	dns_change_record chg
+		INNER JOIN dns_domain d USING (dns_domain_id)
+	WHERE   dns_domain_id IS NOT NULL
+) x;
+
+
+-- END Misc that does not apply to above
+
+
+-- BEGIN Misc that does not apply to above
+-- Copyright (c) 2014, Todd M. Kover
+-- All rights reserved.
+--
+-- Licensed under the Apache License, Version 2.0 (the "License");
+-- you may not use this file except in compliance with the License.
+-- You may obtain a copy of the License at
+--
+--       http://www.apache.org/licenses/LICENSE-2.0
+--
+-- Unless required by applicable law or agreed to in writing, software
+-- distributed under the License is distributed on an "AS IS" BASIS,
+-- WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-- See the License for the specific language governing permissions and
+-- limitations under the License.
+--
+-- $Id$
+--
+
+--
+-- This query pulls out all the device collection overrides
+--
+-- NOTE:  This view does not attempt to validate if a user has any
+-- association with a device collection, just if a user is there, what
+-- properties are set.  Its primary use is by other views.
+--
+-- It includes entries for all mclasses and will also include contrived entries
+-- for every -- per-device device collection by mapping it through devices 
+-- to an mclass.
+-- That is, if there is a ForceHome (or whatever) on an mclass and that user is
+-- added to the per-device collection, the ForceHome will show up on the
+-- per-device collection too.  This is used to do the device mappings for
+-- ownership and the like
+--
+CREATE OR REPLACE VIEW v_unix_account_overrides
+AS
+WITH perdevtomclass AS  (
+	SELECT  hdc.device_collection_id as host_device_collection_id,
+        	mdc.device_collection_id as mclass_device_collection_id,
+        	device_id
+	FROM    device_collection hdc
+        	INNER JOIN device_collection_device hdcd USING (device_collection_id)
+        	INNER JOIN device_collection_device mdcd USING (device_id)
+        	INNER JOIN device_collection mdc on
+                        mdcd.device_collection_id = mdc.device_collection_id
+	WHERE   hdc.device_collection_type = 'per-device'
+	AND     mdc.device_collection_type = 'mclass'
+), dcmap AS (
+	SELECT device_collection_id, parent_device_collection_id,
+		 device_collection_level
+		 FROM v_device_coll_hier_detail
+	UNION
+	SELECT  p.host_device_collection_id as device_collection_id,
+			d.parent_device_collection_id,
+			d.device_collection_level
+	FROM perdevtomclass p
+		INNER JOIN v_device_coll_hier_detail d ON
+			d.device_collection_id = p.mclass_device_collection_id
+) SELECT device_collection_id, account_id, 
+	array_agg(setting ORDER BY rn) AS setting
+FROM (
+	SELECT *, row_number() over () AS rn FROM (
+		SELECT device_collection_id, account_id,
+				unnest(ARRAY[property_name, property_value]) AS setting
+		FROM (
+			SELECT  dchd.device_collection_id,
+					acae.account_id,
+					p.property_name, 
+					coalesce(p.property_value, 
+						p.property_value_password_type) as property_value,
+					row_number() OVER (partition by 
+							dchd.device_collection_id,
+							acae.account_id,
+							acpe.property_name
+							ORDER BY dchd.device_collection_level, assign_rank,
+								property_id
+					) AS ord
+			FROM    v_acct_coll_prop_expanded acpe
+				INNER JOIN v_acct_coll_acct_expanded acae 
+						USING (account_collection_id)
+				INNER JOIN v_property p USING (property_id)
+				INNER JOIN dcmap dchd
+					ON dchd.parent_device_collection_id = p.device_collection_id
+			WHERE	p.property_type IN ('UnixPasswdFileValue', 
+						'UnixGroupFileProperty',
+						'MclassUnixProp')
+			AND		p.property_name NOT IN 
+					('UnixLogin','UnixGroup','UnixGroupMemberOverride')
+		) dc_acct_prop_list
+		WHERE ord = 1
+	) select_for_ordering
+) property_list
+GROUP BY device_collection_id, account_id
+;
+
+
+-- END Misc that does not apply to above
+
+
+-- BEGIN Misc that does not apply to above
 ALTER TABLE network_interface DROP CONSTRAINT IF EXISTS check_any_yes_no_1926994056;
 
 ALTER TABLE network_interface ADD CONSTRAINT 
 CHECK_ANY_YES_NO_1926994056 CHECK (SHOULD_MONITOR IN ('Y', 'N', 'ANY'));
 
 SELECT schema_support.rebuild_audit_tables('audit', 'jazzhands');
+
+DROP TRIGGER IF EXISTS trigger_audit_token_sequence ON token_sequence;
+
+--
+-- These should be noops and are used to make dumps less noisy because
+-- constraints created by earlier versions of postgres have type overrides
+-- spit out differently.
+--
+ALTER TABLE DNS_RECORD DROP CONSTRAINT IF EXISTS
+	CKC_DNS_SRV_PROTOCOL_DNS_RECO;
+ALTER TABLE DNS_RECORD
+        ADD CONSTRAINT  CKC_DNS_SRV_PROTOCOL_DNS_RECO CHECK (DNS_SRV_PROTOCOL is null or (DNS_SRV_PROTOCOL in ('tcp','udp') and DNS_SRV_PROTOCOL = lower(DNS_SRV_PROTOCOL)));
+
+ALTER TABLE KLOGIN_MCLASS DROP CONSTRAINT IF EXISTS
+	CKC_INCLUDE_EXCLUDE_F_KLOGIN_M;
+ALTER TABLE KLOGIN_MCLASS
+        ADD CONSTRAINT  CKC_INCLUDE_EXCLUDE_F_KLOGIN_M CHECK (INCLUDE_EXCLUDE_FLAG in ('INCLUDE','EXCLUDE') and INCLUDE_EXCLUDE_FLAG = upper(INCLUDE_EXCLUDE_FLAG));
+
+ALTER TABLE NETWORK_INTERFACE DROP CONSTRAINT IF EXISTS
+	CKC_NETINT_PARENT_R_1604677531;
+ALTER TABLE NETWORK_INTERFACE
+        ADD CONSTRAINT  CKC_NETINT_PARENT_R_1604677531 CHECK (PARENT_RELATION_TYPE IN ('NONE', 'SUBINTERFACE', 'SECONDARY'));
+
+ALTER TABLE PERSON DROP CONSTRAINT IF EXISTS
+	Validation_Rule_1770_218378485;
+ALTER TABLE PERSON
+        ADD CONSTRAINT  Validation_Rule_1770_218378485 CHECK (SHIRT_SIZE is null or (SHIRT_SIZE in ('XS','S','M','L','XL','XXL','XXXL') and SHIRT_SIZE = upper(SHIRT_SIZE)));
+
+ALTER TABLE PERSON DROP CONSTRAINT IF EXISTS
+	Validation_Rule_177_1190387970;
+ALTER TABLE PERSON
+        ADD CONSTRAINT  Validation_Rule_177_1190387970 CHECK (PANT_SIZE is null or (PANT_SIZE in ('XS','S','M','L','XL','XXL','XXXL') and PANT_SIZE = upper(PANT_SIZE)));
+
+ALTER TABLE PERSON_CONTACT DROP CONSTRAINT IF EXISTS
+	CKC_CONTACT_PRIVACY_440865622;
+ALTER TABLE PERSON_CONTACT
+        ADD CONSTRAINT  CKC_CONTACT_PRIVACY_440865622 CHECK (PERSON_CONTACT_PRIVACY IN ('PRIVATE', 'PUBLIC', 'HIDDEN'));
+
+ALTER TABLE RACK DROP CONSTRAINT IF EXISTS
+	CKC_RACK_STYLE_RACK;
+ALTER TABLE RACK
+        ADD CONSTRAINT  CKC_RACK_STYLE_RACK CHECK (RACK_STYLE in ('RELAY','CABINET') and RACK_STYLE = upper(RACK_STYLE));
+
+ALTER TABLE RACK_LOCATION DROP CONSTRAINT IF EXISTS
+	CKC_RACK_SIDE_LOCATION;
+ALTER TABLE RACK_LOCATION
+        ADD CONSTRAINT  CKC_RACK_SIDE_LOCATION CHECK (RACK_SIDE in ('FRONT','BACK'));
+
+ALTER TABLE SITE DROP CONSTRAINT IF EXISTS
+	CKC_SITE_STATUS_SITE;
+ALTER TABLE SITE
+        ADD CONSTRAINT  CKC_SITE_STATUS_SITE CHECK (SITE_STATUS in ('ACTIVE','INACTIVE','OBSOLETE','PLANNED') and SITE_STATUS = upper(SITE_STATUS));
+
+ALTER TABLE SLOT DROP CONSTRAINT IF EXISTS
+	CKC_SLOT_SLOT_SIDE;
+ALTER TABLE SLOT
+        ADD CONSTRAINT  CKC_SLOT_SLOT_SIDE CHECK (SLOT_SIDE in ('FRONT','BACK'));
+
+ALTER TABLE VAL_DNS_TYPE DROP CONSTRAINT IF EXISTS
+	CKC_ID_TYPE_VAL_DNS_;
+ALTER TABLE VAL_DNS_TYPE
+        ADD CONSTRAINT  CKC_ID_TYPE_VAL_DNS_ CHECK (ID_TYPE IN ('ID', 'LINK', 'NON-ID', 'HIDDEN'));
+
+ALTER TABLE VAL_NETBLOCK_COLLECTION_TYPE DROP CONSTRAINT IF EXISTS
+	CHECK_ANY_YES_NO_nc_singaddr_r;
+ALTER TABLE VAL_NETBLOCK_COLLECTION_TYPE
+        ADD CONSTRAINT  CHECK_ANY_YES_NO_nc_singaddr_r CHECK (NETBLOCK_SINGLE_ADDR_RESTRICT IN ('Y', 'N', 'ANY'));
+
+
+DROP TRIGGER IF EXISTS 
+	trigger_pgnotify_account_collection_account_token_changes_del
+	ON account_collection_account;
 
 
 -- END Misc that does not apply to above

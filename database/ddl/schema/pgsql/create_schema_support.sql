@@ -158,10 +158,11 @@ CREATE OR REPLACE FUNCTION schema_support.rebuild_audit_table(
 )
 RETURNS VOID AS $FUNC$
 DECLARE
-	idx	 text[];
-	keys text[];
-	cols text[];
-	i	text;
+	idx		text[];
+	keys	text[];
+	cols	text[];
+	i		text;
+	seq		integer;
 BEGIN
 	-- rename all the old indexes and constraints on the old audit table
 	SELECT	array_agg(c2.relname)
@@ -271,6 +272,19 @@ BEGIN
 		|| quote_ident('__old__' || table_name)
 		|| ' ORDER BY '
 		|| quote_ident('aud#seq');
+
+	--
+	-- fix sequence primary key to have the correct next value
+	-- 
+	EXECUTE 'SELECT max("aud#seq") FROM	 '
+			|| quote_ident(aud_schema) || '.'
+			|| quote_ident(table_name) INTO seq;
+	IF seq IS NOT NULL THEN
+		EXECUTE 'ALTER SEQUENCE '
+			|| quote_ident(aud_schema) || '.'
+			|| quote_ident(table_name || '_seq')
+			|| ' RESTART WITH ' || seq;
+	END IF;
 
 	EXECUTE 'DROP TABLE '
 		|| quote_ident(aud_schema) || '.'
