@@ -276,7 +276,7 @@ BEGIN
 	--
 	-- fix sequence primary key to have the correct next value
 	-- 
-	EXECUTE 'SELECT max("aud#seq") FROM	 '
+	EXECUTE 'SELECT max("aud#seq") + 1 FROM	 '
 			|| quote_ident(aud_schema) || '.'
 			|| quote_ident(table_name) INTO seq;
 	IF seq IS NOT NULL THEN

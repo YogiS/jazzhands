@@ -39,6 +39,8 @@ Invoked:
 	--post
 	../opensource/database/ddl//views/pgsql/create_v_unix_account_overrides.sql
 	--post
+	../opensource/database/ddl//views/create_v_hotpants_device_collection.sql
+	--post
 	post
 	--first
 	schema_support
@@ -3116,7 +3118,7 @@ BEGIN
 	--
 	-- fix sequence primary key to have the correct next value
 	-- 
-	EXECUTE 'SELECT max("aud#seq") FROM	 '
+	EXECUTE 'SELECT max("aud#seq") + 1 FROM	 '
 			|| quote_ident(aud_schema) || '.'
 			|| quote_ident(table_name) INTO seq;
 	IF seq IS NOT NULL THEN
@@ -3413,7 +3415,7 @@ CREATE MATERIALIZED VIEW jazzhands.mv_unix_passwd_mappings AS
     v_unix_passwd_mappings.extra_groups
    FROM v_unix_passwd_mappings;
 
--- DONE DEALING WITH TABLE mv_unix_passwd_mappings [1877319]
+-- DONE DEALING WITH TABLE mv_unix_passwd_mappings [2309807]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE mv_unix_group_mappings
@@ -3429,10 +3431,10 @@ CREATE MATERIALIZED VIEW jazzhands.mv_unix_group_mappings AS
     v_unix_group_mappings.members
    FROM v_unix_group_mappings;
 
--- DONE DEALING WITH TABLE mv_unix_group_mappings [1877326]
+-- DONE DEALING WITH TABLE mv_unix_group_mappings [2309820]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE v_person_company_audit_map [2115153]
+-- DEALING WITH TABLE v_person_company_audit_map [2309629]
 SELECT schema_support.save_dependent_objects_for_replay
         ('audit', 'person_company');
 SELECT schema_support.rebuild_audit_table
@@ -3511,10 +3513,10 @@ CREATE VIEW approval_utils.v_person_company_audit_map AS
   WHERE all_audrecs.rownum = 1;
 
 delete from __recreate where type = 'view' and object = 'v_person_company_audit_map';
--- DONE DEALING WITH TABLE v_person_company_audit_map [1877364]
+-- DONE DEALING WITH TABLE v_person_company_audit_map [2309874]
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE v_account_collection_account_audit_map [2115148]
+-- DEALING WITH TABLE v_account_collection_account_audit_map [2309623]
 
 SELECT schema_support.save_dependent_objects_for_replay
         ('audit', 'account_collection_account');
@@ -3567,7 +3569,7 @@ CREATE VIEW approval_utils.v_account_collection_account_audit_map AS
   WHERE all_audrecs.rownum = 1;
 
 delete from __recreate where type = 'view' and object = 'v_account_collection_account_audit_map';
--- DONE DEALING WITH TABLE v_account_collection_account_audit_map [1877359]
+-- DONE DEALING WITH TABLE v_account_collection_account_audit_map [2309868]
 --------------------------------------------------------------------
 --
 -- Process drops in jazzhands
@@ -6564,7 +6566,7 @@ BEGIN
 	--
 	-- fix sequence primary key to have the correct next value
 	-- 
-	EXECUTE 'SELECT max("aud#seq") FROM	 '
+	EXECUTE 'SELECT max("aud#seq") + 1 FROM	 '
 			|| quote_ident(aud_schema) || '.'
 			|| quote_ident(table_name) INTO seq;
 	IF seq IS NOT NULL THEN
@@ -7400,6 +7402,7 @@ FROM (
 ) x;
 
 
+
 -- END Misc that does not apply to above
 
 
@@ -7496,6 +7499,46 @@ FROM (
 	) select_for_ordering
 ) property_list
 GROUP BY device_collection_id, account_id
+;
+
+
+-- END Misc that does not apply to above
+
+
+-- BEGIN Misc that does not apply to above
+-- Copyright (c) 2015-2016, Todd M. Kover
+-- All rights reserved.
+--
+-- Licensed under the Apache License, Version 2.0 (the "License");
+-- you may not use this file except in compliance with the License.
+-- You may obtain a copy of the License at
+--
+--       http://www.apache.org/licenses/LICENSE-2.0
+--
+-- Unless required by applicable law or agreed to in writing, software
+-- distributed under the License is distributed on an "AS IS" BASIS,
+-- WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-- See the License for the specific language governing permissions and
+-- limitations under the License.
+
+CREATE OR REPLACE VIEW v_hotpants_device_collection AS
+SELECT DISTINCT
+                Device_Id,
+                Device_Name,
+                dc.Device_Collection_Id,
+                dc.Device_Collection_Name,
+                dc.Device_Collection_Type,
+                host(IP_Address) as IP_address
+	FROM	device_collection dc
+		LEFT JOIN v_device_coll_hier_detail dcr ON
+			dc.device_collection_id = dcr.parent_device_collection_id
+                LEFT JOIN device_collection_device dcd ON
+                        dcd.device_collection_id = dcr.device_collection_id
+                LEFT JOIN Device USING (Device_Id) 
+                LEFT JOIN Network_Interface NI USING (Device_ID) 
+                LEFT JOIN Netblock NB USING (Netblock_id)
+	WHERE
+		device_collection_type IN ('HOTPants', 'HOTPants-app')
 ;
 
 
