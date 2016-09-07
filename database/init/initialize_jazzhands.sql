@@ -1646,6 +1646,15 @@ values
 	('privilegeWithdrawn'),
 	('AACompromise')
 ;
+
+INSERT INTO val_x509_certificate_type
+	(x509_certificate_type)
+values 
+	('default')
+;
+	
+-- END certificate
+-------------------------------------------------------------------------
 	
 -- END certificate
 -------------------------------------------------------------------------
