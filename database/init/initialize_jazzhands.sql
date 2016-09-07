@@ -1652,6 +1652,20 @@ INSERT INTO val_x509_certificate_type
 values 
 	('default')
 ;
+
+INSERT INTO val_pvt_key_encryption_type
+	(private_key_encryption_type)
+values 
+	('rsa'),
+	('dsa'),
+	('ecc')
+;
+	
+-- END certificate
+-------------------------------------------------------------------------
+	
+-- END certificate
+-------------------------------------------------------------------------
 	
 -- END certificate
 -------------------------------------------------------------------------
