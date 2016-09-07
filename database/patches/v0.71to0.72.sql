@@ -7295,7 +7295,7 @@ INSERT INTO x509_signed_certificate (
 	data_upd_user,
 	data_upd_date
 ) SELECT
-	nextval('x509_signed_certificate_x509_signed_certificate_id_seq'::regclass),		-- new column (x509_signed_certificate_id)
+	x509_cert_id,		-- new column (x509_signed_certificate_id)
 	'default'::character varying,		-- new column (x509_certificate_type)
 	subject,
 	friendly_name,
@@ -7349,7 +7349,7 @@ INSERT INTO audit.x509_signed_certificate (
 	"aud#user",
 	"aud#seq"
 ) SELECT
-	NULL,		-- new column (x509_signed_certificate_id)
+	x509_cert_id,		-- new column (x509_signed_certificate_id)
 	NULL,		-- new column (x509_certificate_type)
 	subject,
 	friendly_name,
