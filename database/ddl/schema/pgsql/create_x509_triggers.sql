@@ -75,7 +75,7 @@ LANGUAGE plpgsql SECURITY DEFINER;
 
 DROP TRIGGER IF EXISTS trigger_x509_signed_ski_pvtkey_validate ON x509_signed_certificate;
 CREATE TRIGGER trigger_x509_signed_ski_pvtkey_validate 
-	AFTER UPDATE OF subject_key_identifier, private_key_id
+	AFTER INSERT OR UPDATE OF subject_key_identifier, private_key_id
 	ON x509_signed_certificate
 	FOR EACH ROW 
 	EXECUTE PROCEDURE x509_signed_ski_pvtkey_validate();
