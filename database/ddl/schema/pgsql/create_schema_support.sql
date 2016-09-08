@@ -334,38 +334,46 @@ $FUNC$ LANGUAGE plpgsql;
 -------------------------------------------------------------------------------
 
 CREATE OR REPLACE FUNCTION schema_support.build_audit_table(
-    aud_schema VARCHAR, tbl_schema VARCHAR, table_name VARCHAR,
-    first_time boolean DEFAULT true
+	aud_schema VARCHAR, tbl_schema VARCHAR, table_name VARCHAR,
+	first_time boolean DEFAULT true
 )
 RETURNS VOID AS $FUNC$
 DECLARE
 	keys	RECORD;
 BEGIN
-    IF first_time THEN
+	BEGIN
 	EXECUTE 'CREATE SEQUENCE ' || quote_ident(aud_schema) || '.'
-	    || quote_ident(table_name || '_seq');
-    END IF;
+		|| quote_ident(table_name || '_seq');
+	EXCEPTION WHEN duplicate_table THEN
+		NULL;
+	END;
 
-    EXECUTE 'CREATE TABLE ' || quote_ident(aud_schema) || '.'
-	|| quote_ident(table_name) || ' AS '
-	|| 'SELECT *, NULL::char(3) as "aud#action", now() as "aud#timestamp", '
-	|| 'clock_timestamp() as "aud#realtime", '
-	|| 'txid_current() as "aud#txid", '
-	|| 'NULL::varchar(255) AS "aud#user", NULL::integer AS "aud#seq" '
-	|| 'FROM ' || quote_ident(tbl_schema) || '.' || quote_ident(table_name)
-	|| ' LIMIT 0';
+	EXECUTE 'CREATE TABLE ' || quote_ident(aud_schema) || '.'
+		|| quote_ident(table_name) || ' AS '
+		|| 'SELECT *, NULL::char(3) as "aud#action", now() as "aud#timestamp", '
+		|| 'clock_timestamp() as "aud#realtime", '
+		|| 'txid_current() as "aud#txid", '
+		|| 'NULL::varchar(255) AS "aud#user", NULL::integer AS "aud#seq" '
+		|| 'FROM ' || quote_ident(tbl_schema) || '.' || quote_ident(table_name)
+		|| ' LIMIT 0';
 
-    EXECUTE 'ALTER TABLE ' || quote_ident(aud_schema) || '.'
-	|| quote_ident(table_name)
-	|| $$ ALTER COLUMN "aud#seq" SET NOT NULL, $$
-	|| $$ ALTER COLUMN "aud#seq" SET DEFAULT nextval('$$
-	|| quote_ident(aud_schema) || '.' || quote_ident(table_name || '_seq')
-	|| $$')$$;
+	EXECUTE 'ALTER TABLE ' || quote_ident(aud_schema) || '.'
+		|| quote_ident(table_name)
+		|| $$ ALTER COLUMN "aud#seq" SET NOT NULL, $$
+		|| $$ ALTER COLUMN "aud#seq" SET DEFAULT nextval('$$
+		|| quote_ident(aud_schema) || '.' || quote_ident(table_name || '_seq')
+		|| $$')$$;
 
-    EXECUTE 'CREATE INDEX '
-	|| quote_ident( table_name || '_aud#timestamp_idx')
-	|| ' ON ' || quote_ident(aud_schema) || '.'
-	|| quote_ident(table_name) || '("aud#timestamp")';
+	EXECUTE 'ALTER SEQUENCE ' || quote_ident(aud_schema) || '.'
+		|| quote_ident(table_name || '_seq') || ' OWNED BY '
+		|| quote_ident(aud_schema) || '.' || quote_ident(table_name)
+		|| '.' || quote_ident('aud#seq');
+
+
+	EXECUTE 'CREATE INDEX '
+		|| quote_ident( table_name || '_aud#timestamp_idx')
+		|| ' ON ' || quote_ident(aud_schema) || '.'
+		|| quote_ident(table_name) || '("aud#timestamp")';
 
 	EXECUTE 'ALTER TABLE ' || quote_ident(aud_schema) || '.'
 		|| quote_ident( table_name )
@@ -392,7 +400,7 @@ BEGIN
 				(con.conrelid = i.indrelid
 				AND con.conindid = i.indexrelid )
 		WHERE c.relname =  table_name
-		AND     n.nspname = tbl_schema
+		AND	 n.nspname = tbl_schema
 		AND con.contype in ('p', 'u')
 	LOOP
 		EXECUTE 'CREATE INDEX '
@@ -401,10 +409,10 @@ BEGIN
 			|| quote_ident(table_name) || keys.cols;
 	END LOOP;
 
-    IF first_time THEN
+	IF first_time THEN
 		PERFORM schema_support.rebuild_audit_trigger
 			( aud_schema, tbl_schema, table_name );
-    END IF;
+	END IF;
 END;
 $FUNC$ LANGUAGE plpgsql;
 

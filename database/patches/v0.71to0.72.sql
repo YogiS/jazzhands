@@ -1974,31 +1974,39 @@ AS $function$
 DECLARE
 	keys	RECORD;
 BEGIN
-    IF first_time THEN
+	BEGIN
 	EXECUTE 'CREATE SEQUENCE ' || quote_ident(aud_schema) || '.'
-	    || quote_ident(table_name || '_seq');
-    END IF;
+		|| quote_ident(table_name || '_seq');
+	EXCEPTION WHEN duplicate_table THEN
+		NULL;
+	END;
 
-    EXECUTE 'CREATE TABLE ' || quote_ident(aud_schema) || '.'
-	|| quote_ident(table_name) || ' AS '
-	|| 'SELECT *, NULL::char(3) as "aud#action", now() as "aud#timestamp", '
-	|| 'clock_timestamp() as "aud#realtime", '
-	|| 'txid_current() as "aud#txid", '
-	|| 'NULL::varchar(255) AS "aud#user", NULL::integer AS "aud#seq" '
-	|| 'FROM ' || quote_ident(tbl_schema) || '.' || quote_ident(table_name)
-	|| ' LIMIT 0';
+	EXECUTE 'CREATE TABLE ' || quote_ident(aud_schema) || '.'
+		|| quote_ident(table_name) || ' AS '
+		|| 'SELECT *, NULL::char(3) as "aud#action", now() as "aud#timestamp", '
+		|| 'clock_timestamp() as "aud#realtime", '
+		|| 'txid_current() as "aud#txid", '
+		|| 'NULL::varchar(255) AS "aud#user", NULL::integer AS "aud#seq" '
+		|| 'FROM ' || quote_ident(tbl_schema) || '.' || quote_ident(table_name)
+		|| ' LIMIT 0';
 
-    EXECUTE 'ALTER TABLE ' || quote_ident(aud_schema) || '.'
-	|| quote_ident(table_name)
-	|| $$ ALTER COLUMN "aud#seq" SET NOT NULL, $$
-	|| $$ ALTER COLUMN "aud#seq" SET DEFAULT nextval('$$
-	|| quote_ident(aud_schema) || '.' || quote_ident(table_name || '_seq')
-	|| $$')$$;
+	EXECUTE 'ALTER TABLE ' || quote_ident(aud_schema) || '.'
+		|| quote_ident(table_name)
+		|| $$ ALTER COLUMN "aud#seq" SET NOT NULL, $$
+		|| $$ ALTER COLUMN "aud#seq" SET DEFAULT nextval('$$
+		|| quote_ident(aud_schema) || '.' || quote_ident(table_name || '_seq')
+		|| $$')$$;
 
-    EXECUTE 'CREATE INDEX '
-	|| quote_ident( table_name || '_aud#timestamp_idx')
-	|| ' ON ' || quote_ident(aud_schema) || '.'
-	|| quote_ident(table_name) || '("aud#timestamp")';
+	EXECUTE 'ALTER SEQUENCE ' || quote_ident(aud_schema) || '.'
+		|| quote_ident(table_name || '_seq') || ' OWNED BY '
+		|| quote_ident(aud_schema) || '.' || quote_ident(table_name)
+		|| '.' || quote_ident('aud#seq');
+
+
+	EXECUTE 'CREATE INDEX '
+		|| quote_ident( table_name || '_aud#timestamp_idx')
+		|| ' ON ' || quote_ident(aud_schema) || '.'
+		|| quote_ident(table_name) || '("aud#timestamp")';
 
 	EXECUTE 'ALTER TABLE ' || quote_ident(aud_schema) || '.'
 		|| quote_ident( table_name )
@@ -2025,7 +2033,7 @@ BEGIN
 				(con.conrelid = i.indrelid
 				AND con.conindid = i.indexrelid )
 		WHERE c.relname =  table_name
-		AND     n.nspname = tbl_schema
+		AND	 n.nspname = tbl_schema
 		AND con.contype in ('p', 'u')
 	LOOP
 		EXECUTE 'CREATE INDEX '
@@ -2034,10 +2042,10 @@ BEGIN
 			|| quote_ident(table_name) || keys.cols;
 	END LOOP;
 
-    IF first_time THEN
+	IF first_time THEN
 		PERFORM schema_support.rebuild_audit_trigger
 			( aud_schema, tbl_schema, table_name );
-    END IF;
+	END IF;
 END;
 $function$
 ;
@@ -3422,7 +3430,7 @@ CREATE SEQUENCE x509_signed_certificate_x509_signed_certificate_id_seq;
 
 
 --------------------------------------------------------------------
--- DEALING WITH TABLE val_account_collection_type [2924932]
+-- DEALING WITH TABLE val_account_collection_type
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'val_account_collection_type', 'val_account_collection_type');
 
@@ -3614,7 +3622,7 @@ ALTER TABLE val_account_collection_type
 	FOREIGN KEY (account_realm_id) REFERENCES account_realm(account_realm_id);
 
 -- TRIGGERS
--- consider NEW oid 2916667
+-- consider NEW jazzhands.account_collection_type_realm
 CREATE OR REPLACE FUNCTION jazzhands.account_collection_type_realm()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -3678,10 +3686,10 @@ SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_account_collection
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_account_collection_type');
 DROP TABLE IF EXISTS val_account_collection_type_v71;
 DROP TABLE IF EXISTS audit.val_account_collection_type_v71;
--- DONE DEALING WITH TABLE val_account_collection_type [2907637]
+-- DONE DEALING WITH TABLE val_account_collection_type
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE val_company_collection_type [2925070]
+-- DEALING WITH TABLE val_company_collection_type
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'val_company_collection_type', 'val_company_collection_type');
 
@@ -3850,10 +3858,10 @@ SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_company_collection
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_company_collection_type');
 DROP TABLE IF EXISTS val_company_collection_type_v71;
 DROP TABLE IF EXISTS audit.val_company_collection_type_v71;
--- DONE DEALING WITH TABLE val_company_collection_type [2907810]
+-- DONE DEALING WITH TABLE val_company_collection_type
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE val_device_collection_type [2925180]
+-- DEALING WITH TABLE val_device_collection_type
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'val_device_collection_type', 'val_device_collection_type');
 
@@ -4013,10 +4021,10 @@ SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_device_collection_
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_device_collection_type');
 DROP TABLE IF EXISTS val_device_collection_type_v71;
 DROP TABLE IF EXISTS audit.val_device_collection_type_v71;
--- DONE DEALING WITH TABLE val_device_collection_type [2907922]
+-- DONE DEALING WITH TABLE val_device_collection_type
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE val_layer2_network_coll_type [2925338]
+-- DEALING WITH TABLE val_layer2_network_coll_type
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'val_layer2_network_coll_type', 'val_layer2_network_coll_type');
 
@@ -4171,10 +4179,10 @@ SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_layer2_network_col
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_layer2_network_coll_type');
 DROP TABLE IF EXISTS val_layer2_network_coll_type_v71;
 DROP TABLE IF EXISTS audit.val_layer2_network_coll_type_v71;
--- DONE DEALING WITH TABLE val_layer2_network_coll_type [2908084]
+-- DONE DEALING WITH TABLE val_layer2_network_coll_type
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE val_layer3_network_coll_type [2925348]
+-- DEALING WITH TABLE val_layer3_network_coll_type
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'val_layer3_network_coll_type', 'val_layer3_network_coll_type');
 
@@ -4329,10 +4337,10 @@ SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_layer3_network_col
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_layer3_network_coll_type');
 DROP TABLE IF EXISTS val_layer3_network_coll_type_v71;
 DROP TABLE IF EXISTS audit.val_layer3_network_coll_type_v71;
--- DONE DEALING WITH TABLE val_layer3_network_coll_type [2908097]
+-- DONE DEALING WITH TABLE val_layer3_network_coll_type
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE val_netblock_collection_type [2925391]
+-- DEALING WITH TABLE val_netblock_collection_type
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'val_netblock_collection_type', 'val_netblock_collection_type');
 
@@ -4516,10 +4524,10 @@ SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_netblock_collectio
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_netblock_collection_type');
 DROP TABLE IF EXISTS val_netblock_collection_type_v71;
 DROP TABLE IF EXISTS audit.val_netblock_collection_type_v71;
--- DONE DEALING WITH TABLE val_netblock_collection_type [2908140]
+-- DONE DEALING WITH TABLE val_netblock_collection_type
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE val_property [2925617]
+-- DEALING WITH TABLE val_property
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'val_property', 'val_property');
 
@@ -5142,10 +5150,10 @@ SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_property');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_property');
 DROP TABLE IF EXISTS val_property_v71;
 DROP TABLE IF EXISTS audit.val_property_v71;
--- DONE DEALING WITH TABLE val_property [2908370]
+-- DONE DEALING WITH TABLE val_property
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE val_property_collection_type [2925679]
+-- DEALING WITH TABLE val_property_collection_type
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'val_property_collection_type', 'val_property_collection_type');
 
@@ -5300,7 +5308,7 @@ SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_property_collectio
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_property_collection_type');
 DROP TABLE IF EXISTS val_property_collection_type_v71;
 DROP TABLE IF EXISTS audit.val_property_collection_type_v71;
--- DONE DEALING WITH TABLE val_property_collection_type [2908433]
+-- DONE DEALING WITH TABLE val_property_collection_type
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE val_pvt_key_encryption_type
@@ -5317,14 +5325,14 @@ SELECT schema_support.build_audit_table('audit', 'jazzhands', 'val_pvt_key_encry
 --
 -- Copying initialization data
 --
-INSERT INTO val_pvt_key_encryption_type
-	(private_key_encryption_type)
-values
-	('rsa'),
-	('dsa'),
-	('ecc')
-;
 
+INSERT INTO val_pvt_key_encryption_type (
+private_key_encryption_type,description
+) VALUES
+	('rsa',NULL),
+	('dsa',NULL),
+	('ecc',NULL)
+;
 
 -- PRIMARY AND ALTERNATE KEYS
 ALTER TABLE val_pvt_key_encryption_type ADD CONSTRAINT pk_val_pvt_key_encryption_type PRIMARY KEY (private_key_encryption_type);
@@ -5352,10 +5360,10 @@ COMMENT ON COLUMN val_pvt_key_encryption_type.private_key_encryption_type IS 'en
 SELECT schema_support.replay_object_recreates();
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_pvt_key_encryption_type');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_pvt_key_encryption_type');
--- DONE DEALING WITH TABLE val_pvt_key_encryption_type [2908471]
+-- DONE DEALING WITH TABLE val_pvt_key_encryption_type
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE val_raid_type [2925725]
+-- DEALING WITH TABLE val_raid_type
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'val_raid_type', 'val_raid_type');
 
@@ -5494,10 +5502,10 @@ SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_raid_type');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_raid_type');
 DROP TABLE IF EXISTS val_raid_type_v71;
 DROP TABLE IF EXISTS audit.val_raid_type_v71;
--- DONE DEALING WITH TABLE val_raid_type [2908487]
+-- DONE DEALING WITH TABLE val_raid_type
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE val_token_collection_type [2925802]
+-- DEALING WITH TABLE val_token_collection_type
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'val_token_collection_type', 'val_token_collection_type');
 
@@ -5646,7 +5654,7 @@ SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_token_collection_t
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_token_collection_type');
 DROP TABLE IF EXISTS val_token_collection_type_v71;
 DROP TABLE IF EXISTS audit.val_token_collection_type_v71;
--- DONE DEALING WITH TABLE val_token_collection_type [2908564]
+-- DONE DEALING WITH TABLE val_token_collection_type
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE val_x509_certificate_type
@@ -5696,7 +5704,7 @@ COMMENT ON COLUMN val_x509_certificate_type.x509_certificate_type IS 'encryption
 SELECT schema_support.replay_object_recreates();
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_x509_certificate_type');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_x509_certificate_type');
--- DONE DEALING WITH TABLE val_x509_certificate_type [2908638]
+-- DONE DEALING WITH TABLE val_x509_certificate_type
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE certificate_signing_request
@@ -5712,36 +5720,39 @@ CREATE TABLE certificate_signing_request
 	data_upd_user	varchar(255)  NULL,
 	data_upd_date	timestamp with time zone  NULL
 );
+SELECT schema_support.build_audit_table('audit', 'jazzhands', 'certificate_signing_request', true);
 
 INSERT INTO certificate_signing_request
 SELECT x509_cert_id, friendly_name, subject,
-        certificate_sign_req, 
-	CASE WHEN private_key is NOT NULL THEN x509_cert_id ELSE NULL END,
-	data_ins_user, data_ins_date,
+        certificate_sign_req,
+        CASE WHEN private_key is NOT NULL THEN x509_cert_id ELSE NULL END,
+        data_ins_user, data_ins_date,
         data_upd_user, data_upd_date
 FROM x509_certificate
 WHERE certificate_sign_req IS NOT NULL
 ORDER BY x509_cert_id;
 
-SELECT schema_support.build_audit_table('audit', 'jazzhands', 'certificate_signing_request', true);
-
 INSERT INTO audit.certificate_signing_request
 SELECT x509_cert_id, friendly_name, subject,
-        certificate_sign_req, 
-	CASE WHEN private_key is NOT NULL THEN x509_cert_id ELSE NULL END,
-	data_ins_user, data_ins_date,
-        data_upd_user, data_upd_date, 
-	"aud#action",
-	"aud#timestamp",
-	NULL,
-	NULL,
-	"aud#user",
-	"aud#seq"
+        certificate_sign_req,
+        CASE WHEN private_key is NOT NULL THEN x509_cert_id ELSE NULL END,
+        data_ins_user, data_ins_date,
+        data_upd_user, data_upd_date,
+        "aud#action",
+        "aud#timestamp",
+        NULL,
+        NULL,
+        "aud#user",
+        "aud#seq"
 FROM audit.x509_certificate
 WHERE x509_cert_id IN (select x509_cert_id FROM audit.x509_certificate
-	WHERE certificate_sign_req IS NOT NULL)
+        WHERE certificate_sign_req IS NOT NULL)
 ORDER BY "aud#seq";
-/*************************************************************************/
+
+SELECT schema_support.rebuild_audit_trigger
+                        ( 'audit', 'jazzhands', 'certificate_signing_request' );
+
+/**************************************************************************/
 
 ALTER TABLE certificate_signing_request
 	ALTER certificate_signing_request_id
@@ -5786,7 +5797,7 @@ SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'certificate_signing_re
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'certificate_signing_request');
 ALTER SEQUENCE certificate_signing_request_certificate_signing_request_id_seq
 	 OWNED BY certificate_signing_request.certificate_signing_request_id;
--- DONE DEALING WITH TABLE certificate_signing_request [2905828]
+-- DONE DEALING WITH TABLE certificate_signing_request
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE private_key
@@ -5795,7 +5806,7 @@ CREATE TABLE private_key
 	private_key_id	integer NOT NULL,
 	private_key_encryption_type	varchar(50) NOT NULL,
 	is_active	character(1) NOT NULL,
-	subject_key_identifier	varchar(255) NULL,
+	subject_key_identifier	varchar(255)  NULL,
 	private_key	text NOT NULL,
 	passphrase	varchar(255)  NULL,
 	encryption_key_id	integer  NULL,
@@ -5804,35 +5815,38 @@ CREATE TABLE private_key
 	data_upd_user	varchar(255)  NULL,
 	data_upd_date	timestamp with time zone  NULL
 );
+SELECT schema_support.build_audit_table('audit', 'jazzhands', 'private_key', false);
 
-/*************************************************************************/
 INSERT INTO private_key
 SELECT x509_cert_id AS private_key_id,
-	'rsa' AS private_key_encryption_type, is_active,
-	subject_key_identifier, private_key, passphrase, encryption_key_id,
-	data_ins_user, data_ins_date, data_upd_user, data_upd_date
+        'rsa' AS private_key_encryption_type, is_active,
+        subject_key_identifier, private_key, passphrase, encryption_key_id,
+        data_ins_user, data_ins_date, data_upd_user, data_upd_date
 FROM x509_certificate
 WHERE private_key is NOT NULL
 ORDER BY x509_cert_id;
 
-SELECT schema_support.build_audit_table('audit', 'jazzhands', 'private_key', true);
-
 INSERT INTO audit.private_key
 SELECT x509_cert_id AS private_key_id,
-	'rsa' AS private_key_encryption_type, is_active,
-	subject_key_identifier, private_key, passphrase, encryption_key_id,
-	data_ins_user, data_ins_date, data_upd_user, data_upd_date,
-	"aud#action",
-	"aud#timestamp",
-	NULL,
-	NULL,
-	"aud#user",
-	"aud#seq"
+        'rsa' AS private_key_encryption_type, is_active,
+        subject_key_identifier, private_key, passphrase, encryption_key_id,
+        data_ins_user, data_ins_date, data_upd_user, data_upd_date,
+        "aud#action",
+        "aud#timestamp",
+        NULL,
+        NULL,
+        "aud#user",
+        "aud#seq"
 FROM audit.x509_certificate
 WHERE x509_cert_id IN (select x509_cert_id FROM audit.x509_certificate
-	WHERE private_key IS NOT NULL)
+        WHERE private_key IS NOT NULL)
 ORDER BY "aud#seq";
-/*************************************************************************/
+
+SELECT schema_support.rebuild_audit_trigger
+                        ( 'audit', 'jazzhands', 'private_key' );
+
+
+/**************************************************************************/
 
 ALTER TABLE private_key
 	ALTER private_key_id
@@ -5892,10 +5906,10 @@ SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'private_key');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'private_key');
 ALTER SEQUENCE private_key_private_key_id_seq
 	 OWNED BY private_key.private_key_id;
--- DONE DEALING WITH TABLE private_key [2907155]
+-- DONE DEALING WITH TABLE private_key
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE property [2924484]
+-- DEALING WITH TABLE property
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'property', 'property');
 
@@ -6420,7 +6434,7 @@ ALTER TABLE property
 	FOREIGN KEY (property_value_person_id) REFERENCES person(person_id);
 
 -- TRIGGERS
--- consider NEW oid 2916634
+-- consider NEW jazzhands.validate_property
 CREATE OR REPLACE FUNCTION jazzhands.validate_property()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -7244,10 +7258,10 @@ ALTER SEQUENCE property_property_id_seq
 	 OWNED BY property.property_id;
 DROP TABLE IF EXISTS property_v71;
 DROP TABLE IF EXISTS audit.property_v71;
--- DONE DEALING WITH TABLE property [2907172]
+-- DONE DEALING WITH TABLE property
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE x509_certificate [2926001]
+-- DEALING WITH TABLE x509_certificate
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'x509_certificate', 'x509_signed_certificate');
 
@@ -7304,7 +7318,7 @@ CREATE TABLE x509_signed_certificate
 	x509_certificate_type	varchar(50)  NULL,
 	subject	varchar(255) NOT NULL,
 	friendly_name	varchar(255) NOT NULL,
-	subject_key_identifer	varchar(255) NULL,
+	subject_key_identifer	varchar(255)  NULL,
 	is_active	character(1) NOT NULL,
 	is_certificate_authority	character(1) NOT NULL,
 	signing_cert_id	integer  NULL,
@@ -7341,69 +7355,72 @@ ALTER TABLE x509_signed_certificate
 
 INSERT INTO x509_signed_certificate
 SELECT
-	x509_cert_id,
-	'default',
-	subject,
-	friendly_name,
-	subject_key_identifier,
-	is_active,
-	is_certificate_authority,
-	signing_cert_id,
-	x509_ca_cert_serial_number,
-	public_key,
-	CASE WHEN private_key is NOT NULL THEN x509_cert_id ELSE NULL END,
-	CASE WHEN certificate_sign_req is NOT NULL THEN x509_cert_id ELSE NULL END,
-	valid_from,
-	valid_to,
-	x509_revocation_date,
-	x509_revocation_reason,
-	ocsp_uri,
-	crl_uri,
-	data_ins_user,
-	data_ins_date,
-	data_upd_user,
-	data_upd_date
+        x509_cert_id,
+        'default',
+        subject,
+        friendly_name,
+        subject_key_identifier,
+        is_active,
+        is_certificate_authority,
+        signing_cert_id,
+        x509_ca_cert_serial_number,
+        public_key,
+        CASE WHEN private_key is NOT NULL THEN x509_cert_id ELSE NULL END,
+        CASE WHEN certificate_sign_req is NOT NULL THEN x509_cert_id ELSE NULL END,
+        valid_from,
+        valid_to,
+        x509_revocation_date,
+        x509_revocation_reason,
+        ocsp_uri,
+        crl_uri,
+        data_ins_user,
+        data_ins_date,
+        data_upd_user,
+        data_upd_date
 FROM x509_certificate_v71
 WHERE public_key IS NOT NULL
 ;
 
 INSERT INTO audit.x509_signed_certificate
 SELECT x509_cert_id,
-	'default',
-	subject,
-	friendly_name,
-	subject_key_identifier,
-	is_active,
-	is_certificate_authority,
-	signing_cert_id,
-	x509_ca_cert_serial_number,
-	public_key,
-	CASE WHEN private_key is NOT NULL THEN x509_cert_id ELSE NULL END,
-	CASE WHEN certificate_sign_req is NOT NULL THEN x509_cert_id ELSE NULL END,
-	valid_from,
-	valid_to,
-	x509_revocation_date,
-	x509_revocation_reason,
-	ocsp_uri,
-	crl_uri,
-	data_ins_user,
-	data_ins_date,
-	data_upd_user,
-	data_upd_date,
-	"aud#action",
-	"aud#timestamp",
-	NULL,
-	NULL,
-	"aud#user",
-	"aud#seq"
+        'default',
+        subject,
+        friendly_name,
+        subject_key_identifier,
+        is_active,
+        is_certificate_authority,
+        signing_cert_id,
+        x509_ca_cert_serial_number,
+        public_key,
+        CASE WHEN private_key is NOT NULL THEN x509_cert_id ELSE NULL END,
+        CASE WHEN certificate_sign_req is NOT NULL THEN x509_cert_id ELSE NULL END,
+        valid_from,
+        valid_to,
+        x509_revocation_date,
+        x509_revocation_reason,
+        ocsp_uri,
+        crl_uri,
+        data_ins_user,
+        data_ins_date,
+        data_upd_user,
+        data_upd_date,
+        "aud#action",
+        "aud#timestamp",
+        NULL,
+        NULL,
+        "aud#user",
+        "aud#seq"
 FROM audit.x509_certificate_v71
 WHERE x509_cert_id IN (select x509_cert_id FROM audit.x509_certificate_v71
-	WHERE public_key IS NOT NULL)
+        WHERE public_key IS NOT NULL)
 ORDER BY "aud#seq";
 ;
 
-/*************************************************************************/
+SELECT schema_support.rebuild_audit_trigger
+                        ( 'audit', 'jazzhands', 'x509_signed_certificate' );
 
+
+/**************************************************************************/
 
 ALTER TABLE x509_signed_certificate
 	ALTER x509_signed_certificate_id
@@ -7501,7 +7518,7 @@ ALTER SEQUENCE x509_signed_certificate_x509_signed_certificate_id_seq
 	 OWNED BY x509_signed_certificate.x509_signed_certificate_id;
 DROP TABLE IF EXISTS x509_certificate_v71;
 DROP TABLE IF EXISTS audit.x509_certificate_v71;
--- DONE DEALING WITH TABLE x509_signed_certificate [2908797]
+-- DONE DEALING WITH TABLE x509_signed_certificate
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE x509_key_usage_default
@@ -7548,10 +7565,10 @@ ALTER TABLE x509_key_usage_default
 SELECT schema_support.replay_object_recreates();
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'x509_key_usage_default');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'x509_key_usage_default');
--- DONE DEALING WITH TABLE x509_key_usage_default [2908785]
+-- DONE DEALING WITH TABLE x509_key_usage_default
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE v_property [2932128]
+-- DEALING WITH TABLE v_property
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'v_property', 'v_property');
 SELECT schema_support.save_dependent_objects_for_replay('jazzhands', 'v_property');
@@ -7601,7 +7618,7 @@ CREATE VIEW jazzhands.v_property AS
   WHERE property.is_enabled = 'Y'::bpchar AND (property.start_date IS NULL AND property.finish_date IS NULL OR property.start_date IS NULL AND now() <= property.finish_date OR property.start_date <= now() AND property.finish_date IS NULL OR property.start_date <= now() AND now() <= property.finish_date);
 
 delete from __recreate where type = 'view' and object = 'v_property';
--- DONE DEALING WITH TABLE v_property [2915910]
+-- DONE DEALING WITH TABLE v_property
 --------------------------------------------------------------------
 SELECT schema_support.replay_object_recreates();
 SELECT schema_support.replay_saved_grants();
@@ -7609,39 +7626,38 @@ SELECT schema_support.replay_saved_grants();
 -- DEALING WITH NEW TABLE mv_unix_passwd_mappings
 DROP MATERIALIZED VIEW IF EXISTS jazzhands.mv_unix_passwd_mappings;
 CREATE MATERIALIZED VIEW jazzhands.mv_unix_passwd_mappings AS
-	SELECT v_unix_passwd_mappings.device_collection_id,
-	v_unix_passwd_mappings.account_id,
-	v_unix_passwd_mappings.login,
-	v_unix_passwd_mappings.crypt,
-	v_unix_passwd_mappings.unix_uid,
-	v_unix_passwd_mappings.unix_group_name,
-	v_unix_passwd_mappings.gecos,
-	v_unix_passwd_mappings.home,
-	v_unix_passwd_mappings.shell,
-	v_unix_passwd_mappings.ssh_public_key,
-	v_unix_passwd_mappings.setting,
-	v_unix_passwd_mappings.mclass_setting,
-	v_unix_passwd_mappings.extra_groups
-	FROM v_unix_passwd_mappings;
+ SELECT v_unix_passwd_mappings.device_collection_id,
+    v_unix_passwd_mappings.account_id,
+    v_unix_passwd_mappings.login,
+    v_unix_passwd_mappings.crypt,
+    v_unix_passwd_mappings.unix_uid,
+    v_unix_passwd_mappings.unix_group_name,
+    v_unix_passwd_mappings.gecos,
+    v_unix_passwd_mappings.home,
+    v_unix_passwd_mappings.shell,
+    v_unix_passwd_mappings.ssh_public_key,
+    v_unix_passwd_mappings.setting,
+    v_unix_passwd_mappings.mclass_setting,
+    v_unix_passwd_mappings.extra_groups
+   FROM v_unix_passwd_mappings;
 
-
--- DONE DEALING WITH TABLE mv_unix_passwd_mappings [2916109]
+-- DONE DEALING WITH TABLE mv_unix_passwd_mappings
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE mv_unix_group_mappings
 DROP MATERIALIZED VIEW IF EXISTS jazzhands.mv_unix_group_mappings;
 CREATE MATERIALIZED VIEW jazzhands.mv_unix_group_mappings AS
-	SELECT v_unix_group_mappings.device_collection_id,
-	v_unix_group_mappings.account_collection_id,
-	v_unix_group_mappings.group_name,
-	v_unix_group_mappings.unix_gid,
-	v_unix_group_mappings.group_password,
-	v_unix_group_mappings.setting,
-	v_unix_group_mappings.mclass_setting,
-	v_unix_group_mappings.members
-	FROM v_unix_group_mappings;
+ SELECT v_unix_group_mappings.device_collection_id,
+    v_unix_group_mappings.account_collection_id,
+    v_unix_group_mappings.group_name,
+    v_unix_group_mappings.unix_gid,
+    v_unix_group_mappings.group_password,
+    v_unix_group_mappings.setting,
+    v_unix_group_mappings.mclass_setting,
+    v_unix_group_mappings.members
+   FROM v_unix_group_mappings;
 
--- DONE DEALING WITH TABLE mv_unix_group_mappings [2916116]
+-- DONE DEALING WITH TABLE mv_unix_group_mappings
 --------------------------------------------------------------------
 SELECT schema_support.replay_object_recreates();
 SELECT schema_support.replay_saved_grants();
@@ -7678,7 +7694,7 @@ SELECT schema_support.replay_saved_grants();
 SELECT schema_support.replay_object_recreates();
 SELECT schema_support.replay_saved_grants();
 --------------------------------------------------------------------
--- DEALING WITH TABLE v_person_company_audit_map [2932358]
+-- DEALING WITH TABLE v_person_company_audit_map
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'v_person_company_audit_map', 'v_person_company_audit_map');
 SELECT schema_support.save_dependent_objects_for_replay('approval_utils', 'v_person_company_audit_map');
@@ -7752,10 +7768,10 @@ CREATE VIEW approval_utils.v_person_company_audit_map AS
   WHERE all_audrecs.rownum = 1;
 
 delete from __recreate where type = 'view' and object = 'v_person_company_audit_map';
--- DONE DEALING WITH TABLE v_person_company_audit_map [2916154]
+-- DONE DEALING WITH TABLE v_person_company_audit_map
 --------------------------------------------------------------------
 --------------------------------------------------------------------
--- DEALING WITH TABLE v_account_collection_account_audit_map [2932353]
+-- DEALING WITH TABLE v_account_collection_account_audit_map
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'v_account_collection_account_audit_map', 'v_account_collection_account_audit_map');
 SELECT schema_support.save_dependent_objects_for_replay('approval_utils', 'v_account_collection_account_audit_map');
@@ -7803,7 +7819,7 @@ CREATE VIEW approval_utils.v_account_collection_account_audit_map AS
   WHERE all_audrecs.rownum = 1;
 
 delete from __recreate where type = 'view' and object = 'v_account_collection_account_audit_map';
--- DONE DEALING WITH TABLE v_account_collection_account_audit_map [2916149]
+-- DONE DEALING WITH TABLE v_account_collection_account_audit_map
 --------------------------------------------------------------------
 SELECT schema_support.replay_object_recreates();
 SELECT schema_support.replay_saved_grants();
@@ -9662,31 +9678,39 @@ AS $function$
 DECLARE
 	keys	RECORD;
 BEGIN
-    IF first_time THEN
+	BEGIN
 	EXECUTE 'CREATE SEQUENCE ' || quote_ident(aud_schema) || '.'
-	    || quote_ident(table_name || '_seq');
-    END IF;
+		|| quote_ident(table_name || '_seq');
+	EXCEPTION WHEN duplicate_table THEN
+		NULL;
+	END;
 
-    EXECUTE 'CREATE TABLE ' || quote_ident(aud_schema) || '.'
-	|| quote_ident(table_name) || ' AS '
-	|| 'SELECT *, NULL::char(3) as "aud#action", now() as "aud#timestamp", '
-	|| 'clock_timestamp() as "aud#realtime", '
-	|| 'txid_current() as "aud#txid", '
-	|| 'NULL::varchar(255) AS "aud#user", NULL::integer AS "aud#seq" '
-	|| 'FROM ' || quote_ident(tbl_schema) || '.' || quote_ident(table_name)
-	|| ' LIMIT 0';
+	EXECUTE 'CREATE TABLE ' || quote_ident(aud_schema) || '.'
+		|| quote_ident(table_name) || ' AS '
+		|| 'SELECT *, NULL::char(3) as "aud#action", now() as "aud#timestamp", '
+		|| 'clock_timestamp() as "aud#realtime", '
+		|| 'txid_current() as "aud#txid", '
+		|| 'NULL::varchar(255) AS "aud#user", NULL::integer AS "aud#seq" '
+		|| 'FROM ' || quote_ident(tbl_schema) || '.' || quote_ident(table_name)
+		|| ' LIMIT 0';
 
-    EXECUTE 'ALTER TABLE ' || quote_ident(aud_schema) || '.'
-	|| quote_ident(table_name)
-	|| $$ ALTER COLUMN "aud#seq" SET NOT NULL, $$
-	|| $$ ALTER COLUMN "aud#seq" SET DEFAULT nextval('$$
-	|| quote_ident(aud_schema) || '.' || quote_ident(table_name || '_seq')
-	|| $$')$$;
+	EXECUTE 'ALTER TABLE ' || quote_ident(aud_schema) || '.'
+		|| quote_ident(table_name)
+		|| $$ ALTER COLUMN "aud#seq" SET NOT NULL, $$
+		|| $$ ALTER COLUMN "aud#seq" SET DEFAULT nextval('$$
+		|| quote_ident(aud_schema) || '.' || quote_ident(table_name || '_seq')
+		|| $$')$$;
 
-    EXECUTE 'CREATE INDEX '
-	|| quote_ident( table_name || '_aud#timestamp_idx')
-	|| ' ON ' || quote_ident(aud_schema) || '.'
-	|| quote_ident(table_name) || '("aud#timestamp")';
+	EXECUTE 'ALTER SEQUENCE ' || quote_ident(aud_schema) || '.'
+		|| quote_ident(table_name || '_seq') || ' OWNED BY '
+		|| quote_ident(aud_schema) || '.' || quote_ident(table_name)
+		|| '.' || quote_ident('aud#seq');
+
+
+	EXECUTE 'CREATE INDEX '
+		|| quote_ident( table_name || '_aud#timestamp_idx')
+		|| ' ON ' || quote_ident(aud_schema) || '.'
+		|| quote_ident(table_name) || '("aud#timestamp")';
 
 	EXECUTE 'ALTER TABLE ' || quote_ident(aud_schema) || '.'
 		|| quote_ident( table_name )
@@ -9713,7 +9737,7 @@ BEGIN
 				(con.conrelid = i.indrelid
 				AND con.conindid = i.indexrelid )
 		WHERE c.relname =  table_name
-		AND     n.nspname = tbl_schema
+		AND	 n.nspname = tbl_schema
 		AND con.contype in ('p', 'u')
 	LOOP
 		EXECUTE 'CREATE INDEX '
@@ -9722,10 +9746,10 @@ BEGIN
 			|| quote_ident(table_name) || keys.cols;
 	END LOOP;
 
-    IF first_time THEN
+	IF first_time THEN
 		PERFORM schema_support.rebuild_audit_trigger
 			( aud_schema, tbl_schema, table_name );
-    END IF;
+	END IF;
 END;
 $function$
 ;
