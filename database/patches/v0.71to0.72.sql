@@ -3684,8 +3684,8 @@ CREATE TRIGGER trig_account_collection_type_realm AFTER UPDATE OF account_realm_
 SELECT schema_support.replay_object_recreates();
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_account_collection_type');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_account_collection_type');
--- DROP TABLE IF EXISTS val_account_collection_type_v71;
--- DROP TABLE IF EXISTS audit.val_account_collection_type_v71;
+DROP TABLE IF EXISTS val_account_collection_type_v71;
+DROP TABLE IF EXISTS audit.val_account_collection_type_v71;
 -- DONE DEALING WITH TABLE val_account_collection_type
 --------------------------------------------------------------------
 --------------------------------------------------------------------
@@ -3856,8 +3856,8 @@ ALTER TABLE val_property
 SELECT schema_support.replay_object_recreates();
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_company_collection_type');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_company_collection_type');
--- DROP TABLE IF EXISTS val_company_collection_type_v71;
--- DROP TABLE IF EXISTS audit.val_company_collection_type_v71;
+DROP TABLE IF EXISTS val_company_collection_type_v71;
+DROP TABLE IF EXISTS audit.val_company_collection_type_v71;
 -- DONE DEALING WITH TABLE val_company_collection_type
 --------------------------------------------------------------------
 --------------------------------------------------------------------
@@ -4019,8 +4019,8 @@ ALTER TABLE val_property
 SELECT schema_support.replay_object_recreates();
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_device_collection_type');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_device_collection_type');
--- DROP TABLE IF EXISTS val_device_collection_type_v71;
--- DROP TABLE IF EXISTS audit.val_device_collection_type_v71;
+DROP TABLE IF EXISTS val_device_collection_type_v71;
+DROP TABLE IF EXISTS audit.val_device_collection_type_v71;
 -- DONE DEALING WITH TABLE val_device_collection_type
 --------------------------------------------------------------------
 --------------------------------------------------------------------
@@ -4177,8 +4177,8 @@ ALTER TABLE val_property
 SELECT schema_support.replay_object_recreates();
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_layer2_network_coll_type');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_layer2_network_coll_type');
--- DROP TABLE IF EXISTS val_layer2_network_coll_type_v71;
--- DROP TABLE IF EXISTS audit.val_layer2_network_coll_type_v71;
+DROP TABLE IF EXISTS val_layer2_network_coll_type_v71;
+DROP TABLE IF EXISTS audit.val_layer2_network_coll_type_v71;
 -- DONE DEALING WITH TABLE val_layer2_network_coll_type
 --------------------------------------------------------------------
 --------------------------------------------------------------------
@@ -4335,8 +4335,8 @@ ALTER TABLE val_property
 SELECT schema_support.replay_object_recreates();
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_layer3_network_coll_type');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_layer3_network_coll_type');
--- DROP TABLE IF EXISTS val_layer3_network_coll_type_v71;
--- DROP TABLE IF EXISTS audit.val_layer3_network_coll_type_v71;
+DROP TABLE IF EXISTS val_layer3_network_coll_type_v71;
+DROP TABLE IF EXISTS audit.val_layer3_network_coll_type_v71;
 -- DONE DEALING WITH TABLE val_layer3_network_coll_type
 --------------------------------------------------------------------
 --------------------------------------------------------------------
@@ -4522,8 +4522,8 @@ ALTER TABLE val_property
 SELECT schema_support.replay_object_recreates();
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_netblock_collection_type');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_netblock_collection_type');
--- DROP TABLE IF EXISTS val_netblock_collection_type_v71;
--- DROP TABLE IF EXISTS audit.val_netblock_collection_type_v71;
+DROP TABLE IF EXISTS val_netblock_collection_type_v71;
+DROP TABLE IF EXISTS audit.val_netblock_collection_type_v71;
 -- DONE DEALING WITH TABLE val_netblock_collection_type
 --------------------------------------------------------------------
 --------------------------------------------------------------------
@@ -5148,8 +5148,8 @@ ALTER TABLE val_property
 SELECT schema_support.replay_object_recreates();
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_property');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_property');
--- DROP TABLE IF EXISTS val_property_v71;
--- DROP TABLE IF EXISTS audit.val_property_v71;
+DROP TABLE IF EXISTS val_property_v71;
+DROP TABLE IF EXISTS audit.val_property_v71;
 -- DONE DEALING WITH TABLE val_property
 --------------------------------------------------------------------
 --------------------------------------------------------------------
@@ -5306,8 +5306,8 @@ ALTER TABLE val_property
 SELECT schema_support.replay_object_recreates();
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_property_collection_type');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_property_collection_type');
--- DROP TABLE IF EXISTS val_property_collection_type_v71;
--- DROP TABLE IF EXISTS audit.val_property_collection_type_v71;
+DROP TABLE IF EXISTS val_property_collection_type_v71;
+DROP TABLE IF EXISTS audit.val_property_collection_type_v71;
 -- DONE DEALING WITH TABLE val_property_collection_type
 --------------------------------------------------------------------
 --------------------------------------------------------------------
@@ -5500,8 +5500,8 @@ ALTER TABLE volume_group
 SELECT schema_support.replay_object_recreates();
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_raid_type');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_raid_type');
--- DROP TABLE IF EXISTS val_raid_type_v71;
--- DROP TABLE IF EXISTS audit.val_raid_type_v71;
+DROP TABLE IF EXISTS val_raid_type_v71;
+DROP TABLE IF EXISTS audit.val_raid_type_v71;
 -- DONE DEALING WITH TABLE val_raid_type
 --------------------------------------------------------------------
 --------------------------------------------------------------------
@@ -5652,8 +5652,8 @@ ALTER TABLE token_collection
 SELECT schema_support.replay_object_recreates();
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'val_token_collection_type');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'val_token_collection_type');
--- DROP TABLE IF EXISTS val_token_collection_type_v71;
--- DROP TABLE IF EXISTS audit.val_token_collection_type_v71;
+DROP TABLE IF EXISTS val_token_collection_type_v71;
+DROP TABLE IF EXISTS audit.val_token_collection_type_v71;
 -- DONE DEALING WITH TABLE val_token_collection_type
 --------------------------------------------------------------------
 --------------------------------------------------------------------
@@ -7251,8 +7251,8 @@ SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'property');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'property');
 ALTER SEQUENCE property_property_id_seq
 	 OWNED BY property.property_id;
--- DROP TABLE IF EXISTS property_v71;
--- DROP TABLE IF EXISTS audit.property_v71;
+DROP TABLE IF EXISTS property_v71;
+DROP TABLE IF EXISTS audit.property_v71;
 -- DONE DEALING WITH TABLE property
 --------------------------------------------------------------------
 --------------------------------------------------------------------
@@ -7515,8 +7515,8 @@ SELECT schema_support.rebuild_audit_trigger
                         ( 'audit', 'jazzhands', 'certificate_signing_request' );
 SELECT schema_support.rebuild_audit_trigger
                         ( 'audit', 'jazzhands', 'x509_signed_certificate' );
--- DROP TABLE IF EXISTS x509_certificate_v71;
--- DROP TABLE IF EXISTS audit.x509_certificate_v71;
+DROP TABLE IF EXISTS x509_certificate_v71;
+DROP TABLE IF EXISTS audit.x509_certificate_v71;
 -- DONE DEALING WITH TABLE x509_signed_certificate
 --------------------------------------------------------------------
 --------------------------------------------------------------------
@@ -11106,11 +11106,11 @@ $function$
 ;
 
 -- Dropping obsoleted sequences....
--- DROP SEQUENCE IF EXISTS x509_certificate_x509_cert_id_seq;
+DROP SEQUENCE IF EXISTS x509_certificate_x509_cert_id_seq;
 
 
 -- Dropping obsoleted audit sequences....
--- DROP SEQUENCE IF EXISTS audit.x509_certificate_seq;
+DROP SEQUENCE IF EXISTS audit.x509_certificate_seq;
 
 
 -- Processing tables with no structural changes
@@ -11835,7 +11835,7 @@ ALTER TABLE network_interface DROP CONSTRAINT IF EXISTS check_any_yes_no_1926994
 ALTER TABLE network_interface ADD CONSTRAINT 
 CHECK_ANY_YES_NO_1926994056 CHECK (SHOULD_MONITOR IN ('Y', 'N', 'ANY'));
 
-SELECT schema_support.rebuild_audit_tables('audit', 'jazzhands');
+-- SELECT schema_support.rebuild_audit_tables('audit', 'jazzhands');
 
 DROP TRIGGER IF EXISTS trigger_audit_token_sequence ON token_sequence;
 
