@@ -2028,6 +2028,8 @@ CREATE OR REPLACE FUNCTION schema_support.build_audit_table(aud_schema character
 AS $function$
 DECLARE
 	keys	RECORD;
+	count	INTEGER;
+	name	TEXT;
 BEGIN
 	BEGIN
 	EXECUTE 'CREATE SEQUENCE ' || quote_ident(aud_schema) || '.'
@@ -2067,6 +2069,7 @@ BEGIN
 		|| quote_ident( table_name )
 		|| ' ADD PRIMARY KEY ("aud#seq")';
 
+	COUNT := 0;
 	-- one day, I will want to construct the list of columns by hand rather
 	-- than use pg_get_constraintdef.  watch me...
 	FOR keys IN
@@ -2091,8 +2094,12 @@ BEGIN
 		AND	 n.nspname = tbl_schema
 		AND con.contype in ('p', 'u')
 	LOOP
-		EXECUTE 'CREATE INDEX '
-			|| 'aud_' || quote_ident( table_name || '_' || keys.conname)
+		name := 'aud_' || quote_ident( table_name || '_' || keys.conname);
+		IF char_length(name) > 63 THEN
+			name := 'aud_' || count || quote_ident( table_name || '_' || keys.conname);
+			COUNT := COUNT + 1;
+		END IF;
+		EXECUTE 'CREATE INDEX ' || name
 			|| ' ON ' || quote_ident(aud_schema) || '.'
 			|| quote_ident(table_name) || keys.cols;
 	END LOOP;
@@ -10264,93 +10271,6 @@ BEGIN
 		RAISE EXCEPTION 'Must run maintenance in a transaction.';
 	END IF;
 	RETURN true;
-END;
-$function$
-;
-
--- Changed function
-SELECT schema_support.save_grants_for_replay('schema_support', 'build_audit_table');
--- Dropped in case type changes.
-DROP FUNCTION IF EXISTS schema_support.build_audit_table ( aud_schema character varying, tbl_schema character varying, table_name character varying, first_time boolean );
-CREATE OR REPLACE FUNCTION schema_support.build_audit_table(aud_schema character varying, tbl_schema character varying, table_name character varying, first_time boolean DEFAULT true)
- RETURNS void
- LANGUAGE plpgsql
-AS $function$
-DECLARE
-	keys	RECORD;
-BEGIN
-	BEGIN
-	EXECUTE 'CREATE SEQUENCE ' || quote_ident(aud_schema) || '.'
-		|| quote_ident(table_name || '_seq');
-	EXCEPTION WHEN duplicate_table THEN
-		NULL;
-	END;
-
-	EXECUTE 'CREATE TABLE ' || quote_ident(aud_schema) || '.'
-		|| quote_ident(table_name) || ' AS '
-		|| 'SELECT *, NULL::char(3) as "aud#action", now() as "aud#timestamp", '
-		|| 'clock_timestamp() as "aud#realtime", '
-		|| 'txid_current() as "aud#txid", '
-		|| 'NULL::varchar(255) AS "aud#user", NULL::integer AS "aud#seq" '
-		|| 'FROM ' || quote_ident(tbl_schema) || '.' || quote_ident(table_name)
-		|| ' LIMIT 0';
-
-	EXECUTE 'ALTER TABLE ' || quote_ident(aud_schema) || '.'
-		|| quote_ident(table_name)
-		|| $$ ALTER COLUMN "aud#seq" SET NOT NULL, $$
-		|| $$ ALTER COLUMN "aud#seq" SET DEFAULT nextval('$$
-		|| quote_ident(aud_schema) || '.' || quote_ident(table_name || '_seq')
-		|| $$')$$;
-
-	EXECUTE 'ALTER SEQUENCE ' || quote_ident(aud_schema) || '.'
-		|| quote_ident(table_name || '_seq') || ' OWNED BY '
-		|| quote_ident(aud_schema) || '.' || quote_ident(table_name)
-		|| '.' || quote_ident('aud#seq');
-
-
-	EXECUTE 'CREATE INDEX '
-		|| quote_ident( table_name || '_aud#timestamp_idx')
-		|| ' ON ' || quote_ident(aud_schema) || '.'
-		|| quote_ident(table_name) || '("aud#timestamp")';
-
-	EXECUTE 'ALTER TABLE ' || quote_ident(aud_schema) || '.'
-		|| quote_ident( table_name )
-		|| ' ADD PRIMARY KEY ("aud#seq")';
-
-	-- one day, I will want to construct the list of columns by hand rather
-	-- than use pg_get_constraintdef.  watch me...
-	FOR keys IN
-		SELECT con.conname, c2.relname as index_name,
-			pg_catalog.pg_get_constraintdef(con.oid, true) as condef,
-				regexp_replace(
-			pg_catalog.pg_get_constraintdef(con.oid, true),
-					'^.*(\([^\)]+\)).*$', '\1') as cols,
-			con.condeferrable,
-			con.condeferred
-		FROM pg_catalog.pg_class c
-			INNER JOIN pg_namespace n
-				ON relnamespace = n.oid
-			INNER JOIN pg_catalog.pg_index i
-				ON c.oid = i.indrelid
-			INNER JOIN pg_catalog.pg_class c2
-				ON i.indexrelid = c2.oid
-			INNER JOIN pg_catalog.pg_constraint con ON
-				(con.conrelid = i.indrelid
-				AND con.conindid = i.indexrelid )
-		WHERE c.relname =  table_name
-		AND	 n.nspname = tbl_schema
-		AND con.contype in ('p', 'u')
-	LOOP
-		EXECUTE 'CREATE INDEX '
-			|| 'aud_' || quote_ident( table_name || '_' || keys.conname)
-			|| ' ON ' || quote_ident(aud_schema) || '.'
-			|| quote_ident(table_name) || keys.cols;
-	END LOOP;
-
-	IF first_time THEN
-		PERFORM schema_support.rebuild_audit_trigger
-			( aud_schema, tbl_schema, table_name );
-	END IF;
 END;
 $function$
 ;

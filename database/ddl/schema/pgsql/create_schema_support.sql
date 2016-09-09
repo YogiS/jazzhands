@@ -401,6 +401,8 @@ CREATE OR REPLACE FUNCTION schema_support.build_audit_table(
 RETURNS VOID AS $FUNC$
 DECLARE
 	keys	RECORD;
+	count	INTEGER;
+	name	TEXT;
 BEGIN
 	BEGIN
 	EXECUTE 'CREATE SEQUENCE ' || quote_ident(aud_schema) || '.'
@@ -440,6 +442,7 @@ BEGIN
 		|| quote_ident( table_name )
 		|| ' ADD PRIMARY KEY ("aud#seq")';
 
+	COUNT := 0;
 	-- one day, I will want to construct the list of columns by hand rather
 	-- than use pg_get_constraintdef.  watch me...
 	FOR keys IN
@@ -464,8 +467,12 @@ BEGIN
 		AND	 n.nspname = tbl_schema
 		AND con.contype in ('p', 'u')
 	LOOP
-		EXECUTE 'CREATE INDEX '
-			|| 'aud_' || quote_ident( table_name || '_' || keys.conname)
+		name := 'aud_' || quote_ident( table_name || '_' || keys.conname);
+		IF char_length(name) > 63 THEN
+			name := 'aud_' || count || quote_ident( table_name || '_' || keys.conname);
+			COUNT := COUNT + 1;
+		END IF;
+		EXECUTE 'CREATE INDEX ' || name
 			|| ' ON ' || quote_ident(aud_schema) || '.'
 			|| quote_ident(table_name) || keys.cols;
 	END LOOP;
