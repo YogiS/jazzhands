@@ -568,6 +568,30 @@ $function$
 ;
 
 -- New function
+CREATE OR REPLACE FUNCTION jazzhands.pvtkey_ski_signed_validate()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	ski	TEXT;
+BEGIN
+	SELECT	subject_key_identifier
+	INTO	ski
+	FROM	x509_signed_certificate x
+	WHERE	x.private_key_id = NEW.private_key_id;
+
+	IF FOUND AND ski != NEW.subject_key_identifier THEN
+		RAISE EXCEPTION 'subject key identifier must match private key in x509_signing_certificate' USING ERRCODE = 'foreign_key_violation';
+	END IF;
+
+	RETURN NEW;
+END;
+$function$
+;
+
+-- New function
 CREATE OR REPLACE FUNCTION jazzhands.unrequire_password_change()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -586,6 +610,37 @@ BEGIN
 		AND		p.property_name = 'NeedsPasswdChange'
 		AND	 	a.account_id = NEW.account_id
 	);
+	RETURN NEW;
+END;
+$function$
+;
+
+-- New function
+CREATE OR REPLACE FUNCTION jazzhands.x509_signed_ski_pvtkey_validate()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	ski	TEXT;
+BEGIN
+	--
+	-- XXX needs to be tweaked to ensure that both are set or not set.
+	--
+	IF NEW.private_key_id IS NULL THEN
+		RETURN NEW;
+	END IF;
+
+	SELECT	subject_key_identifier
+	INTO	ski
+	FROM	private_key p
+	WHERE	p.private_key_id = NEW.private_key_id;
+
+	IF FOUND AND ski != NEW.subject_key_identifier THEN
+		RAISE EXCEPTION 'subject key identifier must match private key in private_key' USING ERRCODE = 'foreign_key_violation';
+	END IF;
+
 	RETURN NEW;
 END;
 $function$
@@ -2627,7 +2682,7 @@ BEGIN
 		FROM    pg_catalog.pg_proc  p
 				inner join pg_catalog.pg_namespace n on n.oid = p.pronamespace
 		WHERE   n.nspname = _schema
-	 	 AND    p.proname = _object
+		 AND    p.proname = _object
 	LOOP
 		-- NOTE:  We lose who granted it.  Oh Well.
 		FOR _perm IN SELECT * FROM pg_catalog.aclexplode(acl := _procs.privs)
@@ -3129,7 +3184,7 @@ BEGIN
 
 	--
 	-- fix sequence primary key to have the correct next value
-	-- 
+	--
 	EXECUTE 'SELECT max("aud#seq") + 1 FROM	 '
 			|| quote_ident(aud_schema) || '.'
 			|| quote_ident(table_name) INTO seq;
@@ -3170,7 +3225,7 @@ BEGIN
 		  AND	c.relname = quote_ident('__old__' || table_name)
 		  AND	contype is NULL
 	LOOP
-		EXECUTE 'DROP INDEX ' 
+		EXECUTE 'DROP INDEX '
 			|| quote_ident(aud_schema) || '.'
 			|| quote_ident('_' || i);
 	END LOOP;
@@ -3222,7 +3277,7 @@ CREATE OR REPLACE FUNCTION schema_support.refresh_mv_if_needed(relation text, sc
  LANGUAGE plpgsql
  SET search_path TO schema_support
 AS $function$
-DECLARE 
+DECLARE
 	lastref	timestamp;
 	lastdat	timestamp;
 BEGIN
@@ -3313,8 +3368,8 @@ BEGIN
 			-- likely some sort of cache table.  XXX - should probably be
 			-- updated to use the materialized view update bits
 			BEGIN
-				EXECUTE 'SELECT max("aud#timestamp") 
-					FROM '||quote_ident(objaud)||'.'|| quote_ident(obj) 
+				EXECUTE 'SELECT max("aud#timestamp")
+					FROM '||quote_ident(objaud)||'.'|| quote_ident(obj)
 					INTO ts;
 				IF debug THEN
 					RAISE NOTICE '%.% -> %', objaud, obj, ts;
@@ -3332,6 +3387,71 @@ BEGIN
 	END IF;
 
 	RAISE EXCEPTION 'Unable to process relkind %', rk;
+END;
+$function$
+;
+
+-- New function
+CREATE OR REPLACE FUNCTION schema_support.reset_all_schema_table_sequences(schema text)
+ RETURNS integer
+ LANGUAGE plpgsql
+ SET search_path TO schema_support
+AS $function$
+DECLARE
+	_r	RECORD;
+	tally INTEGER;
+BEGIN
+	tally := 0;
+	FOR _r IN
+
+		SELECT n.nspname, c.relname, c.relkind
+		FROM	pg_class c
+				INNER JOIN pg_namespace n ON n.oid = c.relnamespace
+		WHERE	n.nspname = schema
+		AND		c.relkind = 'r'
+	LOOP
+		PERFORM schema_support.reset_table_sequence(_r.nspname::text, _r.relname::text);
+		tally := tally + 1;
+	END LOOP;
+	RETURN tally;
+END;
+$function$
+;
+
+-- New function
+CREATE OR REPLACE FUNCTION schema_support.reset_table_sequence(schema character varying, table_name character varying)
+ RETURNS void
+ LANGUAGE plpgsql
+ SET search_path TO schema_support
+AS $function$
+DECLARE
+	_r	RECORD;
+	m	BIGINT;
+BEGIN
+	FOR _r IN
+		WITH s AS (
+			SELECT	pg_get_serial_sequence(schema||'.'||table_name,
+				a.attname) as seq, a.attname as column
+			FROM	pg_attribute a
+			JOIN pg_class c ON c.oid = a.attrelid
+			JOIN pg_namespace n ON n.oid = c.relnamespace
+			WHERE	c.relname = table_name
+			AND	n.nspname = schema
+				AND 	a.attnum > 0
+				AND 	NOT a.attisdropped
+		) SELECT s.*, nextval(s.seq) as nv FROM s WHERE seq IS NOT NULL
+	LOOP
+		EXECUTE 'SELECT max('||quote_ident(_r.column)||')+1 FROM  '
+			|| quote_ident(schema)||'.'||quote_ident(table_name)
+			INTO m;
+		IF m IS NOT NULL THEN
+			IF _r.nv > m THEN
+				m := _r.nv;
+			END IF;
+			EXECUTE 'ALTER SEQUENCE ' || _r.seq || ' RESTART WITH '
+				|| m;
+		END IF;
+	END LOOP;
 END;
 $function$
 ;
@@ -5725,6 +5845,9 @@ ALTER TABLE certificate_signing_request
 	ALTER certificate_signing_request_id
 	SET DEFAULT nextval('certificate_signing_request_certificate_signing_request_id_seq'::regclass);
 
+-- PRIMARY AND ALTERNATE KEYS
+ALTER TABLE certificate_signing_request ADD CONSTRAINT pk_certificate_signing_request PRIMARY KEY (certificate_signing_request_id);
+
 INSERT INTO certificate_signing_request
 SELECT x509_cert_id, friendly_name, subject,
         certificate_sign_req,
@@ -5754,9 +5877,6 @@ ORDER BY "aud#seq";
 
 /**************************************************************************/
 
-
--- PRIMARY AND ALTERNATE KEYS
-ALTER TABLE certificate_signing_request ADD CONSTRAINT pk_certificate_signing_request PRIMARY KEY (certificate_signing_request_id);
 
 -- Table/Column Comments
 COMMENT ON TABLE certificate_signing_request IS 'Certificiate Signing Requests generated from public key.  This is mostly kept for posterity since its possible to generate these at-wil from the private key.';
@@ -5819,7 +5939,6 @@ ALTER TABLE private_key
 ALTER TABLE private_key
 	ALTER is_active
 	SET DEFAULT 'Y'::bpchar;
-
 
 INSERT INTO private_key
 SELECT x509_cert_id AS private_key_id,
@@ -5895,6 +6014,32 @@ ALTER TABLE private_key
 	FOREIGN KEY (encryption_key_id) REFERENCES encryption_key(encryption_key_id);
 
 -- TRIGGERS
+-- consider NEW jazzhands.pvtkey_ski_signed_validate
+CREATE OR REPLACE FUNCTION jazzhands.pvtkey_ski_signed_validate()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	ski	TEXT;
+BEGIN
+	SELECT	subject_key_identifier
+	INTO	ski
+	FROM	x509_signed_certificate x
+	WHERE	x.private_key_id = NEW.private_key_id;
+
+	IF FOUND AND ski != NEW.subject_key_identifier THEN
+		RAISE EXCEPTION 'subject key identifier must match private key in x509_signing_certificate' USING ERRCODE = 'foreign_key_violation';
+	END IF;
+
+	RETURN NEW;
+END;
+$function$
+;
+CREATE TRIGGER trigger_pvtkey_ski_signed_validate AFTER UPDATE OF subject_key_identifier ON private_key FOR EACH ROW EXECUTE PROCEDURE pvtkey_ski_signed_validate();
+
+-- XXX - may need to include trigger function
 -- this used to be at the end...
 SELECT schema_support.replay_object_recreates();
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'private_key');
@@ -7347,6 +7492,7 @@ ALTER TABLE x509_signed_certificate
 ALTER TABLE x509_signed_certificate
 	ALTER is_certificate_authority
 	SET DEFAULT 'N'::bpchar;
+
 INSERT INTO x509_signed_certificate
 SELECT
         x509_cert_id,
@@ -7410,9 +7556,17 @@ WHERE x509_cert_id IN (select x509_cert_id FROM audit.x509_certificate_v71
 ORDER BY "aud#seq";
 ;
 
-
+SELECT schema_support.rebuild_audit_trigger
+                        ( 'audit', 'jazzhands', 'certificate_signing_request' );
+SELECT schema_support.rebuild_audit_trigger
+                        ( 'audit', 'jazzhands', 'private_key' );
+SELECT schema_support.rebuild_audit_trigger
+                        ( 'audit', 'jazzhands', 'x509_signed_certificate' );
 
 /**************************************************************************/
+
+
+
 ALTER TABLE x509_signed_certificate
 	ALTER x509_signed_certificate_id
 	SET DEFAULT nextval('x509_signed_certificate_x509_signed_certificate_id_seq'::regclass);
@@ -7501,20 +7655,45 @@ ALTER TABLE x509_signed_certificate
 	FOREIGN KEY (x509_certificate_type) REFERENCES val_x509_certificate_type(x509_certificate_type);
 
 -- TRIGGERS
+-- consider NEW jazzhands.x509_signed_ski_pvtkey_validate
+CREATE OR REPLACE FUNCTION jazzhands.x509_signed_ski_pvtkey_validate()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	ski	TEXT;
+BEGIN
+	--
+	-- XXX needs to be tweaked to ensure that both are set or not set.
+	--
+	IF NEW.private_key_id IS NULL THEN
+		RETURN NEW;
+	END IF;
+
+	SELECT	subject_key_identifier
+	INTO	ski
+	FROM	private_key p
+	WHERE	p.private_key_id = NEW.private_key_id;
+
+	IF FOUND AND ski != NEW.subject_key_identifier THEN
+		RAISE EXCEPTION 'subject key identifier must match private key in private_key' USING ERRCODE = 'foreign_key_violation';
+	END IF;
+
+	RETURN NEW;
+END;
+$function$
+;
+CREATE TRIGGER trigger_x509_signed_ski_pvtkey_validate AFTER INSERT OR UPDATE OF subject_key_identifier, private_key_id ON x509_signed_certificate FOR EACH ROW EXECUTE PROCEDURE x509_signed_ski_pvtkey_validate();
+
+-- XXX - may need to include trigger function
 -- this used to be at the end...
 SELECT schema_support.replay_object_recreates();
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'x509_signed_certificate');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'x509_signed_certificate');
 ALTER SEQUENCE x509_signed_certificate_x509_signed_certificate_id_seq
 	 OWNED BY x509_signed_certificate.x509_signed_certificate_id;
-
--- create triggers for related tables
-SELECT schema_support.rebuild_audit_trigger
-                        ( 'audit', 'jazzhands', 'private_key' );
-SELECT schema_support.rebuild_audit_trigger
-                        ( 'audit', 'jazzhands', 'certificate_signing_request' );
-SELECT schema_support.rebuild_audit_trigger
-                        ( 'audit', 'jazzhands', 'x509_signed_certificate' );
 DROP TABLE IF EXISTS x509_certificate_v71;
 DROP TABLE IF EXISTS audit.x509_certificate_v71;
 -- DONE DEALING WITH TABLE x509_signed_certificate
@@ -7565,6 +7744,365 @@ SELECT schema_support.replay_object_recreates();
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'x509_key_usage_default');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'x509_key_usage_default');
 -- DONE DEALING WITH TABLE x509_key_usage_default
+--------------------------------------------------------------------
+--------------------------------------------------------------------
+-- DEALING WITH NEW TABLE x509_certificate
+DROP VIEW IF EXISTS jazzhands.x509_certificate;
+CREATE VIEW jazzhands.x509_certificate AS
+ SELECT crt.x509_signed_certificate_id AS x509_cert_id,
+    crt.friendly_name,
+    crt.is_active,
+    crt.is_certificate_authority,
+    crt.signing_cert_id,
+    crt.x509_ca_cert_serial_number,
+    crt.public_key,
+    key.private_key,
+    csr.certificate_signing_request AS certificate_sign_req,
+    crt.subject,
+    crt.subject_key_identifier,
+    crt.valid_from,
+    crt.valid_to,
+    crt.x509_revocation_date,
+    crt.x509_revocation_reason,
+    key.passphrase,
+    key.encryption_key_id,
+    crt.ocsp_uri,
+    crt.crl_uri,
+    crt.data_ins_user,
+    crt.data_ins_date,
+    crt.data_upd_user,
+    crt.data_upd_date
+   FROM x509_signed_certificate crt
+     LEFT JOIN private_key key USING (private_key_id)
+     LEFT JOIN certificate_signing_request csr USING (certificate_signing_request_id);
+
+-- New function
+CREATE OR REPLACE FUNCTION jazzhands.upd_x509_certificate()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	upq	TEXT[];
+	crt	x509_signed_certificate%ROWTYPE;
+	key private_key.private_key_id%TYPE;
+BEGIN
+	SELECT * INTO crt FROM x509_signed_certificate
+	WHERE x509_signed_certificate_id = OLD.x509_cert_id;
+
+	IF OLD.x509_cert_id != NEW.x509_cert_id THEN
+		RAISE EXCEPTION 'Can not change x509_cert_id' USING ERRCODE = 'invalid_parameter_value';
+	END IF;
+
+	key := crt.private_key_id;
+
+	IF crt.private_key_ID IS NULL AND NEW.private_key IS NOT NULL THEN
+		WITH ins AS (
+			INSERT INTO private_key (
+				private_key_encryption_type,
+				is_active,
+				subject_key_identifier,
+				private_key,
+				passphrase,
+				encryption_key_id
+			) VALUES (
+				'rsa',
+				NEW.is_active,
+				NEW.subject_key_identifier,
+				NEW.private_key,
+				NEW.passphrase,
+				NEW.encryption_key_id
+			) RETURNING *
+		), upd AS (
+			UPDATE x509_signed_certificate
+			SET private_key_id = ins.private_key_id
+			WHERE x509_signed_certificate_id = OLD.x509_cert_id
+			RETURNING *
+		)  SELECT private_key_id INTO key FROM upd;
+	ELSIF crt.private_key_id IS NOT NULL AND NEW.private_key IS NULL THEN
+		UPDATE x509_signed_certificate
+			SET private_key_id = NULL
+			WHERE x509_signed_certificate_id = OLD.x509_cert_id;
+		BEGIN
+			DELETE FROM private_key where private_key_id = crt.private_key_id;
+		EXCEPTION WHEN foreign_key_violation THEN
+			NULL;
+		END;
+	ELSE
+		IF OLD.is_active IS DISTINCT FROM NEW.is_active THEN
+			upq := array_append(upq,
+				'is_active = ' || quote_literal(NEW.is_active)
+			);
+		END IF;
+
+		IF OLD.subject_key_identifier IS DISTINCT FROM NEW.subject_key_identifier THEN
+			upq := array_append(upq,
+				'subject_key_identifier = ' || quote_nullable(NEW.subject_key_identifier)
+			);
+		END IF;
+
+		IF OLD.private_key IS DISTINCT FROM NEW.private_key THEN
+			upq := array_append(upq,
+				'private_key = ' || quote_nullable(NEW.private_key)
+			);
+		END IF;
+
+		IF OLD.passphrase IS DISTINCT FROM NEW.passphrase THEN
+			upq := array_append(upq,
+				'passphrase = ' || quote_nullable(NEW.passphrase)
+			);
+		END IF;
+
+		IF OLD.encryption_key_id IS DISTINCT FROM NEW.encryption_key_id THEN
+			upq := array_append(upq,
+				'encryption_key_id = ' || quote_nullable(NEW.encryption_key_id)
+			);
+		END IF;
+
+		IF array_length(upq, 1) > 0 THEN
+			EXECUTE 'UPDATE private_key SET '
+				|| array_to_string(upq, ', ')
+				|| ' WHERE private_key_id = '
+				|| crt.private_key_id;
+		END IF;
+	END IF;
+
+	upq := NULL;
+	IF crt.certificate_signing_request_id IS NULL AND NEW.certificate_sign_req IS NOT NULL THEN
+		WITH ins AS (
+			INSERT INTO certificate_sign_req (
+				friendly_name,
+				subject,
+				certificate_signing_request,
+				private_key_id
+			) VALUES (
+				NEW.friendly_name,
+				NEW.subject,
+				NEW.certificate_sign_req,
+				key
+			) RETURNING *
+		) UPDATE x509_signed_certificate
+		SET certificate_signing_request_id = ins.certificate_signing_request_id
+		WHERE x509_signed_certificate_id = OLD.x509_cert_id;
+	ELSIF crt.certificate_signing_request_id IS NOT NULL AND
+				NEW.certificate_sign_req IS NULL THEN
+		-- if its removed, we still keep the csr/key link
+		WITH del AS (
+			UPDATE x509_signed_certificate
+			SET certificate_signing_request = NULL
+			WHERE x509_signed_certificate_id = OLD.x509_cert_id
+			RETURNING *
+		) DELETE FROM certificate_signing_request
+		WHERE certificate_signing_request_id =
+			crt.certificate_signing_request_id;
+	ELSE
+		IF OLD.friendly_name IS DISTINCT FROM NEW.friendly_name THEN
+			upq := array_append(upq,
+				'friendly_name = ' || quote_literal(NEW.friendly_name)
+			);
+		END IF;
+
+		IF OLD.subject IS DISTINCT FROM NEW.subject THEN
+			upq := array_append(upq,
+				'subject = ' || quote_literal(NEW.subject)
+			);
+		END IF;
+
+		IF OLD.certificate_sign_req IS DISTINCT FROM
+				NEW.certificate_sign_req THEN
+			upq := array_append(upq,
+				'certificate_signing_request = ' ||
+					quote_literal(NEW.certificate_sign_req)
+			);
+		END IF;
+
+		IF array_length(upq, 1) > 0 THEN
+			EXECUTE 'UPDATE certificate_signing_request SET '
+				|| array_to_string(upq, ', ')
+				|| ' WHERE x509_signed_certificate_id = '
+				|| crt.x509_signed_certificate_id;
+		END IF;
+	END IF;
+
+	upq := NULL;
+	IF OLD.is_active IS DISTINCT FROM NEW.is_active THEN
+		upq := array_append(upq,
+			'is_active = ' || quote_literal(NEW.is_active)
+		);
+	END IF;
+	IF OLD.friendly_name IS DISTINCT FROM NEW.friendly_name THEN
+		upq := array_append(upq,
+			'friendly_name = ' || quote_literal(NEW.friendly_name)
+		);
+	END IF;
+	IF OLD.subject IS DISTINCT FROM NEW.subject THEN
+		upq := array_append(upq,
+			'subject = ' || quote_literal(NEW.subject)
+		);
+	END IF;
+	IF OLD.subject_key_identifier IS DISTINCT FROM NEW.subject_key_identifier THEN
+		upq := array_append(upq,
+			'subject_key_identifier = ' || quote_nullable(NEW.subject_key_identifier)
+		);
+	END IF;
+	IF OLD.is_certificate_authority IS DISTINCT FROM NEW.is_certificate_authority THEN
+		upq := array_append(upq,
+			'is_certificate_authority = ' || quote_nullable(NEW.is_certificate_authority)
+		);
+	END IF;
+	IF OLD.signing_cert_id IS DISTINCT FROM NEW.signing_cert_id THEN
+		upq := array_append(upq,
+			'signing_cert_id = ' || quote_nullable(NEW.signing_cert_id)
+		);
+	END IF;
+	IF OLD.x509_ca_cert_serial_number IS DISTINCT FROM NEW.x509_ca_cert_serial_number THEN
+		upq := array_append(upq,
+			'x509_ca_cert_serial_number = ' || quote_nullable(NEW.x509_ca_cert_serial_number)
+		);
+	END IF;
+	IF OLD.public_key IS DISTINCT FROM NEW.public_key THEN
+		upq := array_append(upq,
+			'public_key = ' || quote_nullable(NEW.public_key)
+		);
+	END IF;
+	IF OLD.valid_from IS DISTINCT FROM NEW.valid_from THEN
+		upq := array_append(upq,
+			'valid_from = ' || quote_nullable(NEW.valid_from)
+		);
+	END IF;
+	IF OLD.valid_to IS DISTINCT FROM NEW.valid_to THEN
+		upq := array_append(upq,
+			'valid_to = ' || quote_nullable(NEW.valid_to)
+		);
+	END IF;
+	IF OLD.x509_revocation_date IS DISTINCT FROM NEW.x509_revocation_date THEN
+		upq := array_append(upq,
+			'x509_revocation_date = ' || quote_nullable(NEW.x509_revocation_date)
+		);
+	END IF;
+	IF OLD.x509_revocation_reason IS DISTINCT FROM NEW.x509_revocation_reason THEN
+		upq := array_append(upq,
+			'x509_revocation_reason = ' || quote_nullable(NEW.x509_revocation_reason)
+		);
+	END IF;
+	IF OLD.ocsp_uri IS DISTINCT FROM NEW.ocsp_uri THEN
+		upq := array_append(upq,
+			'ocsp_uri = ' || quote_nullable(NEW.ocsp_uri)
+		);
+	END IF;
+	IF OLD.crl_uri IS DISTINCT FROM NEW.crl_uri THEN
+		upq := array_append(upq,
+			'crl_uri = ' || quote_nullable(NEW.crl_uri)
+		);
+	END IF;
+
+	IF array_length(upq, 1) > 0 THEN
+		EXECUTE 'UPDATE x509_signed_certificate SET '
+			|| array_to_string(upq, ', ')
+			|| ' WHERE x509_signed_certificate_id = '
+			|| NEW.x509_cert_id;
+	END IF;
+
+	RETURN NEW;
+END;
+$function$
+;
+
+
+-- New function
+CREATE OR REPLACE FUNCTION jazzhands.ins_x509_certificate()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	key	private_key.private_key_id%TYPE;
+	csr	certificate_signing_request.certificate_signing_request_id%TYPE;
+	crt	x509_signed_certificate.x509_signed_certificate_id%TYPE;
+BEGIN
+	IF NEW.private_key IS NOT NULL THEN
+		INSERT INTO private_key (
+			private_key_encryption_type,
+			is_active,
+			subject_key_identifier,
+			private_key,
+			passphrase,
+			encryption_key_id
+		) VALUES (
+			'rsa',
+			NEW.is_active,
+			NEW.subject_key_identifier,
+			NEW.private_key,
+			NEW.passphrase,
+			NEW.encryption_key_id
+		) RETURNING private_key_id INTO key;
+		NEW.x509_cert_id := key;
+	END IF;
+
+	IF NEW.certificate_sign_req IS NOT NULL THEN
+		INSERT INTO certificate_sign_req (
+			friendly_name,
+			subject,
+			certificate_signing_request,
+			private_key_id
+		) VALUES (
+			NEW.friendly_name,
+			NEW.subject,
+			NEW.certificate_sign_req,
+			key
+		) RETURNING certificate_signing_request_id INTO csr;
+		IF NEW.x509_cert_id IS NULL THEN
+			NEW.x509_cert_id := csr;
+		END IF;
+	END IF;
+
+	IF NEW.public_key IS NOT NULL THEN
+		INSERT INTO x509_signed_certificate (
+			friendly_name,
+			is_active,
+			is_certificate_authority,
+			signing_cert_id,
+			x509_ca_cert_serial_number,
+			public_key,
+			subject,
+			subject_key_identifier,
+			valid_from,
+			valid_to,
+			x509_revocation_date,
+			x509_revocation_reason,
+			ocsp_uri,
+			crl_uri,
+			private_key_id,
+			certificate_signing_request_id
+		) VALUES (
+			NEW.x509_cert_id,
+			NEW.friendly_name,
+			NEW.is_active,
+			NEW.is_certificate_authority,
+			NEW.signing_cert_id,
+			NEW.x509_ca_cert_serial_number,
+			NEW.public_key,
+			NEW.subject,
+			NEW.subject_key_identifier,
+			NEW.valid_from,
+			NEW.valid_to,
+			NEW.x509_revocation_date,
+			NEW.x509_revocation_reason,
+			NEW.ocsp_uri,
+			NEW.crl_uri
+		) RETURNING x509_signed_certificate_id INTO crt;
+		NEW.x509_cert_id := crt;
+	END IF;
+
+	RETURN NEW;
+END;
+$function$
+;
+
+
+-- DONE DEALING WITH TABLE x509_certificate
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH TABLE v_property
@@ -7619,8 +8157,40 @@ CREATE VIEW jazzhands.v_property AS
 delete from __recreate where type = 'view' and object = 'v_property';
 -- DONE DEALING WITH TABLE v_property
 --------------------------------------------------------------------
+--------------------------------------------------------------------
+-- DEALING WITH NEW TABLE x509_certificate
+DROP VIEW IF EXISTS jazzhands.x509_certificate;
+CREATE VIEW jazzhands.x509_certificate AS
+ SELECT crt.x509_signed_certificate_id AS x509_cert_id,
+    crt.friendly_name,
+    crt.is_active,
+    crt.is_certificate_authority,
+    crt.signing_cert_id,
+    crt.x509_ca_cert_serial_number,
+    crt.public_key,
+    key.private_key,
+    csr.certificate_signing_request AS certificate_sign_req,
+    crt.subject,
+    crt.subject_key_identifier,
+    crt.valid_from,
+    crt.valid_to,
+    crt.x509_revocation_date,
+    crt.x509_revocation_reason,
+    key.passphrase,
+    key.encryption_key_id,
+    crt.ocsp_uri,
+    crt.crl_uri,
+    crt.data_ins_user,
+    crt.data_ins_date,
+    crt.data_upd_user,
+    crt.data_upd_date
+   FROM x509_signed_certificate crt
+     LEFT JOIN private_key key USING (private_key_id)
+     LEFT JOIN certificate_signing_request csr USING (certificate_signing_request_id);
+
+-- DONE DEALING WITH TABLE x509_certificate
+--------------------------------------------------------------------
 SELECT schema_support.replay_object_recreates();
-SELECT schema_support.replay_saved_grants();
 --------------------------------------------------------------------
 -- DEALING WITH NEW TABLE mv_unix_passwd_mappings
 DROP MATERIALIZED VIEW IF EXISTS jazzhands.mv_unix_passwd_mappings;
@@ -7659,39 +8229,22 @@ CREATE MATERIALIZED VIEW jazzhands.mv_unix_group_mappings AS
 -- DONE DEALING WITH TABLE mv_unix_group_mappings
 --------------------------------------------------------------------
 SELECT schema_support.replay_object_recreates();
-SELECT schema_support.replay_saved_grants();
 SELECT schema_support.replay_object_recreates();
-SELECT schema_support.replay_saved_grants();
 SELECT schema_support.replay_object_recreates();
-SELECT schema_support.replay_saved_grants();
 SELECT schema_support.replay_object_recreates();
-SELECT schema_support.replay_saved_grants();
 SELECT schema_support.replay_object_recreates();
-SELECT schema_support.replay_saved_grants();
 SELECT schema_support.replay_object_recreates();
-SELECT schema_support.replay_saved_grants();
 SELECT schema_support.replay_object_recreates();
-SELECT schema_support.replay_saved_grants();
 SELECT schema_support.replay_object_recreates();
-SELECT schema_support.replay_saved_grants();
 SELECT schema_support.replay_object_recreates();
-SELECT schema_support.replay_saved_grants();
 SELECT schema_support.replay_object_recreates();
-SELECT schema_support.replay_saved_grants();
 SELECT schema_support.replay_object_recreates();
-SELECT schema_support.replay_saved_grants();
 SELECT schema_support.replay_object_recreates();
-SELECT schema_support.replay_saved_grants();
 SELECT schema_support.replay_object_recreates();
-SELECT schema_support.replay_saved_grants();
 SELECT schema_support.replay_object_recreates();
-SELECT schema_support.replay_saved_grants();
 SELECT schema_support.replay_object_recreates();
-SELECT schema_support.replay_saved_grants();
 SELECT schema_support.replay_object_recreates();
-SELECT schema_support.replay_saved_grants();
 SELECT schema_support.replay_object_recreates();
-SELECT schema_support.replay_saved_grants();
 --------------------------------------------------------------------
 -- DEALING WITH TABLE v_person_company_audit_map
 -- Save grants for later reapplication
@@ -7821,15 +8374,10 @@ delete from __recreate where type = 'view' and object = 'v_account_collection_ac
 -- DONE DEALING WITH TABLE v_account_collection_account_audit_map
 --------------------------------------------------------------------
 SELECT schema_support.replay_object_recreates();
-SELECT schema_support.replay_saved_grants();
 SELECT schema_support.replay_object_recreates();
-SELECT schema_support.replay_saved_grants();
 SELECT schema_support.replay_object_recreates();
-SELECT schema_support.replay_saved_grants();
 SELECT schema_support.replay_object_recreates();
-SELECT schema_support.replay_saved_grants();
 SELECT schema_support.replay_object_recreates();
-SELECT schema_support.replay_saved_grants();
 --
 -- Process drops in jazzhands
 --
@@ -7989,7 +8537,6 @@ BEGIN
 END;
 $function$
 ;
-
 -- New function
 CREATE OR REPLACE FUNCTION jazzhands.l2_net_coll_member_enforce_on_type_change()
  RETURNS trigger
@@ -8267,6 +8814,30 @@ $function$
 ;
 
 -- New function
+CREATE OR REPLACE FUNCTION jazzhands.pvtkey_ski_signed_validate()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	ski	TEXT;
+BEGIN
+	SELECT	subject_key_identifier
+	INTO	ski
+	FROM	x509_signed_certificate x
+	WHERE	x.private_key_id = NEW.private_key_id;
+
+	IF FOUND AND ski != NEW.subject_key_identifier THEN
+		RAISE EXCEPTION 'subject key identifier must match private key in x509_signing_certificate' USING ERRCODE = 'foreign_key_violation';
+	END IF;
+
+	RETURN NEW;
+END;
+$function$
+;
+
+-- New function
 CREATE OR REPLACE FUNCTION jazzhands.unrequire_password_change()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -8285,6 +8856,37 @@ BEGIN
 		AND		p.property_name = 'NeedsPasswdChange'
 		AND	 	a.account_id = NEW.account_id
 	);
+	RETURN NEW;
+END;
+$function$
+;
+
+-- New function
+CREATE OR REPLACE FUNCTION jazzhands.x509_signed_ski_pvtkey_validate()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	ski	TEXT;
+BEGIN
+	--
+	-- XXX needs to be tweaked to ensure that both are set or not set.
+	--
+	IF NEW.private_key_id IS NULL THEN
+		RETURN NEW;
+	END IF;
+
+	SELECT	subject_key_identifier
+	INTO	ski
+	FROM	private_key p
+	WHERE	p.private_key_id = NEW.private_key_id;
+
+	IF FOUND AND ski != NEW.subject_key_identifier THEN
+		RAISE EXCEPTION 'subject key identifier must match private key in private_key' USING ERRCODE = 'foreign_key_violation';
+	END IF;
+
 	RETURN NEW;
 END;
 $function$
@@ -10330,7 +10932,7 @@ BEGIN
 		FROM    pg_catalog.pg_proc  p
 				inner join pg_catalog.pg_namespace n on n.oid = p.pronamespace
 		WHERE   n.nspname = _schema
-	 	 AND    p.proname = _object
+		 AND    p.proname = _object
 	LOOP
 		-- NOTE:  We lose who granted it.  Oh Well.
 		FOR _perm IN SELECT * FROM pg_catalog.aclexplode(acl := _procs.privs)
@@ -10832,7 +11434,7 @@ BEGIN
 
 	--
 	-- fix sequence primary key to have the correct next value
-	-- 
+	--
 	EXECUTE 'SELECT max("aud#seq") + 1 FROM	 '
 			|| quote_ident(aud_schema) || '.'
 			|| quote_ident(table_name) INTO seq;
@@ -10873,7 +11475,7 @@ BEGIN
 		  AND	c.relname = quote_ident('__old__' || table_name)
 		  AND	contype is NULL
 	LOOP
-		EXECUTE 'DROP INDEX ' 
+		EXECUTE 'DROP INDEX '
 			|| quote_ident(aud_schema) || '.'
 			|| quote_ident('_' || i);
 	END LOOP;
@@ -10925,7 +11527,7 @@ CREATE OR REPLACE FUNCTION schema_support.refresh_mv_if_needed(relation text, sc
  LANGUAGE plpgsql
  SET search_path TO schema_support
 AS $function$
-DECLARE 
+DECLARE
 	lastref	timestamp;
 	lastdat	timestamp;
 BEGIN
@@ -11016,8 +11618,8 @@ BEGIN
 			-- likely some sort of cache table.  XXX - should probably be
 			-- updated to use the materialized view update bits
 			BEGIN
-				EXECUTE 'SELECT max("aud#timestamp") 
-					FROM '||quote_ident(objaud)||'.'|| quote_ident(obj) 
+				EXECUTE 'SELECT max("aud#timestamp")
+					FROM '||quote_ident(objaud)||'.'|| quote_ident(obj)
 					INTO ts;
 				IF debug THEN
 					RAISE NOTICE '%.% -> %', objaud, obj, ts;
@@ -11035,6 +11637,71 @@ BEGIN
 	END IF;
 
 	RAISE EXCEPTION 'Unable to process relkind %', rk;
+END;
+$function$
+;
+
+-- New function
+CREATE OR REPLACE FUNCTION schema_support.reset_all_schema_table_sequences(schema text)
+ RETURNS integer
+ LANGUAGE plpgsql
+ SET search_path TO schema_support
+AS $function$
+DECLARE
+	_r	RECORD;
+	tally INTEGER;
+BEGIN
+	tally := 0;
+	FOR _r IN
+
+		SELECT n.nspname, c.relname, c.relkind
+		FROM	pg_class c
+				INNER JOIN pg_namespace n ON n.oid = c.relnamespace
+		WHERE	n.nspname = schema
+		AND		c.relkind = 'r'
+	LOOP
+		PERFORM schema_support.reset_table_sequence(_r.nspname::text, _r.relname::text);
+		tally := tally + 1;
+	END LOOP;
+	RETURN tally;
+END;
+$function$
+;
+
+-- New function
+CREATE OR REPLACE FUNCTION schema_support.reset_table_sequence(schema character varying, table_name character varying)
+ RETURNS void
+ LANGUAGE plpgsql
+ SET search_path TO schema_support
+AS $function$
+DECLARE
+	_r	RECORD;
+	m	BIGINT;
+BEGIN
+	FOR _r IN
+		WITH s AS (
+			SELECT	pg_get_serial_sequence(schema||'.'||table_name,
+				a.attname) as seq, a.attname as column
+			FROM	pg_attribute a
+			JOIN pg_class c ON c.oid = a.attrelid
+			JOIN pg_namespace n ON n.oid = c.relnamespace
+			WHERE	c.relname = table_name
+			AND	n.nspname = schema
+				AND 	a.attnum > 0
+				AND 	NOT a.attisdropped
+		) SELECT s.*, nextval(s.seq) as nv FROM s WHERE seq IS NOT NULL
+	LOOP
+		EXECUTE 'SELECT max('||quote_ident(_r.column)||')+1 FROM  '
+			|| quote_ident(schema)||'.'||quote_ident(table_name)
+			INTO m;
+		IF m IS NOT NULL THEN
+			IF _r.nv > m THEN
+				m := _r.nv;
+			END IF;
+			EXECUTE 'ALTER SEQUENCE ' || _r.seq || ' RESTART WITH '
+				|| m;
+		END IF;
+	END LOOP;
 END;
 $function$
 ;
@@ -11832,10 +12499,12 @@ SELECT DISTINCT
 -- BEGIN Misc that does not apply to above
 ALTER TABLE network_interface DROP CONSTRAINT IF EXISTS check_any_yes_no_1926994056;
 
-ALTER TABLE network_interface ADD CONSTRAINT 
+ALTER TABLE network_interface ADD CONSTRAINT
 CHECK_ANY_YES_NO_1926994056 CHECK (SHOULD_MONITOR IN ('Y', 'N', 'ANY'));
 
--- SELECT schema_support.rebuild_audit_tables('audit', 'jazzhands');
+SELECT schema_support.rebuild_audit_tables('audit', 'jazzhands');
+SELECT schema_support.reset_all_schema_table_sequences('jazzhands');
+SELECT schema_support.reset_all_schema_table_sequences('audit');
 
 DROP TRIGGER IF EXISTS trigger_audit_token_sequence ON token_sequence;
 
@@ -11905,7 +12574,7 @@ ALTER TABLE VAL_NETBLOCK_COLLECTION_TYPE
         ADD CONSTRAINT  CHECK_ANY_YES_NO_nc_singaddr_r CHECK (NETBLOCK_SINGLE_ADDR_RESTRICT IN ('Y', 'N', 'ANY'));
 
 
-DROP TRIGGER IF EXISTS 
+DROP TRIGGER IF EXISTS
 	trigger_pgnotify_account_collection_account_token_changes_del
 	ON account_collection_account;
 
@@ -11916,9 +12585,13 @@ DROP FUNCTION IF EXISTS perform_audit_x509_certificate();
 
 COMMENT ON TABLE device_type IS 'Conceptual device type.  This represents how it is typically referred to rather than a specific model number.  There may be many models (components) that are represented by one device type.';
 
+ALTER TABLE ONLY x509_certificate ALTER COLUMN is_active SET DEFAULT 'Y'::bpchar;
+ALTER TABLE ONLY x509_certificate ALTER COLUMN is_certificate_authority SET DEFAULT 'N'::bpchar;
+CREATE TRIGGER trigger_ins_x509_certificate INSTEAD OF INSERT ON x509_certificate FOR EACH ROW EXECUTE PROCEDURE ins_x509_certificate();
+CREATE TRIGGER trigger_upd_x509_certificate INSTEAD OF UPDATE ON x509_certificate FOR EACH ROW EXECUTE PROCEDURE upd_x509_certificate();
+
 
 -- END Misc that does not apply to above
-
 
 
 -- Clean Up
@@ -11932,3 +12605,4 @@ GRANT select on all tables in schema audit to ro_role;
 GRANT select on all sequences in schema audit to ro_role;
 SELECT schema_support.end_maintenance();
 select timeofday(), now();
+

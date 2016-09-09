@@ -144,3 +144,6 @@
 
 \ir create_v_person.sql
 \ir create_v_person_company.sql
+
+-- too be retired
+\ir create_x509_certificate.sql

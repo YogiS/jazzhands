@@ -17,7 +17,7 @@
 
 ---------------------------------------------------------------------------
 
-CREATE OR REPLACE FUNCTION pvtkey_ski_signed_validate() 
+CREATE OR REPLACE FUNCTION pvtkey_ski_signed_validate()
 RETURNS TRIGGER AS $$
 DECLARE
 	ski	TEXT;
@@ -28,25 +28,25 @@ BEGIN
 	WHERE	x.private_key_id = NEW.private_key_id;
 
 	IF FOUND AND ski != NEW.subject_key_identifier THEN
-		RAISE EXCEPTION 'subject key identifier must match private key in x509_signing_certificate' USING ERRCODE = 'foreign_key_violation'; 
+		RAISE EXCEPTION 'subject key identifier must match private key in x509_signing_certificate' USING ERRCODE = 'foreign_key_violation';
 	END IF;
 
 	RETURN NEW;
 END;
-$$ 
+$$
 SET search_path=jazzhands
 LANGUAGE plpgsql SECURITY DEFINER;
 
 DROP TRIGGER IF EXISTS trigger_pvtkey_ski_signed_validate ON private_key;
-CREATE TRIGGER trigger_pvtkey_ski_signed_validate 
+CREATE TRIGGER trigger_pvtkey_ski_signed_validate
 	AFTER UPDATE OF subject_key_identifier
-	ON private_key 
-	FOR EACH ROW 
+	ON private_key
+	FOR EACH ROW
 	EXECUTE PROCEDURE pvtkey_ski_signed_validate();
 
 ---------------------------------------------------------------------------
 
-CREATE OR REPLACE FUNCTION x509_signed_ski_pvtkey_validate() 
+CREATE OR REPLACE FUNCTION x509_signed_ski_pvtkey_validate()
 RETURNS TRIGGER AS $$
 DECLARE
 	ski	TEXT;
@@ -64,20 +64,20 @@ BEGIN
 	WHERE	p.private_key_id = NEW.private_key_id;
 
 	IF FOUND AND ski != NEW.subject_key_identifier THEN
-		RAISE EXCEPTION 'subject key identifier must match private key in private_key' USING ERRCODE = 'foreign_key_violation'; 
+		RAISE EXCEPTION 'subject key identifier must match private key in private_key' USING ERRCODE = 'foreign_key_violation';
 	END IF;
 
 	RETURN NEW;
 END;
-$$ 
+$$
 SET search_path=jazzhands
 LANGUAGE plpgsql SECURITY DEFINER;
 
 DROP TRIGGER IF EXISTS trigger_x509_signed_ski_pvtkey_validate ON x509_signed_certificate;
-CREATE TRIGGER trigger_x509_signed_ski_pvtkey_validate 
+CREATE TRIGGER trigger_x509_signed_ski_pvtkey_validate
 	AFTER INSERT OR UPDATE OF subject_key_identifier, private_key_id
 	ON x509_signed_certificate
-	FOR EACH ROW 
+	FOR EACH ROW
 	EXECUTE PROCEDURE x509_signed_ski_pvtkey_validate();
 
 ---------------------------------------------------------------------------

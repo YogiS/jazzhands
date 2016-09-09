@@ -72,6 +72,67 @@ $$ LANGUAGE plpgsql;
 -- end of procedure id_tag
 -------------------------------------------------------------------
 
+CREATE OR REPLACE FUNCTION schema_support.reset_table_sequence
+    ( schema VARCHAR, table_name VARCHAR )
+RETURNS VOID AS $$
+DECLARE
+	_r	RECORD;
+	m	BIGINT;
+BEGIN
+	FOR _r IN
+		WITH s AS (
+			SELECT	pg_get_serial_sequence(schema||'.'||table_name,
+				a.attname) as seq, a.attname as column
+			FROM	pg_attribute a
+			JOIN pg_class c ON c.oid = a.attrelid
+			JOIN pg_namespace n ON n.oid = c.relnamespace
+			WHERE	c.relname = table_name
+			AND	n.nspname = schema
+				AND 	a.attnum > 0
+				AND 	NOT a.attisdropped
+		) SELECT s.*, nextval(s.seq) as nv FROM s WHERE seq IS NOT NULL
+	LOOP
+		EXECUTE 'SELECT max('||quote_ident(_r.column)||')+1 FROM  '
+			|| quote_ident(schema)||'.'||quote_ident(table_name)
+			INTO m;
+		IF m IS NOT NULL THEN
+			IF _r.nv > m THEN
+				m := _r.nv;
+			END IF;
+			EXECUTE 'ALTER SEQUENCE ' || _r.seq || ' RESTART WITH '
+				|| m;
+		END IF;
+	END LOOP;
+END;
+$$
+SET search_path=schema_support
+LANGUAGE plpgsql SECURITY INVOKER;
+
+CREATE OR REPLACE FUNCTION schema_support.reset_all_schema_table_sequences
+    ( schema TEXT )
+RETURNS INTEGER AS $$
+DECLARE
+	_r	RECORD;
+	tally INTEGER;
+BEGIN
+	tally := 0;
+	FOR _r IN
+
+		SELECT n.nspname, c.relname, c.relkind
+		FROM	pg_class c
+				INNER JOIN pg_namespace n ON n.oid = c.relnamespace
+		WHERE	n.nspname = schema
+		AND		c.relkind = 'r'
+	LOOP
+		PERFORM schema_support.reset_table_sequence(_r.nspname::text, _r.relname::text);
+		tally := tally + 1;
+	END LOOP;
+	RETURN tally;
+END;
+$$
+SET search_path=schema_support
+LANGUAGE plpgsql SECURITY INVOKER;
+
 CREATE OR REPLACE FUNCTION schema_support.rebuild_audit_trigger
     ( aud_schema VARCHAR, tbl_schema VARCHAR, table_name VARCHAR )
 RETURNS VOID AS $$
@@ -275,7 +336,7 @@ BEGIN
 
 	--
 	-- fix sequence primary key to have the correct next value
-	-- 
+	--
 	EXECUTE 'SELECT max("aud#seq") + 1 FROM	 '
 			|| quote_ident(aud_schema) || '.'
 			|| quote_ident(table_name) INTO seq;
@@ -316,7 +377,7 @@ BEGIN
 		  AND	c.relname = quote_ident('__old__' || table_name)
 		  AND	contype is NULL
 	LOOP
-		EXECUTE 'DROP INDEX ' 
+		EXECUTE 'DROP INDEX '
 			|| quote_ident(aud_schema) || '.'
 			|| quote_ident('_' || i);
 	END LOOP;
@@ -786,7 +847,7 @@ BEGIN
 		FROM    pg_catalog.pg_proc  p
 				inner join pg_catalog.pg_namespace n on n.oid = p.pronamespace
 		WHERE   n.nspname = _schema
-	 	 AND    p.proname = _object
+		 AND    p.proname = _object
 	LOOP
 		-- NOTE:  We lose who granted it.  Oh Well.
 		FOR _perm IN SELECT * FROM pg_catalog.aclexplode(acl := _procs.privs)
@@ -1665,7 +1726,7 @@ $$ LANGUAGE plpgsql;
 -- schema_support.refresh_mv_if_needed(table,schema,debug) is used to
 --	refresh a materialized view if tables internal to schema_support
 --	reflect that it has not refreshed since the dependant objects were
---	refreshed.  There appears to be no place in the system catalog to 
+--	refreshed.  There appears to be no place in the system catalog to
 --	tell when a materialized view was last changed, so if the internal
 --	tables are out of date, a refresh could happen.
 --
@@ -1680,9 +1741,9 @@ $$ LANGUAGE plpgsql;
 -- updated; runs as DEFINER to hide objects.
 --
 CREATE OR REPLACE FUNCTION schema_support.mv_last_updated (
-	relation TEXT, 
-	schema TEXT DEFAULT 'jazzhands', 
-	debug boolean DEFAULT false 
+	relation TEXT,
+	schema TEXT DEFAULT 'jazzhands',
+	debug boolean DEFAULT false
 ) RETURNS TIMESTAMP AS $$
 DECLARE
 	rv	timestamp;
@@ -1709,13 +1770,13 @@ SET search_path=schema_support
 LANGUAGE plpgsql SECURITY DEFINER;
 
 --
--- updates internal tables to set last update. 
+-- updates internal tables to set last update.
 -- runs as DEFINER to hide objects.
 --
 CREATE OR REPLACE FUNCTION schema_support.set_mv_last_updated (
-	relation TEXT, 
-	schema TEXT DEFAULT 'jazzhands', 
-	debug boolean DEFAULT false 
+	relation TEXT,
+	schema TEXT DEFAULT 'jazzhands',
+	debug boolean DEFAULT false
 ) RETURNS TIMESTAMP AS $$
 DECLARE
 	rv	timestamp;
@@ -1742,9 +1803,9 @@ LANGUAGE plpgsql SECURITY DEFINER;
 -- in schema_support.schema_audit_map, otherwise raises an exception.
 --
 CREATE OR REPLACE FUNCTION schema_support.relation_last_changed (
-	relation TEXT, 
-	schema TEXT DEFAULT 'jazzhands', 
-	debug boolean DEFAULT false 
+	relation TEXT,
+	schema TEXT DEFAULT 'jazzhands',
+	debug boolean DEFAULT false
 ) RETURNS TIMESTAMP AS $$
 DECLARE
 	audsch	text;
@@ -1816,8 +1877,8 @@ BEGIN
 			-- likely some sort of cache table.  XXX - should probably be
 			-- updated to use the materialized view update bits
 			BEGIN
-				EXECUTE 'SELECT max("aud#timestamp") 
-					FROM '||quote_ident(objaud)||'.'|| quote_ident(obj) 
+				EXECUTE 'SELECT max("aud#timestamp")
+					FROM '||quote_ident(objaud)||'.'|| quote_ident(obj)
 					INTO ts;
 				IF debug THEN
 					RAISE NOTICE '%.% -> %', objaud, obj, ts;
@@ -1841,11 +1902,11 @@ SET search_path=schema_support
 LANGUAGE plpgsql SECURITY INVOKER;
 
 CREATE OR REPLACE FUNCTION schema_support.refresh_mv_if_needed (
-	relation TEXT, 
-	schema TEXT DEFAULT 'jazzhands', 
-	debug boolean DEFAULT false 
+	relation TEXT,
+	schema TEXT DEFAULT 'jazzhands',
+	debug boolean DEFAULT false
 ) RETURNS void AS $$
-DECLARE 
+DECLARE
 	lastref	timestamp;
 	lastdat	timestamp;
 BEGIN
