@@ -47,6 +47,7 @@ Invoked:
 	post
 	--first
 	schema_support
+	--reinsert-dir=./i
 	x509_certificate:x509_signed_certificate
 */
 
@@ -135,6 +136,692 @@ CREATE SCHEMA backend_utils AUTHORIZATION jazzhands;
 -- Process middle (non-trigger) schema jazzhands
 --
 -- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'account_automated_reporting_ac');
+CREATE OR REPLACE FUNCTION jazzhands.account_automated_reporting_ac()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	_tally	INTEGER;
+	_numrpt	INTEGER;
+	_r		RECORD;
+BEGIN
+	IF TG_OP = 'DELETE' THEN
+		IF OLD.account_role != 'primary' THEN
+			RETURN OLD;
+		END IF;
+	ELSIF TG_OP = 'INSERT' THEN
+		IF NEW.account_role != 'primary' THEN
+			RETURN NEW;
+		END IF;
+	ELSIF TG_OP = 'UPDATE' THEN
+		IF NEW.account_role != 'primary' AND OLD.account_role != 'primary' THEN
+			RETURN NEW;
+		END IF;
+	END IF;
+
+	-- XXX check account realm to see if we should be inserting for this
+	-- XXX account realm
+
+	IF TG_OP = 'INSERT' THEN
+		PERFORM auto_ac_manip.make_all_auto_acs_right(
+			account_id := NEW.account_id,
+			account_realm_id := NEW.account_realm_id,
+			login := NEW.login
+		);
+	ELSIF TG_OP = 'UPDATE' THEN
+		PERFORM auto_ac_manip.rename_automated_report_acs(
+			NEW.account_id, OLD.login, NEW.login, NEW.account_realm_id);
+	ELSIF TG_OP = 'DELETE' THEN
+		DELETE FROM account_collection_account WHERE account_id
+			= OLD.account_id
+		AND account_collection_id IN ( select account_collection_id
+			FROM account_collection where account_collection_type
+			= 'automated'
+		);
+		-- PERFORM auto_ac_manip.destroy_report_account_collections(
+		-- 	account_id := OLD.account_id,
+		-- 	account_realm_id := OLD.account_realm_id
+		-- );
+	END IF;
+
+	IF TG_OP = 'DELETE' THEN
+		RETURN OLD;
+	ELSE
+		RETURN NEW;
+	END IF;
+END;
+$function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'account_change_realm_aca_realm');
+CREATE OR REPLACE FUNCTION jazzhands.account_change_realm_aca_realm()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	_tally	integer;
+BEGIN
+	SELECT	count(*)
+	INTO	_tally
+	FROM	account_collection_account
+			JOIN account_collection USING (account_collection_id)
+			JOIN val_account_collection_type vt USING (account_collection_type)
+	WHERE	vt.account_realm_id IS NOT NULL
+	AND		vt.account_realm_id != NEW.account_realm_id
+	AND		account_id = NEW.account_id;
+
+	IF _tally > 0 THEN
+		RAISE EXCEPTION 'New account realm (%) is part of % account collections with a type restriction',
+			NEW.account_realm_id,
+			_tally
+			USING ERRCODE = 'integrity_constraint_violation';
+	END IF;
+	RETURN NEW;
+END;
+$function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'account_collection_account_realm');
+CREATE OR REPLACE FUNCTION jazzhands.account_collection_account_realm()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	_a	account%ROWTYPE;
+	_at	val_account_collection_type%ROWTYPE;
+BEGIN
+	SELECT *
+	INTO	_at
+	FROM	val_account_collection_type
+		JOIN account_collection USING (account_collection_type)
+	WHERE
+		account_collection_id = NEW.account_collection_id;
+
+	-- no restrictions, so do not care
+	IF _at.account_realm_id IS NULL THEN
+		RETURN NEW;
+	END IF;
+
+	-- check to see if the account's account realm matches
+	IF TG_OP = 'INSERT' OR OLD.account_id != NEW.account_id THEN
+		SELECT	*
+		INTO	_a
+		FROM	account
+		WHERE	account_id = NEW.account_id;
+
+		IF _a.account_realm_id != _at.account_realm_id THEN
+			RAISE EXCEPTION 'account realm of % does not match account realm restriction on account_collection %',
+				NEW.account_id, NEW.account_collection_id
+				USING ERRCODE = 'integrity_constraint_violation';
+		END IF;
+	END IF;
+	RETURN NEW;
+END;
+$function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'approval_instance_step_auto_complete');
+CREATE OR REPLACE FUNCTION jazzhands.approval_instance_step_auto_complete()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	_tally	INTEGER;
+BEGIN
+	--
+	-- on insert, if the parent was already marked as completed, fail.
+	-- arguably, this should happen on updates as well
+	--	possibly should move this to a before trigger
+	--
+	IF TG_OP = 'INSERT' THEN
+		SELECT	count(*)
+		INTO	_tally
+		FROM	approval_instance_step
+		WHERE	approval_instance_step_id = NEW.approval_instance_step_id
+		AND		is_completed = 'Y';
+
+		IF _tally > 0 THEN
+			RAISE EXCEPTION 'Completed attestation cycles may not have items added';
+		END IF;
+	END IF;
+
+	IF NEW.is_approved IS NOT NULL THEN
+		SELECT	count(*)
+		INTO	_tally
+		FROM	approval_instance_item
+		WHERE	approval_instance_step_id = NEW.approval_instance_step_id
+		AND		approval_instance_item_id != NEW.approval_instance_item_id
+		AND		is_approved IS NOT NULL;
+
+		IF _tally = 0 THEN
+			UPDATE	approval_instance_step
+			SET		is_completed = 'Y',
+					approval_instance_step_end = now()
+			WHERE	approval_instance_step_id = NEW.approval_instance_step_id;
+		END IF;
+
+	END IF;
+	RETURN NEW;
+END;
+$function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'automated_ac_on_account');
+CREATE OR REPLACE FUNCTION jazzhands.automated_ac_on_account()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	_tally	INTEGER;
+	_r		RECORD;
+BEGIN
+	IF TG_OP = 'DELETE' THEN
+		IF OLD.account_role != 'primary' THEN
+			RETURN OLD;
+		END IF;
+	ELSIF TG_OP = 'INSERT' THEN
+		IF NEW.account_role != 'primary' THEN
+			RETURN NEW;
+		END IF;
+	ELSIF TG_OP = 'UPDATE' THEN
+		IF NEW.account_role != 'primary' AND OLD.account_role != 'primary' THEN
+			RETURN NEW;
+		END IF;
+	END IF;
+
+
+	IF TG_OP = 'INSERT' OR TG_OP = 'UPDATE'  THEN
+		PERFORM auto_ac_manip.make_site_acs_right(NEW.account_id);
+		PERFORM auto_ac_manip.make_personal_acs_right(NEW.account_id);
+
+		-- update the person's manager to match
+		WITH RECURSIVE map AS (
+			SELECT account_id as root_account_id,
+				account_id, login, manager_account_id, manager_login
+			FROM v_account_manager_map
+			UNION
+			SELECT map.root_account_id, m.account_id, m.login,
+				m.manager_account_id, m.manager_login
+				from v_account_manager_map m
+					join map on m.account_id = map.manager_account_id
+			), x AS ( SELECT auto_ac_manip.make_auto_report_acs_right(
+					account_id := manager_account_id,
+					account_realm_id := NEW.account_realm_id,
+					login := manager_login)
+				FROM map
+				WHERE root_account_id = NEW.account_id
+			) SELECT count(*) INTO _tally FROM x;
+	END IF;
+
+	IF TG_OP = 'UPDATE'  THEN
+		PERFORM auto_ac_manip.make_site_acs_right(OLD.account_id);
+		PERFORM auto_ac_manip.make_personal_acs_right(OLD.account_id);
+	END IF;
+
+	-- when deleting, do nothing rather than calling the above, same as
+	-- update; pointless because account is getting deleted anyway.
+
+	IF TG_OP = 'DELETE' THEN
+		RETURN OLD;
+	ELSE
+		RETURN NEW;
+	END IF;
+END;
+$function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'automated_ac_on_person_company');
+CREATE OR REPLACE FUNCTION jazzhands.automated_ac_on_person_company()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	_tally	INTEGER;
+	_r		RECORD;
+BEGIN
+	IF ( TG_OP = 'INSERT' OR TG_OP = 'UPDATE' ) THEN
+		PERFORM	auto_ac_manip.make_personal_acs_right(account_id)
+		FROM	v_corp_family_account
+				INNER JOIN person_company USING (person_id,company_id)
+		WHERE	account_role = 'primary'
+		AND		person_id = NEW.person_id
+		AND		company_id = NEW.company_id;
+
+		IF ( TG_OP = 'INSERT' OR ( TG_OP = 'UPDATE' AND
+				NEW.manager_person_id != OLD.manager_person_id )
+		) THEN
+			-- update the person's manager to match
+			WITH RECURSIVE map As (
+				SELECT account_id as root_account_id,
+					account_id, login, manager_account_id, manager_login
+				FROM v_account_manager_map
+				UNION
+				SELECT map.root_account_id, m.account_id, m.login,
+					m.manager_account_id, m.manager_login
+					from v_account_manager_map m
+						join map on m.account_id = map.manager_account_id
+			), x AS ( SELECT auto_ac_manip.make_auto_report_acs_right(
+						account_id := manager_account_id,
+						account_realm_id := account_realm_id,
+						login := manager_login)
+					FROM map m
+							join v_corp_family_account a ON
+								a.account_id = m.root_account_id
+					WHERE a.person_id = NEW.person_id
+					AND a.company_id = NEW.company_id
+			) SELECT count(*) into _tally from x;
+			IF TG_OP = 'UPDATE' THEN
+				PERFORM auto_ac_manip.make_auto_report_acs_right(
+							account_id := account_id)
+				FROM    v_corp_family_account
+				WHERE   account_role = 'primary'
+				AND     is_enabled = 'Y'
+				AND     person_id = OLD.manager_person_id;
+			END IF;
+		END IF;
+	END IF;
+
+	IF ( TG_OP = 'DELETE' OR TG_OP = 'UPDATE' ) THEN
+		PERFORM	auto_ac_manip.make_personal_acs_right(account_id)
+		FROM	v_corp_family_account
+				INNER JOIN person_company USING (person_id,company_id)
+		WHERE	account_role = 'primary'
+		AND		person_id = OLD.person_id
+		AND		company_id = OLD.company_id;
+	END IF;
+	IF ( TG_OP = 'UPDATE' ) THEN
+		PERFORM	auto_ac_manip.make_personal_acs_right(account_id)
+		FROM	v_corp_family_account
+				INNER JOIN person_company USING (person_id,company_id)
+		WHERE	account_role = 'primary'
+		AND		person_id = NEW.person_id
+		AND		company_id = NEW.company_id;
+	END IF;
+
+	IF TG_OP = 'DELETE' THEN
+		RETURN OLD;
+	ELSE
+		RETURN NEW;
+	END IF;
+END;
+$function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'check_svcenv_colllection_hier_loop');
+CREATE OR REPLACE FUNCTION jazzhands.check_svcenv_colllection_hier_loop()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+BEGIN
+	IF NEW.service_env_collection_id =
+		NEW.child_service_env_coll_id THEN
+			RAISE EXCEPTION 'svcenv Collection Loops Not Pernitted '
+			USING ERRCODE = 20704;	/* XXX */
+	END IF;
+	RETURN NEW;
+END;
+$function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'create_device_component_by_trigger');
+CREATE OR REPLACE FUNCTION jazzhands.create_device_component_by_trigger()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	devtype		RECORD;
+	ctid		integer;
+	cid			integer;
+	scarr       integer[];
+	dcarr       integer[];
+	server_ver	integer;
+BEGIN
+
+	SELECT
+		dt.device_type_id,
+		dt.component_type_id,
+		dt.template_device_id,
+		d.component_id
+	INTO
+		devtype
+	FROM
+		device_type dt LEFT JOIN
+		device d ON (dt.template_device_id = d.device_id)
+	WHERE
+		dt.device_type_id = NEW.device_type_id;
+
+	IF NEW.component_id IS NOT NULL THEN
+		IF devtype.component_type_id IS NOT NULL THEN
+			SELECT
+				component_type_id INTO ctid
+			FROM
+				component c
+			WHERE
+				c.component_id = NEW.component_id;
+
+			IF ctid != devtype.component_type_id THEN
+				UPDATE
+					component
+				SET
+					component_type_id = devtype.component_type_id
+				WHERE
+					component_id = NEW.component_id;
+			END IF;
+		END IF;
+
+		RETURN NEW;
+	END IF;
+
+	--
+	-- If template_device_id doesn't exist, then create an instance of
+	-- the component_id if it exists
+	--
+	IF devtype.component_id IS NULL THEN
+		--
+		-- If the component_id doesn't exist, then we're done
+		--
+		IF devtype.component_type_id IS NULL THEN
+			RETURN NEW;
+		END IF;
+		--
+		-- Insert a component of the given type and tie it to the device
+		--
+		INSERT INTO component (component_type_id)
+			VALUES (devtype.component_type_id)
+			RETURNING component_id INTO cid;
+
+		NEW.component_id := cid;
+		RETURN NEW;
+	ELSE
+		SELECT setting INTO server_ver FROM pg_catalog.pg_settings
+			WHERE name = 'server_version_num';
+
+		IF (server_ver < 90400) THEN
+			--
+			-- This is pretty nasty; welcome to SQL
+			--
+			--
+			-- This returns data into a temporary table (ugh) that's used as a
+			-- key/value store to map each template component to the
+			-- newly-created one
+			--
+			CREATE TEMPORARY TABLE trig_comp_ins AS
+			WITH comp_ins AS (
+				INSERT INTO component (
+					component_type_id
+				) SELECT
+					c.component_type_id
+				FROM
+					device_type dt JOIN
+					v_device_components dc ON
+						(dc.device_id = dt.template_device_id) JOIN
+					component c USING (component_id)
+				WHERE
+					device_type_id = NEW.device_type_id
+				ORDER BY
+					level, c.component_type_id
+				RETURNING component_id
+			)
+			SELECT
+				src_comp.component_id as src_component_id,
+				dst_comp.component_id as dst_component_id,
+				src_comp.level as level
+			FROM
+				(SELECT
+					c.component_id,
+					level,
+					row_number() OVER (ORDER BY level, c.component_type_id)
+						AS rownum
+				 FROM
+					device_type dt JOIN
+					v_device_components dc ON
+						(dc.device_id = dt.template_device_id) JOIN
+					component c USING (component_id)
+				 WHERE
+					device_type_id = NEW.device_type_id
+				) src_comp,
+				(SELECT
+					component_id,
+					row_number() OVER () AS rownum
+				 FROM
+					comp_ins
+				) dst_comp
+			WHERE
+				src_comp.rownum = dst_comp.rownum;
+
+			/*
+				 Now take the mapping of components that were inserted above,
+				 and tie the new components to the appropriate slot on the
+				 parent.
+				 The logic below is:
+					- Take the template component, and locate its parent slot
+					- Find the correct slot on the corresponding new parent
+					  component by locating one with the same slot_name and
+					  slot_type_id on the mapped parent component_id
+					- Update the parent_slot_id of the component with the
+					  mapped component_id to this slot_id
+
+				 This works even if the top-level component is attached to some
+				 other device, since there will not be a mapping for those in
+				 the table to locate.
+			*/
+
+			UPDATE
+				component dc
+			SET
+				parent_slot_id = ds.slot_id
+			FROM
+				trig_comp_ins tt,
+				trig_comp_ins ptt,
+				component sc,
+				slot ss,
+				slot ds
+			WHERE
+				tt.src_component_id = sc.component_id AND
+				tt.dst_component_id = dc.component_id AND
+				ss.slot_id = sc.parent_slot_id AND
+				ss.component_id = ptt.src_component_id AND
+				ds.component_id = ptt.dst_component_id AND
+				ss.slot_type_id = ds.slot_type_id AND
+				ss.slot_name = ds.slot_name;
+
+			SELECT dst_component_id INTO cid FROM trig_comp_ins WHERE
+				level = 1;
+
+			NEW.component_id := cid;
+
+			DROP TABLE trig_comp_ins;
+
+			RETURN NEW;
+		ELSE
+			WITH dev_comps AS (
+				SELECT
+					c.component_id,
+					c.component_type_id,
+					level,
+					row_number() OVER (ORDER BY level, c.component_type_id) AS
+						rownum
+				FROM
+					device_type dt JOIN
+					v_device_components dc ON
+						(dc.device_id = dt.template_device_id) JOIN
+					component c USING (component_id)
+				WHERE
+					device_type_id = NEW.device_type_id
+			),
+			comp_ins AS (
+				INSERT INTO component (
+					component_type_id
+				) SELECT
+					component_type_id
+				FROM
+					dev_comps
+				ORDER BY
+					rownum
+				RETURNING component_id, component_type_id
+			),
+			comp_ins_arr AS (
+				SELECT
+					array_agg(component_id) AS dst_arr
+				FROM
+					comp_ins
+			),
+			dev_comps_arr AS (
+				SELECT
+					array_agg(component_id) as src_arr
+				FROM
+					dev_comps
+			)
+			SELECT src_arr, dst_arr INTO scarr, dcarr FROM
+				dev_comps_arr, comp_ins_arr;
+
+			UPDATE
+				component dc
+			SET
+				parent_slot_id = ds.slot_id
+			FROM
+				unnest(scarr, dcarr) AS
+					tt(src_component_id, dst_component_id),
+				unnest(scarr, dcarr) AS
+					ptt(src_component_id, dst_component_id),
+				component sc,
+				slot ss,
+				slot ds
+			WHERE
+				tt.src_component_id = sc.component_id AND
+				tt.dst_component_id = dc.component_id AND
+				ss.slot_id = sc.parent_slot_id AND
+				ss.component_id = ptt.src_component_id AND
+				ds.component_id = ptt.dst_component_id AND
+				ss.slot_type_id = ds.slot_type_id AND
+				ss.slot_name = ds.slot_name;
+
+			SELECT
+				component_id INTO NEW.component_id
+			FROM
+				component c
+			WHERE
+				component_id = ANY(dcarr) AND
+				parent_slot_id IS NULL;
+
+			RETURN NEW;
+		END IF;
+	END IF;
+	RETURN NEW;
+END;
+$function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'create_new_unix_account');
+CREATE OR REPLACE FUNCTION jazzhands.create_new_unix_account()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	unix_id 		INTEGER;
+	_account_collection_id 	INTEGER;
+	_arid			INTEGER;
+BEGIN
+	--
+	-- This should be a property that shows which account collections
+	-- get unix accounts created by default, but the mapping of unix-groups
+	-- to account collection across realms needs to be resolved
+	--
+	SELECT  account_realm_id
+	INTO    _arid
+	FROM    property
+	WHERE   property_name = '_root_account_realm_id'
+	AND     property_type = 'Defaults';
+
+	IF _arid IS NOT NULL AND NEW.account_realm_id = _arid THEN
+		IF NEW.person_id != 0 THEN
+			PERFORM person_manip.setup_unix_account(
+				in_account_id := NEW.account_id,
+				in_account_type := NEW.account_type
+			);
+		END IF;
+	END IF;
+	RETURN NEW;
+END;
+$function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'device_type_model_to_name');
+CREATE OR REPLACE FUNCTION jazzhands.device_type_model_to_name()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	_tally	INTEGER;
+BEGIN
+	IF TG_OP = 'UPDATE' AND  (NEW.model IS DISTINCT FROM OLD.model AND
+			NEW.device_type_name IS DISTINCT FROM OLD.device_type_name) THEN
+		RAISE EXCEPTION 'Only device_type_name should be updated.'
+			USING ERRCODE = 'integrity_constraint_violation';
+	ELSIF TG_OP = 'INSERT' THEN
+		IF NEW.model IS NOT NULL AND NEW.device_type_name IS NOT NULL THEN
+			RAISE EXCEPTION 'Only model should be set.'
+				USING ERRCODE = 'integrity_constraint_violation';
+		END IF;
+
+	END IF;
+
+	IF TG_OP = 'UPDATE' THEN
+		IF OLD.model IS DISTINCT FROM NEW.model THEN
+			NEW.device_type_name = NEW.model;
+		ELSIF OLD.device_type_name IS DISTINCT FROM NEW.device_type_name THEN
+			NEW.model = NEW.device_type_name;
+		END IF;
+	ELSIF TG_OP = 'INSERT' THEN
+		IF NEW.model IS NOT NULL THEN
+			NEW.device_type_name = NEW.model;
+		ELSIF NEW.device_type_name IS NOT NULL THEN
+			NEW.model = NEW.device_type_name;
+		END IF;
+	ELSE
+	END IF;
+
+	-- company_id is going away
+	IF NEW.company_id IS NULL THEN
+		NEW.company_id := 0;
+	END IF;
+
+	RETURN NEW;
+END;
+$function$
+;
+
+-- Changed function
 SELECT schema_support.save_grants_for_replay('jazzhands', 'dns_a_rec_validation');
 CREATE OR REPLACE FUNCTION jazzhands.dns_a_rec_validation()
  RETURNS trigger
@@ -198,6 +885,1128 @@ $function$
 ;
 
 -- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'dns_domain_trigger_change');
+CREATE OR REPLACE FUNCTION jazzhands.dns_domain_trigger_change()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+BEGIN
+	IF new.SHOULD_GENERATE = 'Y' THEN
+		insert into DNS_CHANGE_RECORD
+			(dns_domain_id) VALUES (NEW.dns_domain_id);
+	END IF;
+	RETURN NEW;
+END;
+$function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'dns_rec_prevent_dups');
+CREATE OR REPLACE FUNCTION jazzhands.dns_rec_prevent_dups()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	_tally	INTEGER;
+BEGIN
+	-- should not be able to insert the same record(s) twice
+	SELECT	count(*)
+	  INTO	_tally
+	  FROM	dns_record
+	  WHERE
+	  		( lower(dns_name) = lower(NEW.dns_name) OR
+				(dns_name IS NULL AND NEW.dns_name is NULL)
+			)
+		AND
+	  		( dns_domain_id = NEW.dns_domain_id )
+		AND
+	  		( dns_class = NEW.dns_class )
+		AND
+	  		( dns_type = NEW.dns_type )
+		AND
+	  		( dns_srv_service = NEW.dns_srv_service OR
+				(dns_srv_service IS NULL and NEW.dns_srv_service is NULL)
+			)
+		AND
+	  		( dns_srv_protocol = NEW.dns_srv_protocol OR
+				(dns_srv_protocol IS NULL and NEW.dns_srv_protocol is NULL)
+			)
+		AND
+	  		( dns_srv_port = NEW.dns_srv_port OR
+				(dns_srv_port IS NULL and NEW.dns_srv_port is NULL)
+			)
+		AND
+	  		( dns_value = NEW.dns_value OR
+				(dns_value IS NULL and NEW.dns_value is NULL)
+			)
+		AND
+	  		( netblock_id = NEW.netblock_id OR
+				(netblock_id IS NULL AND NEW.netblock_id is NULL)
+			)
+		AND	is_enabled = 'Y'
+	    AND dns_record_id != NEW.dns_record_id
+	;
+
+	IF _tally != 0 THEN
+		RAISE EXCEPTION 'Attempt to insert the same dns record'
+			USING ERRCODE = 'unique_violation';
+	END IF;
+
+	IF NEW.DNS_TYPE = 'A' OR NEW.DNS_TYPE = 'AAAA' THEN
+		IF NEW.SHOULD_GENERATE_PTR = 'Y' THEN
+			SELECT	count(*)
+			 INTO	_tally
+			 FROM	dns_record
+			WHERE dns_class = 'IN'
+			AND dns_type = 'A'
+			AND should_generate_ptr = 'Y'
+			AND is_enabled = 'Y'
+			AND netblock_id = NEW.NETBLOCK_ID
+			AND dns_record_id != NEW.DNS_RECORD_ID;
+
+			IF _tally != 0 THEN
+				RAISE EXCEPTION 'May not have more than one SHOULD_GENERATE_PTR record on the same IP on netblock_id %', NEW.netblock_id
+					USING ERRCODE = 'JH201';
+			END IF;
+		END IF;
+	END IF;
+
+	RETURN NEW;
+END;
+$function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'dns_record_cname_checker');
+CREATE OR REPLACE FUNCTION jazzhands.dns_record_cname_checker()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	_tally	INTEGER;
+	_dom	TEXT;
+BEGIN
+	_tally := 0;
+	IF TG_OP = 'INSERT' OR NEW.DNS_TYPE != OLD.DNS_TYPE THEN
+		IF NEW.DNS_TYPE = 'CNAME' THEN
+			IF TG_OP = 'UPDATE' THEN
+			SELECT	COUNT(*)
+				  INTO	_tally
+				  FROM	dns_record x
+				 WHERE
+				 		NEW.dns_domain_id = x.dns_domain_id
+				 AND	OLD.dns_record_id != x.dns_record_id
+				 AND	(
+				 			NEW.dns_name IS NULL and x.dns_name is NULL
+							or
+							lower(NEW.dns_name) = lower(x.dns_name)
+						)
+				;
+			ELSE
+				-- only difference between above and this is the use of OLD
+				SELECT	COUNT(*)
+				  INTO	_tally
+				  FROM	dns_record x
+				 WHERE
+				 		NEW.dns_domain_id = x.dns_domain_id
+				 AND	(
+				 			NEW.dns_name IS NULL and x.dns_name is NULL
+							or
+							lower(NEW.dns_name) = lower(x.dns_name)
+						)
+				;
+			END IF;
+		-- this clause is basically the same as above except = 'CANME'
+		ELSIF NEW.DNS_TYPE != 'CNAME' THEN
+			IF TG_OP = 'UPDATE' THEN
+				SELECT	COUNT(*)
+				  INTO	_tally
+				  FROM	dns_record x
+				 WHERE	x.dns_type = 'CNAME'
+				 AND	NEW.dns_domain_id = x.dns_domain_id
+				 AND	OLD.dns_record_id != x.dns_record_id
+				 AND	(
+				 			NEW.dns_name IS NULL and x.dns_name is NULL
+							or
+							lower(NEW.dns_name) = lower(x.dns_name)
+						)
+				;
+			ELSE
+				-- only difference between above and this is the use of OLD
+				SELECT	COUNT(*)
+				  INTO	_tally
+				  FROM	dns_record x
+				 WHERE	x.dns_type = 'CNAME'
+				 AND	NEW.dns_domain_id = x.dns_domain_id
+				 AND	(
+				 			NEW.dns_name IS NULL and x.dns_name is NULL
+							or
+							lower(NEW.dns_name) = lower(x.dns_name)
+						)
+				;
+			END IF;
+		END IF;
+	END IF;
+
+	IF _tally > 0 THEN
+		SELECT soa_name INTO _dom FROM dns_domain
+		WHERE dns_domain_id = NEW.dns_domain_id ;
+
+		if NEW.dns_name IS NULL THEN
+			RAISE EXCEPTION '% may not have CNAME and other records (%)',
+				_dom, _tally
+				USING ERRCODE = 'unique_violation';
+		ELSE
+			RAISE EXCEPTION '%.% may not have CNAME and other records (%)',
+				NEW.dns_name, _dom, _tally
+				USING ERRCODE = 'unique_violation';
+		END IF;
+	END IF;
+	RETURN NEW;
+END;
+$function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'dns_record_update_nontime');
+CREATE OR REPLACE FUNCTION jazzhands.dns_record_update_nontime()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	_dnsdomainid	DNS_DOMAIN.DNS_DOMAIN_ID%type;
+	_ipaddr			NETBLOCK.IP_ADDRESS%type;
+	_mkold			boolean;
+	_mknew			boolean;
+	_mkdom			boolean;
+	_mkip			boolean;
+BEGIN
+	_mkold = false;
+	_mkold = false;
+	_mknew = true;
+
+	IF TG_OP = 'DELETE' THEN
+		_mknew := false;
+		_mkold := true;
+		_mkdom := true;
+		if  OLD.netblock_id is not null  THEN
+			_mkip := true;
+		END IF;
+	ELSIF TG_OP = 'INSERT' THEN
+		_mkold := false;
+		_mkdom := true;
+		if  NEW.netblock_id is not null  THEN
+			_mkip := true;
+		END IF;
+	ELSIF TG_OP = 'UPDATE' THEN
+		IF OLD.DNS_DOMAIN_ID != NEW.DNS_DOMAIN_ID THEN
+			_mkold := true;
+			_mkip := true;
+		END IF;
+		_mkdom := true;
+
+		IF OLD.dns_name IS DISTINCT FROM NEW.dns_name THEN
+			_mknew := true;
+			IF NEW.DNS_TYPE = 'A' OR NEW.DNS_TYPE = 'AAAA' THEN
+				IF NEW.SHOULD_GENERATE_PTR = 'Y' THEN
+					_mkip := true;
+				END IF;
+			END IF;
+		END IF;
+
+		IF OLD.SHOULD_GENERATE_PTR != NEW.SHOULD_GENERATE_PTR THEN
+			_mkold := true;
+			_mkip := true;
+		END IF;
+
+		IF (OLD.netblock_id IS DISTINCT FROM NEW.netblock_id) THEN
+			_mkold := true;
+			_mknew := true;
+			_mkip := true;
+		END IF;
+	END IF;
+
+	if _mkold THEN
+		IF _mkdom THEN
+			_dnsdomainid := OLD.dns_domain_id;
+		ELSE
+			_dnsdomainid := NULL;
+		END IF;
+		if _mkip and OLD.netblock_id is not NULL THEN
+			SELECT	ip_address
+			  INTO	_ipaddr
+			  FROM	netblock
+			 WHERE	netblock_id  = OLD.netblock_id;
+		ELSE
+			_ipaddr := NULL;
+		END IF;
+		insert into DNS_CHANGE_RECORD
+			(dns_domain_id, ip_address) VALUES (_dnsdomainid, _ipaddr);
+	END IF;
+	if _mknew THEN
+		if _mkdom THEN
+			_dnsdomainid := NEW.dns_domain_id;
+		ELSE
+			_dnsdomainid := NULL;
+		END IF;
+		if _mkip and NEW.netblock_id is not NULL THEN
+			SELECT	ip_address
+			  INTO	_ipaddr
+			  FROM	netblock
+			 WHERE	netblock_id  = NEW.netblock_id;
+		ELSE
+			_ipaddr := NULL;
+		END IF;
+		insert into DNS_CHANGE_RECORD
+			(dns_domain_id, ip_address) VALUES (_dnsdomainid, _ipaddr);
+	END IF;
+	IF TG_OP = 'DELETE' THEN
+		return OLD;
+	END IF;
+	return NEW;
+END;
+$function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'fix_person_image_oid_ownership');
+CREATE OR REPLACE FUNCTION jazzhands.fix_person_image_oid_ownership()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+   b	integer;
+   str	varchar;
+BEGIN
+	b := NEW.image_blob;
+	BEGIN
+		str := 'GRANT SELECT on LARGE OBJECT ' || b || ' to picture_image_ro';
+		EXECUTE str;
+		str :=  'GRANT UPDATE on LARGE OBJECT ' || b || ' to picture_image_rw';
+		EXECUTE str;
+	EXCEPTION WHEN OTHERS THEN
+		RAISE NOTICE 'Unable to grant on %', b;
+	END;
+
+	BEGIN
+		EXECUTE 'ALTER large object ' || b || ' owner to jazzhands';
+	EXCEPTION WHEN OTHERS THEN
+		RAISE NOTICE 'Unable to adjust ownership of %', b;
+	END;
+	RETURN NEW;
+END;
+$function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'net_int_physical_id_to_slot_id_enforce');
+CREATE OR REPLACE FUNCTION jazzhands.net_int_physical_id_to_slot_id_enforce()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	_tally	INTEGER;
+BEGIN
+	IF TG_OP = 'UPDATE' AND  (NEW.slot_id IS DISTINCT FROM OLD.slot_ID AND
+			NEW.physical_port_id IS DISTINCT FROM OLD.physical_port_id) THEN
+		RAISE EXCEPTION 'Only slot_id should be updated.'
+			USING ERRCODE = 'integrity_constraint_violation';
+	ELSIF TG_OP = 'INSERT' THEN
+		IF NEW.physical_port_id IS NOT NULL AND NEW.slot_id IS NOT NULL THEN
+			RAISE EXCEPTION 'Only slot_id should be set.'
+				USING ERRCODE = 'integrity_constraint_violation';
+		END IF;
+
+	END IF;
+
+	IF TG_OP = 'UPDATE' THEN
+		IF OLD.slot_id IS DISTINCT FROM NEW.slot_id THEN
+			NEW.physical_port_id = NEW.slot_id;
+		ELSIF OLD.physical_port_id IS DISTINCT FROM NEW.physical_port_id THEN
+			NEW.slot_id = NEW.physical_port_id;
+		END IF;
+	ELSIF TG_OP = 'INSERT' THEN
+		IF NEW.slot_id IS NOT NULL THEN
+			NEW.physical_port_id = NEW.slot_id;
+		ELSIF NEW.physical_port_id IS NOT NULL THEN
+			NEW.slot_id = NEW.physical_port_id;
+		END IF;
+	ELSE
+	END IF;
+	RETURN NEW;
+END;
+$function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'phys_conn_physical_id_to_slot_id_enforce');
+CREATE OR REPLACE FUNCTION jazzhands.phys_conn_physical_id_to_slot_id_enforce()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	_tally	INTEGER;
+BEGIN
+	IF TG_OP = 'UPDATE' AND
+		((NEW.slot1_id IS DISTINCT FROM OLD.slot1_ID AND
+			NEW.physical_port1_id IS DISTINCT FROM OLD.physical_port1_id) OR
+		(NEW.slot2_id IS DISTINCT FROM OLD.slot2_ID AND
+			NEW.physical_port2_id IS DISTINCT FROM OLD.physical_port2_id))
+	THEN
+		RAISE EXCEPTION 'Only slot1_id OR slot2_id should be updated.'
+			USING ERRCODE = 'integrity_constraint_violation';
+	ELSIF TG_OP = 'INSERT' THEN
+		IF (NEW.physical_port1_id IS NOT NULL AND NEW.slot1_id IS NOT NULL) OR
+			(NEW.physical_port2_id IS NOT NULL AND NEW.slot2_id IS NOT NULL)
+		THEN
+			RAISE EXCEPTION 'Only slot1_id OR slot2_id should be set.'
+				USING ERRCODE = 'integrity_constraint_violation';
+		END IF;
+
+	END IF;
+
+	IF TG_OP = 'UPDATE' THEN
+		IF OLD.slot1_id IS DISTINCT FROM NEW.slot1_id THEN
+			NEW.physical_port1_id = NEW.slot1_id;
+		ELSIF OLD.physical_port1_id IS DISTINCT FROM NEW.physical_port1_id THEN
+			NEW.slot1_id = NEW.physical_port1_id;
+		END IF;
+		IF OLD.slot2_id IS DISTINCT FROM NEW.slot2_id THEN
+			NEW.physical_port2_id = NEW.slot2_id;
+		ELSIF OLD.physical_port2_id IS DISTINCT FROM NEW.physical_port2_id THEN
+			NEW.slot2_id = NEW.physical_port2_id;
+		END IF;
+	ELSIF TG_OP = 'INSERT' THEN
+		IF NEW.slot1_id IS NOT NULL THEN
+			NEW.physical_port1_id = NEW.slot_id;
+		ELSIF NEW.physical_port1_id IS NOT NULL THEN
+			NEW.slot1_id = NEW.physical_port1_id;
+		END IF;
+		IF NEW.slot2_id IS NOT NULL THEN
+			NEW.physical_port2_id = NEW.slot_id;
+		ELSIF NEW.physical_port2_id IS NOT NULL THEN
+			NEW.slot2_id = NEW.physical_port2_id;
+		END IF;
+	ELSE
+	END IF;
+	RETURN NEW;
+END;
+$function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'property_collection_member_enforce');
+CREATE OR REPLACE FUNCTION jazzhands.property_collection_member_enforce()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	pct	val_property_collection_type%ROWTYPE;
+	tally integer;
+BEGIN
+	SELECT *
+	INTO	pct
+	FROM	val_property_collection_type
+	WHERE	property_collection_type =
+		(select property_collection_type from property_collection
+			where property_collection_id = NEW.property_collection_id);
+
+	IF pct.MAX_NUM_MEMBERS IS NOT NULL THEN
+		select count(*)
+		  into tally
+		  from property_collection_property
+		  where property_collection_id = NEW.property_collection_id;
+		IF tally > pct.MAX_NUM_MEMBERS THEN
+			RAISE EXCEPTION 'Too many members'
+				USING ERRCODE = 'unique_violation';
+		END IF;
+	END IF;
+
+	IF pct.MAX_NUM_COLLECTIONS IS NOT NULL THEN
+		select count(*)
+		  into tally
+		  from property_collection_property
+		  		inner join property_collection using (property_collection_id)
+		  where
+				property_name = NEW.property_name
+		  and	property_type = NEW.property_type
+		  and	property_collection_type = pct.property_collection_type;
+		IF tally > pct.MAX_NUM_COLLECTIONS THEN
+			RAISE EXCEPTION 'Property may not be a member of more than % collections of type %',
+				pct.MAX_NUM_COLLECTIONS, pct.property_collection_type
+				USING ERRCODE = 'unique_violation';
+		END IF;
+	END IF;
+
+	RETURN NEW;
+END;
+$function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'service_environment_coll_hier_enforce');
+CREATE OR REPLACE FUNCTION jazzhands.service_environment_coll_hier_enforce()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	svcenvt	val_service_env_coll_type%ROWTYPE;
+BEGIN
+	SELECT *
+	INTO	svcenvt
+	FROM	val_service_env_coll_type
+	WHERE	service_env_collection_type =
+		(select service_env_collection_type
+			from service_environment_collection
+			where service_env_collection_id =
+				NEW.service_env_collection_id);
+
+	IF svcenvt.can_have_hierarchy = 'N' THEN
+		RAISE EXCEPTION 'Service Environment Collections of type % may not be hierarcical',
+			svcenvt.service_env_collection_type
+			USING ERRCODE= 'unique_violation';
+	END IF;
+	RETURN NEW;
+END;
+$function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'service_environment_collection_member_enforce');
+CREATE OR REPLACE FUNCTION jazzhands.service_environment_collection_member_enforce()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	svcenvt	val_service_env_coll_type%ROWTYPE;
+	tally integer;
+BEGIN
+	SELECT *
+	INTO	svcenvt
+	FROM	val_service_env_coll_type
+	WHERE	service_env_collection_type =
+		(select service_env_collection_type
+			from service_environment_collection
+			where service_env_collection_id =
+				NEW.service_env_collection_id);
+
+	IF svcenvt.MAX_NUM_MEMBERS IS NOT NULL THEN
+		select count(*)
+		  into tally
+		  from svc_environment_coll_svc_env
+		  where service_env_collection_id = NEW.service_env_collection_id;
+		IF tally > svcenvt.MAX_NUM_MEMBERS THEN
+			RAISE EXCEPTION 'Too many members'
+				USING ERRCODE = 'unique_violation';
+		END IF;
+	END IF;
+
+	IF svcenvt.MAX_NUM_COLLECTIONS IS NOT NULL THEN
+		select count(*)
+		  into tally
+		  from svc_environment_coll_svc_env
+		  		inner join service_environment_collection
+					USING (service_env_collection_id)
+		  where service_environment_id = NEW.service_environment_id
+		  and	service_env_collection_type =
+					svcenvt.service_env_collection_type;
+		IF tally > svcenvt.MAX_NUM_COLLECTIONS THEN
+			RAISE EXCEPTION 'Service Environment may not be a member of more than % collections of type %',
+				svcenvt.MAX_NUM_COLLECTIONS, svcenvt.service_env_collection_type
+				USING ERRCODE = 'unique_violation';
+		END IF;
+	END IF;
+
+	RETURN NEW;
+END;
+$function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'upd_v_corp_family_account');
+CREATE OR REPLACE FUNCTION jazzhands.upd_v_corp_family_account()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	acct_realm_id	account_realm.account_realm_id%TYPE;
+	setstr		TEXT;
+	_r		RECORD;
+	val		TEXT;
+BEGIN
+	SELECT	account_realm_id
+	INTO	acct_realm_id
+	FROM	property
+	WHERE	property_name = '_root_account_realm_id'
+	AND	property_type = 'Defaults';
+
+	IF acct_realm_id != OLD.account_realm_id OR
+			acct_realm_id != NEW.account_realm_id THEN
+		RAISE EXCEPTION 'Invalid account_realm_id'
+		USING ERRCODE = 'foreign_key_violation';
+	END IF;
+
+	setstr = '';
+	FOR _r IN SELECT * FROM json_each_text( row_to_json(NEW) )
+	LOOP
+		IF _r.key NOT SIMILAR TO 'data_(ins|upd)_(user|date)' THEN
+			EXECUTE 'SELECT ' || _r.key ||' FROM account
+				WHERE account_id = ' || OLD.account_id
+				INTO val;
+			IF ( _r.value IS NULL  AND val IS NOT NULL) OR
+				( _r.value IS NOT NULL AND val IS NULL) OR
+				(_r.value::text NOT SIMILAR TO val::text) THEN
+				-- RAISE NOTICE 'Changing %: "%" to "%"', _r.key, val, _r.value;
+				IF char_length(setstr) > 0 THEN
+					setstr = setstr || ',
+					';
+				END IF;
+				IF _r.value IS NOT  NULL THEN
+					setstr = setstr || _r.key || ' = ' ||
+						quote_nullable(_r.value) || ' ' ;
+				ELSE
+					setstr = setstr || _r.key || ' = ' ||
+						' NULL ' ;
+				END IF;
+			END IF;
+		END IF;
+	END LOOP;
+
+
+	IF char_length(setstr) > 0 THEN
+		setstr = 'UPDATE account SET ' || setstr || '
+			WHERE	account_id = ' || OLD.account_id;
+		-- RAISE NOTICE 'executing %', setstr;
+		EXECUTE setstr;
+	END IF;
+	RETURN NEW;
+
+END;
+$function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'update_per_svc_env_svc_env_collection');
+CREATE OR REPLACE FUNCTION jazzhands.update_per_svc_env_svc_env_collection()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	secid		service_environment_collection.service_env_collection_id%TYPE;
+BEGIN
+	IF TG_OP = 'INSERT' THEN
+		insert into service_environment_collection
+			(service_env_collection_name, service_env_collection_type)
+		values
+			(NEW.service_environment_name, 'per-environment')
+		RETURNING service_env_collection_id INTO secid;
+		insert into svc_environment_coll_svc_env
+			(service_env_collection_id, service_environment_id)
+		VALUES
+			(secid, NEW.service_environment_id);
+	ELSIF TG_OP = 'UPDATE'  AND OLD.service_environment_id != NEW.service_environment_id THEN
+		UPDATE	service_environment_collection
+		   SET	service_env_collection_name = NEW.service_environment_name
+		 WHERE	service_env_collection_name != NEW.service_environment_name
+		   AND	service_env_collection_type = 'per-environment'
+		   AND	service_environment_id in (
+			SELECT	service_environment_id
+			  FROM	svc_environment_coll_svc_env
+			 WHERE	service_environment_id =
+				NEW.service_environment_id
+			);
+	END IF;
+	RETURN NEW;
+END;
+$function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'validate_component_parent_slot_id');
+CREATE OR REPLACE FUNCTION jazzhands.validate_component_parent_slot_id()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	stid	integer;
+BEGIN
+	IF NEW.parent_slot_id IS NULL THEN
+		RETURN NEW;
+	END IF;
+
+	PERFORM
+		*
+	FROM
+		slot s JOIN
+		slot_type_prmt_comp_slot_type stpcst USING (slot_type_id) JOIN
+		component_type ct ON (stpcst.component_slot_type_id = ct.slot_type_id)
+	WHERE
+		ct.component_type_id = NEW.component_type_id AND
+		s.slot_id = NEW.parent_slot_id;
+
+	IF NOT FOUND THEN
+		SELECT slot_type_id INTO stid FROM slot WHERE slot_id = NEW.parent_slot_id;
+		RAISE EXCEPTION 'Component type % is not permitted in slot % (slot type %)',
+			NEW.component_type_id, NEW.parent_slot_id, stid
+			USING ERRCODE = 'foreign_key_violation';
+	END IF;
+
+	RETURN NEW;
+END;
+$function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'validate_component_property');
+CREATE OR REPLACE FUNCTION jazzhands.validate_component_property()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	tally				INTEGER;
+	v_comp_prop			RECORD;
+	v_comp_prop_type	RECORD;
+	v_num				bigint;
+	v_listvalue			TEXT;
+	component_attrs		RECORD;
+BEGIN
+
+	-- Pull in the data from the property and property_type so we can
+	-- figure out what is and is not valid
+
+	BEGIN
+		SELECT * INTO STRICT v_comp_prop FROM val_component_property WHERE
+			component_property_name = NEW.component_property_name AND
+			component_property_type = NEW.component_property_type;
+
+		SELECT * INTO STRICT v_comp_prop_type FROM val_component_property_type
+			WHERE component_property_type = NEW.component_property_type;
+	EXCEPTION
+		WHEN NO_DATA_FOUND THEN
+			RAISE EXCEPTION
+				'Component property name or type does not exist'
+				USING ERRCODE = 'foreign_key_violation';
+			RETURN NULL;
+	END;
+
+	-- Check to see if the property itself is multivalue.  That is, if only
+	-- one value can be set for this property for a specific property LHS
+
+	IF (v_comp_prop.is_multivalue != 'Y') THEN
+		PERFORM 1 FROM component_property WHERE
+			component_property_id != NEW.component_property_id AND
+			component_property_name = NEW.component_property_name AND
+			component_property_type = NEW.component_property_type AND
+			component_type_id IS NOT DISTINCT FROM NEW.component_type_id AND
+			component_function IS NOT DISTINCT FROM NEW.component_function AND
+			component_id iS NOT DISTINCT FROM NEW.component_id AND
+			slot_type_id IS NOT DISTINCT FROM NEW.slot_type_id AND
+			slot_function IS NOT DISTINCT FROM NEW.slot_function AND
+			slot_id IS NOT DISTINCT FROM NEW.slot_id;
+
+		IF FOUND THEN
+			RAISE EXCEPTION
+				'Property with name % and type % already exists for given LHS and property is not multivalue',
+				NEW.component_property_name,
+				NEW.component_property_type
+				USING ERRCODE = 'unique_violation';
+			RETURN NULL;
+		END IF;
+	END IF;
+
+	-- Check to see if the property type is multivalue.  That is, if only
+	-- one property and value can be set for any properties with this type
+	-- for a specific property LHS
+
+	IF (v_comp_prop_type.is_multivalue != 'Y') THEN
+		PERFORM 1 FROM component_property WHERE
+			component_property_id != NEW.component_property_id AND
+			component_property_type = NEW.component_property_type AND
+			component_type_id IS NOT DISTINCT FROM NEW.component_type_id AND
+			component_function IS NOT DISTINCT FROM NEW.component_function AND
+			component_id iS NOT DISTINCT FROM NEW.component_id AND
+			slot_type_id IS NOT DISTINCT FROM NEW.slot_type_id AND
+			slot_function IS NOT DISTINCT FROM NEW.slot_function AND
+			slot_id IS NOT DISTINCT FROM NEW.slot_id;
+
+		IF FOUND THEN
+			RAISE EXCEPTION
+				'Property % of type % already exists for given LHS and property type is not multivalue',
+				NEW.component_property_name, NEW.component_property_type
+				USING ERRCODE = 'unique_violation';
+			RETURN NULL;
+		END IF;
+	END IF;
+
+	-- now validate the property_value columns.
+	tally := 0;
+
+	--
+	-- first determine if the property_value is set properly.
+	--
+
+	-- at this point, tally will be set to 1 if one of the other property
+	-- values is set to something valid.  Now, check the various options for
+	-- PROPERTY_VALUE itself.  If a new type is added to the val table, this
+	-- trigger needs to be updated or it will be considered invalid.  If a
+	-- new PROPERTY_VALUE_* column is added, then it will pass through without
+	-- trigger modification.  This should be considered bad.
+
+	IF NEW.property_value IS NOT NULL THEN
+		tally := tally + 1;
+		IF v_comp_prop.property_data_type = 'boolean' THEN
+			IF NEW.Property_Value != 'Y' AND NEW.Property_Value != 'N' THEN
+				RAISE 'Boolean property_value must be Y or N' USING
+					ERRCODE = 'invalid_parameter_value';
+			END IF;
+		ELSIF v_comp_prop.property_data_type = 'number' THEN
+			BEGIN
+				v_num := to_number(NEW.property_value, '9');
+			EXCEPTION
+				WHEN OTHERS THEN
+					RAISE 'property_value must be numeric' USING
+						ERRCODE = 'invalid_parameter_value';
+			END;
+		ELSIF v_comp_prop.property_data_type = 'list' THEN
+			BEGIN
+				SELECT valid_property_value INTO STRICT v_listvalue FROM
+					val_component_property_value WHERE
+						component_property_name = NEW.component_property_name AND
+						component_property_type = NEW.component_property_type AND
+						valid_property_value = NEW.property_value;
+			EXCEPTION
+				WHEN NO_DATA_FOUND THEN
+					RAISE 'property_value must be a valid value' USING
+						ERRCODE = 'invalid_parameter_value';
+			END;
+		ELSIF v_comp_prop.property_data_type != 'string' THEN
+			RAISE 'property_data_type is not a known type' USING
+				ERRCODE = 'invalid_parameter_value';
+		END IF;
+	END IF;
+
+	IF v_comp_prop.property_data_type != 'none' AND tally = 0 THEN
+		RAISE 'One of the property_value fields must be set.' USING
+			ERRCODE = 'invalid_parameter_value';
+	END IF;
+
+	IF tally > 1 THEN
+		RAISE 'Only one of the property_value fields may be set.' USING
+			ERRCODE = 'invalid_parameter_value';
+	END IF;
+
+	--
+	-- At this point, the value itself is valid for this property, now
+	-- determine whether the property is allowed on the target
+	--
+	-- There needs to be a stanza here for every "lhs".  If a new column is
+	-- added to the component_property table, a new stanza needs to be added
+	-- here, otherwise it will not be validated.  This should be considered bad.
+
+	IF v_comp_prop.permit_component_type_id = 'REQUIRED' THEN
+		IF NEW.component_type_id IS NULL THEN
+			RAISE 'component_type_id is required.'
+				USING ERRCODE = 'invalid_parameter_value';
+		END IF;
+	ELSIF v_comp_prop.permit_component_type_id = 'PROHIBITED' THEN
+		IF NEW.component_type_id IS NOT NULL THEN
+			RAISE 'component_type_id is prohibited.'
+				USING ERRCODE = 'invalid_parameter_value';
+		END IF;
+	END IF;
+
+	IF v_comp_prop.permit_component_function = 'REQUIRED' THEN
+		IF NEW.component_function IS NULL THEN
+			RAISE 'component_function is required.'
+				USING ERRCODE = 'invalid_parameter_value';
+		END IF;
+	ELSIF v_comp_prop.permit_component_function = 'PROHIBITED' THEN
+		IF NEW.component_function IS NOT NULL THEN
+			RAISE 'component_function is prohibited.'
+				USING ERRCODE = 'invalid_parameter_value';
+		END IF;
+	END IF;
+
+	IF v_comp_prop.permit_component_id = 'REQUIRED' THEN
+		IF NEW.component_id IS NULL THEN
+			RAISE 'component_id is required.'
+				USING ERRCODE = 'invalid_parameter_value';
+		END IF;
+	ELSIF v_comp_prop.permit_component_id = 'PROHIBITED' THEN
+		IF NEW.component_id IS NOT NULL THEN
+			RAISE 'component_id is prohibited.'
+				USING ERRCODE = 'invalid_parameter_value';
+		END IF;
+	END IF;
+
+	IF v_comp_prop.permit_intcomp_conn_id = 'REQUIRED' THEN
+		IF NEW.inter_component_connection_id IS NULL THEN
+			RAISE 'inter_component_connection_id is required.'
+				USING ERRCODE = 'invalid_parameter_value';
+		END IF;
+	ELSIF v_comp_prop.permit_intcomp_conn_id = 'PROHIBITED' THEN
+		IF NEW.inter_component_connection_id IS NOT NULL THEN
+			RAISE 'inter_component_connection_id is prohibited.'
+				USING ERRCODE = 'invalid_parameter_value';
+		END IF;
+	END IF;
+
+	IF v_comp_prop.permit_slot_type_id = 'REQUIRED' THEN
+		IF NEW.slot_type_id IS NULL THEN
+			RAISE 'slot_type_id is required.'
+				USING ERRCODE = 'invalid_parameter_value';
+		END IF;
+	ELSIF v_comp_prop.permit_slot_type_id = 'PROHIBITED' THEN
+		IF NEW.slot_type_id IS NOT NULL THEN
+			RAISE 'slot_type_id is prohibited.'
+				USING ERRCODE = 'invalid_parameter_value';
+		END IF;
+	END IF;
+
+	IF v_comp_prop.permit_slot_function = 'REQUIRED' THEN
+		IF NEW.slot_function IS NULL THEN
+			RAISE 'slot_function is required.'
+				USING ERRCODE = 'invalid_parameter_value';
+		END IF;
+	ELSIF v_comp_prop.permit_slot_function = 'PROHIBITED' THEN
+		IF NEW.slot_function IS NOT NULL THEN
+			RAISE 'slot_function is prohibited.'
+				USING ERRCODE = 'invalid_parameter_value';
+		END IF;
+	END IF;
+
+	IF v_comp_prop.permit_slot_id = 'REQUIRED' THEN
+		IF NEW.slot_id IS NULL THEN
+			RAISE 'slot_id is required.'
+				USING ERRCODE = 'invalid_parameter_value';
+		END IF;
+	ELSIF v_comp_prop.permit_slot_id = 'PROHIBITED' THEN
+		IF NEW.slot_id IS NOT NULL THEN
+			RAISE 'slot_id is prohibited.'
+				USING ERRCODE = 'invalid_parameter_value';
+		END IF;
+	END IF;
+
+	--
+	-- LHS population is verified; now validate any particular restrictions
+	-- on individual values
+	--
+
+	--
+	-- For slot_id, validate that the component_type, component_function,
+	-- slot_type, and slot_function are all valid
+	--
+	IF NEW.slot_id IS NOT NULL AND COALESCE(
+			v_comp_prop.required_component_type_id::text,
+			v_comp_prop.required_component_function,
+			v_comp_prop.required_slot_type_id::text,
+			v_comp_prop.required_slot_function) IS NOT NULL THEN
+
+		WITH x AS (
+			SELECT
+				component_type_id,
+				array_agg(component_function) as component_function
+			FROM
+				component_type_component_func
+			GROUP BY
+				component_type_id
+		) SELECT
+			component_type_id,
+			component_function,
+			st.slot_type_id,
+			slot_function
+		INTO
+			component_attrs
+		FROM
+			slot cs JOIN
+			slot_type st USING (slot_type_id) JOIN
+			component c USING (component_id) JOIN
+			component_type ct USING (component_type_id) LEFT JOIN
+			x USING (component_type_id)
+		WHERE
+			slot_id = NEW.slot_id;
+
+		IF v_comp_prop.required_component_type_id IS NOT NULL AND
+				v_comp_prop.required_component_type_id !=
+				component_attrs.component_type_id THEN
+			RAISE 'component_type for slot_id must be % (is: %)',
+					v_comp_prop.required_component_type_id,
+					component_attrs.component_type_id
+				USING ERRCODE = 'invalid_parameter_value';
+		END IF;
+
+		IF v_comp_prop.required_component_function IS NOT NULL AND
+				NOT (v_comp_prop.required_component_function =
+					ANY(component_attrs.component_function)) THEN
+			RAISE 'component_function for slot_id must be % (is: %)',
+					v_comp_prop.required_component_function,
+					component_attrs.component_function
+				USING ERRCODE = 'invalid_parameter_value';
+		END IF;
+
+		IF v_comp_prop.required_slot_type_id IS NOT NULL AND
+				v_comp_prop.required_slot_type_id !=
+				component_attrs.slot_type_id THEN
+			RAISE 'slot_type_id for slot_id must be % (is: %)',
+					v_comp_prop.required_slot_type_id,
+					component_attrs.slot_type_id
+				USING ERRCODE = 'invalid_parameter_value';
+		END IF;
+
+		IF v_comp_prop.required_slot_function IS NOT NULL AND
+				v_comp_prop.required_slot_function !=
+				component_attrs.slot_function THEN
+			RAISE 'slot_function for slot_id must be % (is: %)',
+					v_comp_prop.required_slot_function,
+					component_attrs.slot_function
+				USING ERRCODE = 'invalid_parameter_value';
+		END IF;
+	END IF;
+
+	IF NEW.slot_type_id IS NOT NULL AND
+			v_comp_prop.required_slot_function IS NOT NULL THEN
+
+		SELECT
+			slot_function
+		INTO
+			component_attrs
+		FROM
+			slot_type st
+		WHERE
+			slot_type_id = NEW.slot_type_id;
+
+		IF v_comp_prop.required_slot_function !=
+				component_attrs.slot_function THEN
+			RAISE 'slot_function for slot_type_id must be % (is: %)',
+					v_comp_prop.required_slot_function,
+					component_attrs.slot_function
+				USING ERRCODE = 'invalid_parameter_value';
+		END IF;
+	END IF;
+
+	IF NEW.component_id IS NOT NULL AND COALESCE(
+			v_comp_prop.required_component_type_id::text,
+			v_comp_prop.required_component_function) IS NOT NULL THEN
+
+		SELECT
+			component_type_id,
+			array_agg(component_function) as component_function
+		INTO
+			component_attrs
+		FROM
+			component c JOIN
+			component_type_component_func ctcf USING (component_type_id)
+		WHERE
+			component_id = NEW.component_id
+		GROUP BY
+			component_type_id;
+
+		IF v_comp_prop.required_component_type_id IS NOT NULL AND
+				v_comp_prop.required_component_type_id !=
+				component_attrs.component_type_id THEN
+			RAISE 'component_type for component_id must be % (is: %)',
+					v_comp_prop.required_component_type_id,
+					component_attrs.component_type_id
+				USING ERRCODE = 'invalid_parameter_value';
+		END IF;
+
+		IF v_comp_prop.required_component_function IS NOT NULL AND
+				NOT (v_comp_prop.required_component_function =
+					ANY(component_attrs.component_function)) THEN
+			RAISE 'component_function for component_id must be % (is: %)',
+					v_comp_prop.required_component_function,
+					component_attrs.component_function
+				USING ERRCODE = 'invalid_parameter_value';
+		END IF;
+	END IF;
+
+	IF NEW.component_type_id IS NOT NULL AND
+			v_comp_prop.required_component_function IS NOT NULL THEN
+
+		SELECT
+			component_type_id,
+			array_agg(component_function) as component_function
+		INTO
+			component_attrs
+		FROM
+			component_type_component_func ctcf
+		WHERE
+			component_type_id = NEW.component_type_id
+		GROUP BY
+			component_type_id;
+
+		IF v_comp_prop.required_component_function IS NOT NULL AND
+				NOT (v_comp_prop.required_component_function =
+					ANY(component_attrs.component_function)) THEN
+			RAISE 'component_function for component_type_id must be % (is: %)',
+					v_comp_prop.required_component_function,
+					component_attrs.component_function
+				USING ERRCODE = 'invalid_parameter_value';
+		END IF;
+	END IF;
+
+	RETURN NEW;
+END;
+$function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'validate_device_collection_type_change');
+CREATE OR REPLACE FUNCTION jazzhands.validate_device_collection_type_change()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	_tally	integer;
+BEGIN
+	IF OLD.device_collection_type != NEW.device_collection_type THEN
+		SELECT	COUNT(*)
+		INTO	_tally
+		FROM	property p
+			join val_property vp USING (property_name,property_type)
+		WHERE	vp.device_collection_type = OLD.device_collection_type
+		AND	p.device_collection_id = NEW.device_collection_id;
+
+		IF _tally > 0 THEN
+			RAISE EXCEPTION 'device_collection % of type % is used by % restricted properties.',
+				NEW.device_collection_id, NEW.device_collection_type, _tally
+				USING ERRCODE = 'foreign_key_violation';
+		END IF;
+	END IF;
+	RETURN NEW;
+END;
+$function$
+;
+
+-- Changed function
 SELECT schema_support.save_grants_for_replay('jazzhands', 'validate_device_component_assignment');
 CREATE OR REPLACE FUNCTION jazzhands.validate_device_component_assignment()
  RETURNS trigger
@@ -248,6 +2057,694 @@ END;
 $function$
 ;
 
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'validate_dns_domain_collection_type_change');
+CREATE OR REPLACE FUNCTION jazzhands.validate_dns_domain_collection_type_change()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	_tally	integer;
+BEGIN
+	IF OLD.dns_domain_collection_type != NEW.dns_domain_collection_type THEN
+		SELECT	COUNT(*)
+		INTO	_tally
+		FROM	property p
+			join val_property vp USING (property_name,property_type)
+		WHERE	vp.dns_domain_collection_type = OLD.dns_domain_collection_type
+		AND	p.dns_domain_collection_id = NEW.dns_domain_collection_id;
+
+		IF _tally > 0 THEN
+			RAISE EXCEPTION 'dns_domain_collection % of type % is used by % restricted properties.',
+				NEW.dns_domain_collection_id, NEW.dns_domain_collection_type, _tally
+				USING ERRCODE = 'foreign_key_violation';
+		END IF;
+	END IF;
+	RETURN NEW;
+END;
+$function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'validate_inter_component_connection');
+CREATE OR REPLACE FUNCTION jazzhands.validate_inter_component_connection()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	slot_type_info	RECORD;
+	csid_rec	RECORD;
+BEGIN
+	IF NEW.slot1_id = NEW.slot2_id THEN
+		RAISE EXCEPTION 'A slot may not be connected to itself'
+			USING ERRCODE = 'check_violation';
+	END IF;
+
+	--
+	-- Validate that slot_ids are not already connected
+	-- to something else
+	--
+
+	SELECT
+		slot1_id,
+		slot2_id
+	INTO
+		csid_rec
+	FROM
+		inter_component_connection icc
+	WHERE
+		icc.inter_component_connection_id != NEW.inter_component_connection_id
+			AND
+		(icc.slot1_id = NEW.slot1_id OR
+		 icc.slot1_id = NEW.slot2_id OR
+		 icc.slot2_id = NEW.slot1_id OR
+		 icc.slot2_id = NEW.slot2_id )
+	LIMIT 1;
+
+	IF FOUND THEN
+		IF csid_rec.slot1_id = NEW.slot1_id THEN
+			RAISE EXCEPTION
+				'slot_id % is already attached to slot_id %',
+				NEW.slot1_id, csid_rec.slot2_id
+				USING ERRCODE = 'unique_violation';
+		ELSIF csid_rec.slot1_id = NEW.slot2_id THEN
+			RAISE EXCEPTION
+				'slot_id % is already attached to slot_id %',
+				NEW.slot1_id, csid_rec.slot1_id
+				USING ERRCODE = 'unique_violation';
+		ELSIF csid_rec.slot2_id = NEW.slot1_id THEN
+			RAISE EXCEPTION
+				'slot_id % is already attached to slot_id %',
+				NEW.slot2_id, csid_rec.slot2_id
+				USING ERRCODE = 'unique_violation';
+		ELSIF csid_rec.slot2_id = NEW.slot2_id THEN
+			RAISE EXCEPTION
+				'slot_id % is already attached to slot_id %',
+				NEW.slot2_id, csid_rec.slot1_id
+				USING ERRCODE = 'unique_violation';
+		END IF;
+	END IF;
+
+	PERFORM
+		*
+	FROM
+		(slot cs1 JOIN slot_type st1 USING (slot_type_id)) slot1,
+		(slot cs2 JOIN slot_type st2 USING (slot_type_id)) slot2,
+		slot_type_prmt_rem_slot_type pst
+	WHERE
+		slot1.slot_id = NEW.slot1_id AND
+		slot2.slot_id = NEW.slot2_id AND
+		-- Remove next line if we ever decide to allow cross-function
+		-- connections
+		slot1.slot_function = slot2.slot_function AND
+		((slot1.slot_type_id = pst.slot_type_id AND
+				slot2.slot_type_id = pst.remote_slot_type_id) OR
+			(slot2.slot_type_id = pst.slot_type_id AND
+				slot1.slot_type_id = pst.remote_slot_type_id));
+
+	IF NOT FOUND THEN
+		RAISE EXCEPTION 'Slot types are not allowed to be connected'
+			USING ERRCODE = 'check_violation';
+	END IF;
+
+	RETURN NEW;
+END;
+$function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'validate_layer2_network_collection_type_change');
+CREATE OR REPLACE FUNCTION jazzhands.validate_layer2_network_collection_type_change()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	_tally	integer;
+BEGIN
+	IF OLD.layer2_network_collection_type != NEW.layer2_network_collection_type THEN
+		SELECT	COUNT(*)
+		INTO	_tally
+		FROM	property p
+			join val_property vp USING (property_name,property_type)
+		WHERE	vp.layer2_network_collection_type = OLD.layer2_network_collection_type
+		AND	p.layer2_network_collection_id = NEW.layer2_network_collection_id;
+
+		IF _tally > 0 THEN
+			RAISE EXCEPTION 'layer2_network_collection % of type % is used by % restricted properties.',
+				NEW.layer2_network_collection_id, NEW.layer2_network_collection_type, _tally
+				USING ERRCODE = 'foreign_key_violation';
+		END IF;
+	END IF;
+	RETURN NEW;
+END;
+$function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'validate_layer3_network_collection_type_change');
+CREATE OR REPLACE FUNCTION jazzhands.validate_layer3_network_collection_type_change()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	_tally	integer;
+BEGIN
+	IF OLD.layer3_network_collection_type != NEW.layer3_network_collection_type THEN
+		SELECT	COUNT(*)
+		INTO	_tally
+		FROM	property p
+			join val_property vp USING (property_name,property_type)
+		WHERE	vp.layer3_network_collection_type = OLD.layer3_network_collection_type
+		AND	p.layer3_network_collection_id = NEW.layer3_network_collection_id;
+
+		IF _tally > 0 THEN
+			RAISE EXCEPTION 'layer3_network_collection % of type % is used by % restricted properties.',
+				NEW.layer3_network_collection_id, NEW.layer3_network_collection_type, _tally
+				USING ERRCODE = 'foreign_key_violation';
+		END IF;
+	END IF;
+	RETURN NEW;
+END;
+$function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'validate_netblock_collection_type_change');
+CREATE OR REPLACE FUNCTION jazzhands.validate_netblock_collection_type_change()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	_tally	integer;
+BEGIN
+	IF OLD.netblock_collection_type != NEW.netblock_collection_type THEN
+		SELECT	COUNT(*)
+		INTO	_tally
+		FROM	property p
+			join val_property vp USING (property_name,property_type)
+		WHERE	vp.netblock_collection_type = OLD.netblock_collection_type
+		AND	p.netblock_collection_id = NEW.netblock_collection_id;
+
+		IF _tally > 0 THEN
+			RAISE EXCEPTION 'netblock_collection % of type % is used by % restricted properties.',
+				NEW.netblock_collection_id, NEW.netblock_collection_type, _tally
+				USING ERRCODE = 'foreign_key_violation';
+		END IF;
+	END IF;
+	RETURN NEW;
+END;
+$function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'validate_netblock_parentage');
+CREATE OR REPLACE FUNCTION jazzhands.validate_netblock_parentage()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	nbrec			record;
+	realnew			record;
+	nbtype			record;
+	parent_nbid		netblock.netblock_id%type;
+	ipaddr			inet;
+	parent_ipaddr	inet;
+	single_count	integer;
+	nonsingle_count	integer;
+	pip	    		netblock.ip_address%type;
+BEGIN
+
+	RAISE DEBUG 'Validating % of netblock %', TG_OP, NEW.netblock_id;
+
+	SELECT * INTO nbtype FROM val_netblock_type WHERE
+		netblock_type = NEW.netblock_type;
+
+	/*
+	 * It's possible that due to delayed triggers that what is stored in
+	 * NEW is not current, so fetch the current values
+	 */
+
+	SELECT * INTO realnew FROM netblock WHERE netblock_id =
+		NEW.netblock_id;
+	IF NOT FOUND THEN
+		/*
+		 * If the netblock isn't there, it was subsequently deleted, so
+		 * our parentage doesn't need to be checked
+		 */
+		RETURN NULL;
+	END IF;
+
+
+	/*
+	 * If the parent changed above (or somewhere else between update and
+	 * now), just bail, because another trigger will have been fired that
+	 * we can do the full check with.
+	 */
+	IF NEW.parent_netblock_id != realnew.parent_netblock_id AND
+		realnew.parent_netblock_id IS NOT NULL
+	THEN
+		RAISE DEBUG '... skipping for now';
+		RETURN NULL;
+	END IF;
+
+	/*
+	 * Validate that parent and all children are of the same netblock_type and
+	 * in the same ip_universe.  We care about this even if the
+	 * netblock type is not a validated type.
+	 */
+
+	RAISE DEBUG 'Verifying child ip_universe and type match';
+	PERFORM netblock_id FROM netblock WHERE
+		parent_netblock_id = realnew.netblock_id AND
+		netblock_type != realnew.netblock_type AND
+		ip_universe_id != realnew.ip_universe_id;
+
+	IF FOUND THEN
+		RAISE EXCEPTION 'Netblock children must all be of the same type and universe as the parent'
+			USING ERRCODE = 'JH109';
+	END IF;
+
+	RAISE DEBUG '... OK';
+
+	/*
+	 * validate that this netblock is attached to its correct parent
+	 */
+	IF realnew.parent_netblock_id IS NULL THEN
+		IF nbtype.is_validated_hierarchy='N' THEN
+			RETURN NULL;
+		END IF;
+		RAISE DEBUG 'Checking hierarchical netblock_id % with NULL parent',
+			NEW.netblock_id;
+
+		IF realnew.is_single_address = 'Y' THEN
+			RAISE 'A single address (%) must be the child of a parent netblock, which must have can_subnet=N',
+				realnew.ip_address
+				USING ERRCODE = 'JH105';
+		END IF;
+
+		/*
+		 * Validate that a netblock has a parent, unless
+		 * it is the root of a hierarchy
+		 */
+		parent_nbid := netblock_utils.find_best_parent_id(
+			realnew.ip_address,
+			NULL,
+			realnew.netblock_type,
+			realnew.ip_universe_id,
+			realnew.is_single_address,
+			realnew.netblock_id
+		);
+
+		IF parent_nbid IS NOT NULL THEN
+			SELECT * INTO nbrec FROM netblock WHERE netblock_id =
+				parent_nbid;
+
+			RAISE EXCEPTION 'Netblock % (%) has NULL parent; should be % (%)',
+				realnew.netblock_id, realnew.ip_address,
+				parent_nbid, nbrec.ip_address USING ERRCODE = 'JH102';
+		END IF;
+
+		/*
+		 * Validate that none of the other top-level netblocks should
+		 * belong to this netblock
+		 */
+		PERFORM netblock_id FROM netblock WHERE
+			parent_netblock_id IS NULL AND
+			netblock_id != NEW.netblock_id AND
+			netblock_type = NEW.netblock_type AND
+			ip_universe_id = NEW.ip_universe_id AND
+			ip_address <<= NEW.ip_address;
+		IF FOUND THEN
+			RAISE EXCEPTION 'Other top-level netblocks should belong to this parent'
+				USING ERRCODE = 'JH108';
+		END IF;
+	ELSE
+	 	/*
+		 * Reject a block that is self-referential
+		 */
+	 	IF realnew.parent_netblock_id = realnew.netblock_id THEN
+			RAISE EXCEPTION 'Netblock may not have itself as a parent'
+				USING ERRCODE = 'JH101';
+		END IF;
+
+		SELECT * INTO nbrec FROM netblock WHERE netblock_id =
+			realnew.parent_netblock_id;
+
+		/*
+		 * This shouldn't happen, but may because of deferred constraints
+		 */
+		IF NOT FOUND THEN
+			RAISE EXCEPTION 'Parent netblock % does not exist',
+			realnew.parent_netblock_id
+			USING ERRCODE = 'foreign_key_violation';
+		END IF;
+
+		IF nbrec.is_single_address = 'Y' THEN
+			RAISE EXCEPTION 'A parent netblock (% for %) may not be a single address',
+			nbrec.netblock_id, realnew.ip_address
+			USING ERRCODE = 'JH10A';
+		END IF;
+
+		IF nbrec.ip_universe_id != realnew.ip_universe_id OR
+				nbrec.netblock_type != realnew.netblock_type THEN
+			RAISE EXCEPTION 'Netblock children must all be of the same type and universe as the parent'
+			USING ERRCODE = 'JH109';
+		END IF;
+
+		IF nbtype.is_validated_hierarchy='N' THEN
+			RETURN NULL;
+		ELSE
+			parent_nbid := netblock_utils.find_best_parent_id(
+				realnew.ip_address,
+				NULL,
+				realnew.netblock_type,
+				realnew.ip_universe_id,
+				realnew.is_single_address,
+				realnew.netblock_id
+				);
+
+			IF realnew.can_subnet = 'N' THEN
+				PERFORM netblock_id FROM netblock WHERE
+					parent_netblock_id = realnew.netblock_id AND
+					is_single_address = 'N';
+				IF FOUND THEN
+					RAISE EXCEPTION 'A non-subnettable netblock (%) may not have child network netblocks',
+					realnew.netblock_id
+					USING ERRCODE = 'JH10B';
+				END IF;
+			END IF;
+			IF realnew.is_single_address = 'Y' THEN
+				SELECT * INTO nbrec FROM netblock
+					WHERE netblock_id = realnew.parent_netblock_id;
+				IF (nbrec.can_subnet = 'Y') THEN
+					RAISE 'Parent netblock % for single-address % must have can_subnet=N',
+						nbrec.netblock_id,
+						realnew.ip_address
+						USING ERRCODE = 'JH10D';
+				END IF;
+				IF (masklen(realnew.ip_address) !=
+						masklen(nbrec.ip_address)) THEN
+					RAISE 'Parent netblock % does not have the same netmask as single-address child % (% vs %)',
+						parent_nbid, realnew.netblock_id,
+						masklen(nbrec.ip_address),
+						masklen(realnew.ip_address)
+						USING ERRCODE = 'JH105';
+				END IF;
+			END IF;
+			IF (parent_nbid IS NULL OR realnew.parent_netblock_id != parent_nbid) THEN
+				SELECT ip_address INTO parent_ipaddr FROM netblock
+				WHERE
+					netblock_id = parent_nbid;
+				SELECT ip_address INTO ipaddr FROM netblock WHERE
+					netblock_id = realnew.parent_netblock_id;
+
+				RAISE EXCEPTION
+					'Parent netblock % (%) for netblock % (%) is not the correct parent (should be % (%))',
+					realnew.parent_netblock_id, ipaddr,
+					realnew.netblock_id, realnew.ip_address,
+					parent_nbid, parent_ipaddr
+					USING ERRCODE = 'JH102';
+			END IF;
+			/*
+			 * Validate that all children are is_single_address='Y' or
+			 * all children are is_single_address='N'
+			 */
+			SELECT count(*) INTO single_count FROM netblock WHERE
+				is_single_address='Y' and parent_netblock_id =
+				realnew.parent_netblock_id;
+			SELECT count(*) INTO nonsingle_count FROM netblock WHERE
+				is_single_address='N' and parent_netblock_id =
+				realnew.parent_netblock_id;
+
+			IF (single_count > 0 and nonsingle_count > 0) THEN
+				SELECT * INTO nbrec FROM netblock WHERE netblock_id =
+					realnew.parent_netblock_id;
+				RAISE EXCEPTION 'Netblock % (%) may not have direct children for both single and multiple addresses simultaneously',
+					nbrec.netblock_id, nbrec.ip_address
+					USING ERRCODE = 'JH107';
+			END IF;
+			/*
+			 *  If we're updating and we changed our ip_address (including
+			 *  netmask bits), then check that our children still belong to
+			 *  us
+			 */
+			 IF (TG_OP = 'UPDATE' AND NEW.ip_address != OLD.ip_address) THEN
+				PERFORM netblock_id FROM netblock WHERE
+					parent_netblock_id = realnew.netblock_id AND
+					((is_single_address = 'Y' AND NEW.ip_address !=
+						ip_address::cidr) OR
+					(is_single_address = 'N' AND realnew.netblock_id !=
+						netblock_utils.find_best_parent_id(netblock_id)));
+				IF FOUND THEN
+					RAISE EXCEPTION 'Update for netblock % (%) causes parent to have children that do not belong to it',
+						realnew.netblock_id, realnew.ip_address
+						USING ERRCODE = 'JH10E';
+				END IF;
+			END IF;
+
+			/*
+			 * Validate that none of the children of the parent netblock are
+			 * children of this netblock (e.g. if inserting into the middle
+			 * of the hierarchy)
+			 */
+			IF (realnew.is_single_address = 'N') THEN
+				PERFORM netblock_id FROM netblock WHERE
+					parent_netblock_id = realnew.parent_netblock_id AND
+					netblock_id != realnew.netblock_id AND
+					ip_address <<= realnew.ip_address;
+				IF FOUND THEN
+					RAISE EXCEPTION 'Other netblocks have children that should belong to parent % (%)',
+						realnew.parent_netblock_id, realnew.ip_address
+						USING ERRCODE = 'JH108';
+				END IF;
+			END IF;
+		END IF;
+	END IF;
+
+	RETURN NULL;
+END;
+$function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'validate_netblock_to_range_changes');
+CREATE OR REPLACE FUNCTION jazzhands.validate_netblock_to_range_changes()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+BEGIN
+	PERFORM
+	FROM	network_range nr
+			JOIN netblock p on p.netblock_id = nr.parent_netblock_id
+			JOIN netblock start on start.netblock_id = nr.start_netblock_id
+			JOIN netblock stop on stop.netblock_id = nr.stop_netblock_id
+			JOIN val_network_range_type vnrt USING (network_range_type)
+	WHERE	( p.netblock_id = NEW.netblock_id
+				OR start.netblock_id = NEW.netblock_id
+				OR stop.netblock_id = NEW.netblock_id
+			) AND (
+					p.can_subnet = 'Y'
+				OR 	start.is_single_address = 'N'
+				OR 	stop.is_single_address = 'N'
+				OR NOT (
+					host(start.ip_address)::inet <<= p.ip_address
+					AND host(stop.ip_address)::inet <<= p.ip_address
+				)
+				OR ( vnrt.netblock_type IS NOT NULL
+				OR NOT
+					( start.netblock_type IS NOT DISTINCT FROM vnrt.netblock_type
+					AND	stop.netblock_type IS NOT DISTINCT FROM vnrt.netblock_type
+					)
+				)
+			)
+	;
+
+	IF FOUND THEN
+		RAISE EXCEPTION 'Netblock changes conflict with network range requirements '
+			USING ERRCODE = 'integrity_constraint_violation';
+	END IF;
+	RETURN NEW;
+END; $function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'validate_network_range_ips');
+CREATE OR REPLACE FUNCTION jazzhands.validate_network_range_ips()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	v_nrt	val_network_range_type%ROWTYPE;
+	v_nbt	val_netblock_type.netblock_type%TYPE;
+BEGIN
+	SELECT	*
+	INTO	v_nrt
+	FROM	val_network_range_type
+	WHERE	network_range_type = NEW.network_range_type;
+
+	--
+	-- check to make sure type mapping works
+	--
+	IF v_nrt.netblock_type IS NOT NULL THEN
+		SELECT	netblock_type
+		INTO	v_nbt
+		FROM	netblock
+		WHERE	netblock_id = NEW.start_netblock_id
+		AND		netblock_type != v_nrt.netblock_type;
+
+		IF FOUND THEN
+			RAISE EXCEPTION 'For range %, start netblock_type must be %, not %',
+				NEW.network_range_type, v_nrt.netblock_type, v_nbt
+				USING ERRCODE = 'integrity_constraint_violation';
+		END IF;
+
+		SELECT	netblock_type
+		INTO	v_nbt
+		FROM	netblock
+		WHERE	netblock_id = NEW.stop_netblock_id
+		AND		netblock_type != v_nrt.netblock_type;
+
+		IF FOUND THEN
+			RAISE EXCEPTION 'For range %, stop netblock_type must be %, not %',
+				NEW.network_range_type, v_brt.netblock_type, v_nbt
+				USING ERRCODE = 'integrity_constraint_violation';
+		END IF;
+	END IF;
+
+	--
+	-- Check to ensure both stop and start have is_single_address = 'Y'
+	--
+	PERFORM
+	FROM	netblock
+	WHERE	( netblock_id = NEW.start_netblock_id
+				OR netblock_id = NEW.stop_netblock_id
+			) AND is_single_address = 'N';
+
+	IF FOUND THEN
+		RAISE EXCEPTION 'Start and stop types must be single addresses'
+			USING ERRCODE = 'integrity_constraint_violation';
+	END IF;
+
+	PERFORM
+	FROM	netblock
+	WHERE	netblock_id = NEW.parent_netblock_id
+	AND can_subnet = 'Y';
+
+	IF FOUND THEN
+		RAISE EXCEPTION 'Can not set ranges on subnetable netblocks'
+			USING ERRCODE = 'integrity_constraint_violation';
+	END IF;
+
+	PERFORM
+	FROM	netblock parent
+			JOIN netblock start ON start.netblock_id = NEW.start_netblock_id
+			JOIN netblock stop ON stop.netblock_id = NEW.stop_netblock_id
+	WHERE
+			parent.netblock_id = NEW.parent_netblock_id
+			AND NOT ( host(start.ip_address)::inet <<= parent.ip_address
+				AND host(stop.ip_address)::inet <<= parent.ip_address
+			)
+	;
+
+	IF FOUND THEN
+		RAISE EXCEPTION 'Start and stop must be within parents'
+			USING ERRCODE = 'integrity_constraint_violation';
+	END IF;
+
+	RETURN NEW;
+END; $function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'validate_service_env_collection_type_change');
+CREATE OR REPLACE FUNCTION jazzhands.validate_service_env_collection_type_change()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	_tally	integer;
+BEGIN
+	IF OLD.service_env_collection_type != NEW.service_env_collection_type THEN
+		SELECT	COUNT(*)
+		INTO	_tally
+		FROM	property p
+			join val_property vp USING (property_name,property_type)
+		WHERE	vp.service_env_collection_type = OLD.service_env_collection_type
+		AND	p.service_env_collection_id = NEW.service_env_collection_id;
+
+		IF _tally > 0 THEN
+			RAISE EXCEPTION 'service_env_collection % of type % is used by % restricted properties.',
+				NEW.service_env_collection_id, NEW.service_env_collection_type, _tally
+				USING ERRCODE = 'foreign_key_violation';
+		END IF;
+	END IF;
+	RETURN NEW;
+END;
+$function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'verify_physical_connection');
+CREATE OR REPLACE FUNCTION jazzhands.verify_physical_connection()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+BEGIN
+	PERFORM 1 FROM
+		physical_connection l1
+		JOIN physical_connection l2 ON
+			l1.slot1_id = l2.slot2_id AND
+			l1.slot2_id = l2.slot1_id;
+	IF FOUND THEN
+		RAISE EXCEPTION 'Connection already exists in opposite direction';
+	END IF;
+	RETURN NEW;
+END;
+$function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'verify_physicalish_volume');
+CREATE OR REPLACE FUNCTION jazzhands.verify_physicalish_volume()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+BEGIN
+	IF NEW.logical_volume_id IS NOT NULL AND NEW.component_Id IS NOT NULL THEN
+		RAISE EXCEPTION 'One and only one of logical_volume_id or component_id must be set'
+			USING ERRCODE = 'unique_violation';
+	END IF;
+	IF NEW.logical_volume_id IS NULL AND NEW.component_Id IS NULL THEN
+		RAISE EXCEPTION 'One and only one of logical_volume_id or component_id must be set'
+			USING ERRCODE = 'not_null_violation';
+	END IF;
+	RETURN NEW;
+END;
+$function$
+;
+
 -- New function
 CREATE OR REPLACE FUNCTION jazzhands.company_insert_function_nudge()
  RETURNS trigger
@@ -290,6 +2787,7 @@ BEGIN
 END;
 $function$
 ;
+
 -- New function
 CREATE OR REPLACE FUNCTION jazzhands.l2_net_coll_member_enforce_on_type_change()
  RETURNS trigger
@@ -688,8 +3186,8 @@ BEGIN
     END IF;
     _companyid := company_id;
 
-    SELECT arc.account_realm_id
-      INTO _account_realm_id
+    SELECT arc.account_realm_id 
+      INTO _account_realm_id 
       FROM account_realm_company arc
      WHERE arc.company_id = _companyid;
     IF NOT FOUND THEN
@@ -697,9 +3195,9 @@ BEGIN
     END IF;
 
     IF login is NULL THEN
-        IF first_name IS NULL or last_name IS NULL THEN
+        IF first_name IS NULL or last_name IS NULL THEN 
             RAISE EXCEPTION 'Must specify login name or first name+last name';
-        ELSE
+        ELSE 
             login := person_manip.pick_login(
                 in_account_realm_id := _account_realm_id,
                 in_first_name := coalesce(preferred_first_name, first_name),
@@ -752,7 +3250,7 @@ BEGIN
     END IF;
 
     IF physical_address_id IS NOT NULL AND site_code IS NOT NULL THEN
-        INSERT INTO person_location
+        INSERT INTO person_location 
             (person_id, person_location_type, site_code, physical_address_id)
         VALUES
             (person_id, person_location_type, site_code, physical_address_id);
@@ -900,8 +3398,8 @@ BEGIN
 	IF _company_short_name IS NULL and _isfam = 'Y' THEN
 		_short := lower(regexp_replace(
 				regexp_replace(
-					regexp_replace(_company_name,
-						E'\\s+(ltd|sarl|limited|pt[ye]|GmbH|ag|ab|inc)',
+					regexp_replace(_company_name, 
+						E'\\s+(ltd|sarl|limited|pt[ye]|GmbH|ag|ab|inc)', 
 						'', 'gi'),
 					E'[,\\.\\$#@]', '', 'mg'),
 				E'\\s+', '_', 'gi'));
@@ -1012,7 +3510,7 @@ BEGIN
 
 	SELECT * INTO _d FROM device WHERE device_id = in_Device_id;
 	delete from dns_record where netblock_id in (
-		select netblock_id
+		select netblock_id 
 		from network_interface where device_id = in_Device_id
 	);
 
@@ -1031,7 +3529,7 @@ BEGIN
 --	PERFORM device_utils.purge_power_ports( in_Device_id);
 
 	delete from property where device_collection_id in (
-		SELECT	dc.device_collection_id
+		SELECT	dc.device_collection_id 
 		  FROM	device_collection dc
 				INNER JOIN device_collection_device dcd
 		 			USING (device_collection_id)
@@ -1042,9 +3540,9 @@ BEGIN
 	delete from device_collection_device where device_id = in_Device_id;
 	delete from snmp_commstr where device_id = in_Device_id;
 
-
+		
 	IF _d.rack_location_id IS NOT NULL  THEN
-		UPDATE device SET rack_location_id = NULL
+		UPDATE device SET rack_location_id = NULL 
 		WHERE device_id = in_Device_id;
 
 		-- This should not be permitted based on constraints, but in case
@@ -1055,7 +3553,7 @@ BEGIN
 		 WHERE	rack_location_id = _d.RACK_LOCATION_ID;
 
 		IF tally = 0 THEN
-			DELETE FROM rack_location
+			DELETE FROM rack_location 
 			WHERE rack_location_id = _d.RACK_LOCATION_ID;
 		END IF;
 	END IF;
@@ -1093,7 +3591,7 @@ BEGIN
 
 	--
 	-- If there is no notes or serial number its save to remove
-	--
+	-- 
 	IF tally = 0 AND _d.ASSET_ID is NULL THEN
 		_purgedev := true;
 	END IF;
@@ -1111,7 +3609,7 @@ BEGIN
 		END;
 	END IF;
 
-	UPDATE device SET
+	UPDATE device SET 
 		device_name =NULL,
 		service_environment_id = (
 			select service_environment_id from service_environment
@@ -1146,7 +3644,7 @@ AS $function$
 DECLARE
 	netblock_rec	RECORD;
 BEGIN
-	RETURN QUERY
+	RETURN QUERY 
 		SELECT * into netblock_rec FROM netblock_manip.allocate_netblock(
 		parent_netblock_list := ARRAY[parent_netblock_id],
 		netmask_bits := netmask_bits,
@@ -1197,7 +3695,7 @@ BEGIN
 	END IF;
 
 	IF ip_address IS NOT NULL THEN
-		SELECT
+		SELECT 
 			array_agg(netblock_id)
 		INTO
 			parent_netblock_list
@@ -1215,7 +3713,7 @@ BEGIN
 	-- Lock the parent row, which should keep parallel processes from
 	-- trying to obtain the same address
 
-	FOR parent_rec IN SELECT * FROM jazzhands.netblock WHERE netblock_id =
+	FOR parent_rec IN SELECT * FROM jazzhands.netblock WHERE netblock_id = 
 			ANY(allocate_netblock.parent_netblock_list) ORDER BY netblock_id
 			FOR UPDATE LOOP
 
@@ -1226,15 +3724,15 @@ BEGIN
 
 		IF inet_family IS NULL THEN
 			inet_family := family(parent_rec.ip_address);
-		ELSIF inet_family != family(parent_rec.ip_address)
+		ELSIF inet_family != family(parent_rec.ip_address) 
 				AND ip_address IS NULL THEN
 			RAISE EXCEPTION 'Allocation may not mix IPv4 and IPv6 addresses'
 			USING ERRCODE = 'JH10F';
 		END IF;
 
 		IF address_type = 'loopback' THEN
-			loopback_bits :=
-				CASE WHEN
+			loopback_bits := 
+				CASE WHEN 
 					family(parent_rec.ip_address) = 4 THEN 32 ELSE 128 END;
 
 			IF parent_rec.can_subnet = 'N' THEN
@@ -1387,7 +3885,7 @@ BEGIN
 			allocate_netblock.description,
 			allocate_netblock.netblock_status
 		) RETURNING * INTO netblock_rec;
-
+		
 		RAISE DEBUG 'Allocated netblock_id % for %',
 			netblock_rec.netblock_id,
 			netblock_rec.ip_address;
@@ -1422,18 +3920,18 @@ BEGIN
 	--
 	-- If the network range already exists, then just return it
 	--
-	SELECT
+	SELECT 
 		nr.* INTO netrange
 	FROM
 		jazzhands.network_range nr JOIN
-		jazzhands.netblock startnb ON (nr.start_netblock_id =
+		jazzhands.netblock startnb ON (nr.start_netblock_id = 
 			startnb.netblock_id) JOIN
 		jazzhands.netblock stopnb ON (nr.stop_netblock_id = stopnb.netblock_id)
 	WHERE
 		nr.network_range_type = nrtype AND
 		host(startnb.ip_address) = host(start_ip_address) AND
 		host(stopnb.ip_address) = host(stop_ip_address) AND
-		CASE WHEN pnbid IS NOT NULL THEN
+		CASE WHEN pnbid IS NOT NULL THEN 
 			(pnbid = nr.parent_netblock_id)
 		ELSE
 			true
@@ -1446,11 +3944,11 @@ BEGIN
 	--
 	-- If any other network ranges exist that overlap this, then error
 	--
-	PERFORM
+	PERFORM 
 		*
 	FROM
 		jazzhands.network_range nr JOIN
-		jazzhands.netblock startnb ON
+		jazzhands.netblock startnb ON 
 			(nr.start_netblock_id = startnb.netblock_id) JOIN
 		jazzhands.netblock stopnb ON (nr.stop_netblock_id = stopnb.netblock_id)
 	WHERE
@@ -1469,7 +3967,7 @@ BEGIN
 	END IF;
 
 	IF parent_netblock_id IS NOT NULL THEN
-		SELECT * INTO par_netblock FROM jazzhands.netblock WHERE
+		SELECT * INTO par_netblock FROM jazzhands.netblock WHERE 
 			netblock_id = pnbid;
 		IF NOT FOUND THEN
 			RAISE 'create_network_range: parent_netblock_id % does not exist',
@@ -1477,7 +3975,7 @@ BEGIN
 		END IF;
 	ELSE
 		SELECT * INTO par_netblock FROM jazzhands.netblock WHERE netblock_id = (
-			SELECT
+			SELECT 
 				*
 			FROM
 				netblock_utils.find_best_parent_id(
@@ -1492,7 +3990,7 @@ BEGIN
 		END IF;
 	END IF;
 
-	IF par_netblock.can_subnet != 'N' OR
+	IF par_netblock.can_subnet != 'N' OR 
 			par_netblock.is_single_address != 'N' THEN
 		RAISE 'create_network_range: parent netblock % must not be subnettable or a single address',
 			par_netblock.netblock_id USING ERRCODE = 'check_violation';
@@ -1521,7 +4019,7 @@ BEGIN
 	-- range, unless allow_assigned is set
 	--
 	IF NOT allow_assigned THEN
-		PERFORM
+		PERFORM 
 			*
 		FROM
 			jazzhands.netblock n
@@ -1688,7 +4186,7 @@ BEGIN
 	-- The device type doesn't exist, so attempt to insert it
 	--
 
-	IF NOT FOUND THEN
+	IF NOT FOUND THEN	
 		IF pci_device_name IS NULL OR component_function_list IS NULL THEN
 			RAISE EXCEPTION 'component_id not found and pci_device_name or component_function_list was not passed' USING ERRCODE = 'JH501';
 		END IF;
@@ -1705,14 +4203,14 @@ BEGIN
 			property_type = 'DeviceProvisioning' AND
 			property_name = 'PCIVendorID' AND
 			property_value = pci_vendor_id::text;
-
+		
 		IF NOT FOUND THEN
 			IF pci_vendor_name IS NULL THEN
 				RAISE EXCEPTION 'PCI vendor id mapping not found and pci_vendor_name was not passed' USING ERRCODE = 'JH501';
 			END IF;
 			SELECT company_id INTO comp_id FROM company
 			WHERE company_name = pci_vendor_name;
-
+		
 			IF NOT FOUND THEN
 				SELECT company_manip.add_company(
 					_company_name := pci_vendor_name,
@@ -1744,14 +4242,14 @@ BEGIN
 			property_type = 'DeviceProvisioning' AND
 			property_name = 'PCIVendorID' AND
 			property_value = pci_sub_vendor_id::text;
-
+		
 		IF NOT FOUND THEN
 			IF pci_sub_vendor_name IS NULL THEN
 				RAISE EXCEPTION 'PCI subsystem vendor id mapping not found and pci_sub_vendor_name was not passed' USING ERRCODE = 'JH501';
 			END IF;
 			SELECT company_id INTO sub_comp_id FROM company
 			WHERE company_name = pci_sub_vendor_name;
-
+		
 			IF NOT FOUND THEN
 				SELECT company_manip.add_company(
 					_company_name := pci_sub_vendor_name,
@@ -1778,7 +4276,7 @@ BEGIN
 		-- Fetch the slot type
 		--
 
-		SELECT
+		SELECT 
 			slot_type_id INTO stid
 		FROM
 			slot_type st
@@ -1796,11 +4294,11 @@ BEGIN
 		-- Figure out the best name/description to insert this component with
 		--
 		IF pci_sub_device_name IS NOT NULL AND pci_sub_device_name != 'Device' THEN
-			model_name = concat_ws(' ',
+			model_name = concat_ws(' ', 
 				sub_vendor_name, pci_sub_device_name,
 				'(' || vendor_name, pci_device_name || ')');
 		ELSIF pci_sub_device_name = 'Device' THEN
-			model_name = concat_ws(' ',
+			model_name = concat_ws(' ', 
 				vendor_name, '(' || sub_vendor_name || ')', pci_device_name);
 		ELSE
 			model_name = concat_ws(' ', vendor_name, pci_device_name);
@@ -1812,7 +4310,7 @@ BEGIN
 			asset_permitted,
 			description
 		) VALUES (
-			CASE WHEN
+			CASE WHEN 
 				sub_comp_id IS NULL OR
 				pci_sub_device_name IS NULL OR
 				pci_sub_device_name = 'Device'
@@ -1841,17 +4339,17 @@ BEGIN
 			component_property_type,
 			component_type_id,
 			property_value
-		) VALUES
+		) VALUES 
 			('PCIVendorID', 'PCI', ctid, pci_vendor_id),
 			('PCIDeviceID', 'PCI', ctid, pci_device_id);
-
+		
 		IF (pci_subsystem_id IS NOT NULL) THEN
 			INSERT INTO component_property (
 				component_property_name,
 				component_property_type,
 				component_type_id,
 				property_value
-			) VALUES
+			) VALUES 
 				('PCISubsystemVendorID', 'PCI', ctid, pci_sub_vendor_id),
 				('PCISubsystemID', 'PCI', ctid, pci_subsystem_id);
 		END IF;
@@ -1875,7 +4373,7 @@ BEGIN
 	-- serial number already exists
 	--
 	IF serial_number IS NOT NULL THEN
-		SELECT
+		SELECT 
 			component.* INTO c
 		FROM
 			component JOIN
@@ -1928,7 +4426,7 @@ BEGIN
 	cid := NULL;
 
 	IF sn IS NOT NULL THEN
-		SELECT
+		SELECT 
 			comp.* INTO c
 		FROM
 			component comp JOIN
@@ -5846,7 +8344,43 @@ CREATE TABLE certificate_signing_request
 	data_upd_user	varchar(255)  NULL,
 	data_upd_date	timestamp with time zone  NULL
 );
-SELECT schema_support.build_audit_table('audit', 'jazzhands', 'certificate_signing_request', true);
+SELECT schema_support.build_audit_table('audit', 'jazzhands', 'certificate_signing_request', 'false');
+
+
+-- BEGIN Manually written insert function
+
+INSERT INTO certificate_signing_request
+SELECT x509_cert_id, friendly_name, subject,
+        certificate_sign_req,
+        CASE WHEN private_key is NOT NULL THEN x509_cert_id ELSE NULL END,
+        data_ins_user, data_ins_date,
+        data_upd_user, data_upd_date
+FROM x509_certificate
+WHERE certificate_sign_req IS NOT NULL
+ORDER BY x509_cert_id;
+
+INSERT INTO audit.certificate_signing_request
+SELECT x509_cert_id, friendly_name, subject,
+        certificate_sign_req,
+        CASE WHEN private_key is NOT NULL THEN x509_cert_id ELSE NULL END,
+        data_ins_user, data_ins_date,
+        data_upd_user, data_upd_date,
+        "aud#action",
+        "aud#timestamp",
+        NULL,
+        NULL,
+        "aud#user",
+        "aud#seq"
+FROM audit.x509_certificate
+WHERE x509_cert_id IN (select x509_cert_id FROM audit.x509_certificate
+        WHERE certificate_sign_req IS NOT NULL)
+ORDER BY "aud#seq";
+
+/**************************************************************************/
+
+
+-- END Manually written insert function
+SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'certificate_signing_request');
 ALTER TABLE certificate_signing_request
 	ALTER certificate_signing_request_id
 	SET DEFAULT nextval('certificate_signing_request_certificate_signing_request_id_seq'::regclass);
@@ -5893,6 +8427,379 @@ ALTER SEQUENCE certificate_signing_request_certificate_signing_request_id_seq
 -- DONE DEALING WITH TABLE certificate_signing_request
 --------------------------------------------------------------------
 --------------------------------------------------------------------
+-- DEALING WITH TABLE device_type
+-- Save grants for later reapplication
+SELECT schema_support.save_grants_for_replay('jazzhands', 'device_type', 'device_type');
+
+-- FOREIGN KEYS FROM
+ALTER TABLE chassis_location DROP CONSTRAINT IF EXISTS fk_chass_loc_mod_dev_typ_id;
+ALTER TABLE device DROP CONSTRAINT IF EXISTS fk_dev_devtp_id;
+ALTER TABLE device_type_module DROP CONSTRAINT IF EXISTS fk_devt_mod_dev_type_id;
+ALTER TABLE device_type_module_device_type DROP CONSTRAINT IF EXISTS fk_dt_mod_dev_type_mod_dtid;
+
+-- FOREIGN KEYS TO
+ALTER TABLE jazzhands.device_type DROP CONSTRAINT IF EXISTS fk_dev_typ_tmplt_dev_typ_id;
+ALTER TABLE jazzhands.device_type DROP CONSTRAINT IF EXISTS fk_device_t_fk_device_val_proc;
+ALTER TABLE jazzhands.device_type DROP CONSTRAINT IF EXISTS fk_devtyp_company;
+ALTER TABLE jazzhands.device_type DROP CONSTRAINT IF EXISTS fk_fevtyp_component_id;
+
+-- EXTRA-SCHEMA constraints
+SELECT schema_support.save_constraint_for_replay('jazzhands', 'device_type');
+
+-- PRIMARY and ALTERNATE KEYS
+ALTER TABLE jazzhands.device_type DROP CONSTRAINT IF EXISTS pk_device_type;
+-- INDEXES
+DROP INDEX IF EXISTS "jazzhands"."xif4device_type";
+DROP INDEX IF EXISTS "jazzhands"."xif_dev_typ_tmplt_dev_typ_id";
+DROP INDEX IF EXISTS "jazzhands"."xif_fevtyp_component_id";
+-- CHECK CONSTRAINTS, etc
+ALTER TABLE jazzhands.device_type DROP CONSTRAINT IF EXISTS ckc_devtyp_ischs;
+ALTER TABLE jazzhands.device_type DROP CONSTRAINT IF EXISTS ckc_has_802_11_interf_device_t;
+ALTER TABLE jazzhands.device_type DROP CONSTRAINT IF EXISTS ckc_has_802_3_interfa_device_t;
+ALTER TABLE jazzhands.device_type DROP CONSTRAINT IF EXISTS ckc_snmp_capable_device_t;
+-- TRIGGERS, etc
+DROP TRIGGER IF EXISTS trig_userlog_device_type ON jazzhands.device_type;
+DROP TRIGGER IF EXISTS trigger_audit_device_type ON jazzhands.device_type;
+DROP TRIGGER IF EXISTS trigger_device_type_chassis_check ON jazzhands.device_type;
+DROP TRIGGER IF EXISTS trigger_device_type_model_to_name ON jazzhands.device_type;
+SELECT schema_support.save_dependent_objects_for_replay('jazzhands', 'device_type');
+---- BEGIN audit.device_type TEARDOWN
+-- Save grants for later reapplication
+SELECT schema_support.save_grants_for_replay('audit', 'device_type', 'device_type');
+
+-- FOREIGN KEYS FROM
+
+-- FOREIGN KEYS TO
+
+-- EXTRA-SCHEMA constraints
+SELECT schema_support.save_constraint_for_replay('audit', 'device_type');
+
+-- PRIMARY and ALTERNATE KEYS
+-- INDEXES
+DROP INDEX IF EXISTS "audit"."device_type_aud#timestamp_idx";
+-- CHECK CONSTRAINTS, etc
+-- TRIGGERS, etc
+SELECT schema_support.save_dependent_objects_for_replay('audit', 'device_type');
+---- DONE audit.device_type TEARDOWN
+
+
+ALTER TABLE device_type RENAME TO device_type_v71;
+ALTER TABLE audit.device_type RENAME TO device_type_v71;
+
+CREATE TABLE device_type
+(
+	device_type_id	integer NOT NULL,
+	component_type_id	integer  NULL,
+	device_type_name	varchar(50) NOT NULL,
+	template_device_id	integer  NULL,
+	idealized_device_id	integer  NULL,
+	description	varchar(4000)  NULL,
+	company_id	integer  NULL,
+	model	varchar(255) NOT NULL,
+	device_type_depth_in_cm	character(18)  NULL,
+	processor_architecture	varchar(50)  NULL,
+	config_fetch_type	varchar(50)  NULL,
+	rack_units	integer  NULL,
+	has_802_3_interface	character(1) NOT NULL,
+	has_802_11_interface	character(1) NOT NULL,
+	snmp_capable	character(1) NOT NULL,
+	is_chassis	character(1) NOT NULL,
+	data_ins_user	varchar(255)  NULL,
+	data_ins_date	timestamp with time zone  NULL,
+	data_upd_user	varchar(255)  NULL,
+	data_upd_date	timestamp with time zone  NULL
+);
+SELECT schema_support.build_audit_table('audit', 'jazzhands', 'device_type', false);
+ALTER TABLE device_type
+	ALTER device_type_id
+	SET DEFAULT nextval('device_type_device_type_id_seq'::regclass);
+ALTER TABLE device_type
+	ALTER has_802_3_interface
+	SET DEFAULT 'N'::bpchar;
+ALTER TABLE device_type
+	ALTER has_802_11_interface
+	SET DEFAULT 'N'::bpchar;
+ALTER TABLE device_type
+	ALTER snmp_capable
+	SET DEFAULT 'N'::bpchar;
+ALTER TABLE device_type
+	ALTER is_chassis
+	SET DEFAULT 'N'::bpchar;
+INSERT INTO device_type (
+	device_type_id,
+	component_type_id,
+	device_type_name,
+	template_device_id,
+	idealized_device_id,		-- new column (idealized_device_id)
+	description,
+	company_id,
+	model,
+	device_type_depth_in_cm,
+	processor_architecture,
+	config_fetch_type,
+	rack_units,
+	has_802_3_interface,
+	has_802_11_interface,
+	snmp_capable,
+	is_chassis,
+	data_ins_user,
+	data_ins_date,
+	data_upd_user,
+	data_upd_date
+) SELECT
+	device_type_id,
+	component_type_id,
+	device_type_name,
+	template_device_id,
+	NULL,		-- new column (idealized_device_id)
+	description,
+	company_id,
+	model,
+	device_type_depth_in_cm,
+	processor_architecture,
+	config_fetch_type,
+	rack_units,
+	has_802_3_interface,
+	has_802_11_interface,
+	snmp_capable,
+	is_chassis,
+	data_ins_user,
+	data_ins_date,
+	data_upd_user,
+	data_upd_date
+FROM device_type_v71;
+
+INSERT INTO audit.device_type (
+	device_type_id,
+	component_type_id,
+	device_type_name,
+	template_device_id,
+	idealized_device_id,		-- new column (idealized_device_id)
+	description,
+	company_id,
+	model,
+	device_type_depth_in_cm,
+	processor_architecture,
+	config_fetch_type,
+	rack_units,
+	has_802_3_interface,
+	has_802_11_interface,
+	snmp_capable,
+	is_chassis,
+	data_ins_user,
+	data_ins_date,
+	data_upd_user,
+	data_upd_date,
+	"aud#action",
+	"aud#timestamp",
+	"aud#realtime",		-- new column (aud#realtime)
+	"aud#txid",		-- new column (aud#txid)
+	"aud#user",
+	"aud#seq"
+) SELECT
+	device_type_id,
+	component_type_id,
+	device_type_name,
+	template_device_id,
+	NULL,		-- new column (idealized_device_id)
+	description,
+	company_id,
+	model,
+	device_type_depth_in_cm,
+	processor_architecture,
+	config_fetch_type,
+	rack_units,
+	has_802_3_interface,
+	has_802_11_interface,
+	snmp_capable,
+	is_chassis,
+	data_ins_user,
+	data_ins_date,
+	data_upd_user,
+	data_upd_date,
+	"aud#action",
+	"aud#timestamp",
+	NULL,		-- new column (aud#realtime)
+	NULL,		-- new column (aud#txid)
+	"aud#user",
+	"aud#seq"
+FROM audit.device_type_v71;
+
+ALTER TABLE device_type
+	ALTER device_type_id
+	SET DEFAULT nextval('device_type_device_type_id_seq'::regclass);
+ALTER TABLE device_type
+	ALTER has_802_3_interface
+	SET DEFAULT 'N'::bpchar;
+ALTER TABLE device_type
+	ALTER has_802_11_interface
+	SET DEFAULT 'N'::bpchar;
+ALTER TABLE device_type
+	ALTER snmp_capable
+	SET DEFAULT 'N'::bpchar;
+ALTER TABLE device_type
+	ALTER is_chassis
+	SET DEFAULT 'N'::bpchar;
+
+-- PRIMARY AND ALTERNATE KEYS
+ALTER TABLE device_type ADD CONSTRAINT pk_device_type PRIMARY KEY (device_type_id);
+
+-- Table/Column Comments
+COMMENT ON TABLE device_type IS 'Conceptual device type.  This represents how it is typically referred to rather than a specific model number.  There may be many models (components) that are represented by one device type.';
+COMMENT ON COLUMN device_type.component_type_id IS 'reference to the type of hardware that underlies this type';
+COMMENT ON COLUMN device_type.device_type_name IS 'Human readable name of the device type.  The company and a model can be gleaned from component.';
+COMMENT ON COLUMN device_type.template_device_id IS 'Represents a non-real but template device that is used to describe how to setup a device when its inserted into the database with this device type.  Its used to get port names and other information correct when it needs to be inserted before probing.  Probing may deviate from the template.';
+COMMENT ON COLUMN device_type.idealized_device_id IS 'Indicates what a device of this type looks like; primarily used for either reverse engineering a probe to a device type or valdating that a device type has all the pieces it is expcted to.  This device is typically not real.';
+-- INDEXES
+CREATE INDEX xif4device_type ON device_type USING btree (company_id);
+CREATE INDEX xif_dev_typ_idealized_dev_id ON device_type USING btree (idealized_device_id);
+CREATE INDEX xif_dev_typ_tmplt_dev_typ_id ON device_type USING btree (template_device_id);
+CREATE INDEX xif_fevtyp_component_id ON device_type USING btree (component_type_id);
+
+-- CHECK CONSTRAINTS
+ALTER TABLE device_type ADD CONSTRAINT ckc_devtyp_ischs
+	CHECK (is_chassis = ANY (ARRAY['Y'::bpchar, 'N'::bpchar]));
+ALTER TABLE device_type ADD CONSTRAINT ckc_has_802_11_interf_device_t
+	CHECK (has_802_11_interface = ANY (ARRAY['Y'::bpchar, 'N'::bpchar]));
+ALTER TABLE device_type ADD CONSTRAINT ckc_has_802_3_interfa_device_t
+	CHECK (has_802_3_interface = ANY (ARRAY['Y'::bpchar, 'N'::bpchar]));
+ALTER TABLE device_type ADD CONSTRAINT ckc_snmp_capable_device_t
+	CHECK (snmp_capable = ANY (ARRAY['Y'::bpchar, 'N'::bpchar]));
+
+-- FOREIGN KEYS FROM
+-- consider FK between device_type and chassis_location
+ALTER TABLE chassis_location
+	ADD CONSTRAINT fk_chass_loc_mod_dev_typ_id
+	FOREIGN KEY (module_device_type_id) REFERENCES device_type(device_type_id);
+-- consider FK between device_type and device
+ALTER TABLE device
+	ADD CONSTRAINT fk_dev_devtp_id
+	FOREIGN KEY (device_type_id) REFERENCES device_type(device_type_id);
+-- consider FK between device_type and device_type_module
+ALTER TABLE device_type_module
+	ADD CONSTRAINT fk_devt_mod_dev_type_id
+	FOREIGN KEY (device_type_id) REFERENCES device_type(device_type_id);
+-- consider FK between device_type and device_type_module_device_type
+ALTER TABLE device_type_module_device_type
+	ADD CONSTRAINT fk_dt_mod_dev_type_mod_dtid
+	FOREIGN KEY (module_device_type_id) REFERENCES device_type(device_type_id);
+
+-- FOREIGN KEYS TO
+-- consider FK device_type and device
+ALTER TABLE device_type
+	ADD CONSTRAINT fk_dev_typ_idealized_dev_id
+	FOREIGN KEY (idealized_device_id) REFERENCES device(device_id);
+-- consider FK device_type and device
+ALTER TABLE device_type
+	ADD CONSTRAINT fk_dev_typ_tmplt_dev_typ_id
+	FOREIGN KEY (template_device_id) REFERENCES device(device_id);
+-- consider FK device_type and val_processor_architecture
+ALTER TABLE device_type
+	ADD CONSTRAINT fk_device_t_fk_device_val_proc
+	FOREIGN KEY (processor_architecture) REFERENCES val_processor_architecture(processor_architecture);
+-- consider FK device_type and company
+ALTER TABLE device_type
+	ADD CONSTRAINT fk_devtyp_company
+	FOREIGN KEY (company_id) REFERENCES company(company_id) DEFERRABLE;
+-- consider FK device_type and component_type
+ALTER TABLE device_type
+	ADD CONSTRAINT fk_fevtyp_component_id
+	FOREIGN KEY (component_type_id) REFERENCES component_type(component_type_id);
+
+-- TRIGGERS
+-- consider NEW jazzhands.device_type_chassis_check
+CREATE OR REPLACE FUNCTION jazzhands.device_type_chassis_check()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	_tally	integer;
+BEGIN
+	IF TG_OP != 'UPDATE' THEN
+		RAISE EXCEPTION 'This should not happen %!', TG_OP;
+	END IF;
+	IF OLD.is_chassis = 'Y' THEN
+		IF NEW.is_chassis = 'N' THEN
+			SELECT 	count(*)
+			  INTO	_tally
+			  FROM	device_type_module
+			 WHERE	device_type_id = NEW.device_type_id;
+
+			IF _tally >  0 THEN
+				RAISE EXCEPTION 'Is_chassis must be Y when a device_type still has device_type_module s'
+					USING ERRCODE = 'foreign_key_violation';
+			END IF;
+		END IF;
+	END IF;
+	RETURN NEW;
+END;
+$function$
+;
+CREATE TRIGGER trigger_device_type_chassis_check BEFORE UPDATE OF is_chassis ON device_type FOR EACH ROW EXECUTE PROCEDURE device_type_chassis_check();
+
+-- XXX - may need to include trigger function
+-- consider NEW jazzhands.device_type_model_to_name
+CREATE OR REPLACE FUNCTION jazzhands.device_type_model_to_name()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	_tally	INTEGER;
+BEGIN
+	IF TG_OP = 'UPDATE' AND  (NEW.model IS DISTINCT FROM OLD.model AND
+			NEW.device_type_name IS DISTINCT FROM OLD.device_type_name) THEN
+		RAISE EXCEPTION 'Only device_type_name should be updated.'
+			USING ERRCODE = 'integrity_constraint_violation';
+	ELSIF TG_OP = 'INSERT' THEN
+		IF NEW.model IS NOT NULL AND NEW.device_type_name IS NOT NULL THEN
+			RAISE EXCEPTION 'Only model should be set.'
+				USING ERRCODE = 'integrity_constraint_violation';
+		END IF;
+
+	END IF;
+
+	IF TG_OP = 'UPDATE' THEN
+		IF OLD.model IS DISTINCT FROM NEW.model THEN
+			NEW.device_type_name = NEW.model;
+		ELSIF OLD.device_type_name IS DISTINCT FROM NEW.device_type_name THEN
+			NEW.model = NEW.device_type_name;
+		END IF;
+	ELSIF TG_OP = 'INSERT' THEN
+		IF NEW.model IS NOT NULL THEN
+			NEW.device_type_name = NEW.model;
+		ELSIF NEW.device_type_name IS NOT NULL THEN
+			NEW.model = NEW.device_type_name;
+		END IF;
+	ELSE
+	END IF;
+
+	-- company_id is going away
+	IF NEW.company_id IS NULL THEN
+		NEW.company_id := 0;
+	END IF;
+
+	RETURN NEW;
+END;
+$function$
+;
+CREATE TRIGGER trigger_device_type_model_to_name BEFORE INSERT OR UPDATE OF device_type_name, model ON device_type FOR EACH ROW EXECUTE PROCEDURE device_type_model_to_name();
+
+-- XXX - may need to include trigger function
+-- this used to be at the end...
+SELECT schema_support.replay_object_recreates();
+SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'device_type');
+SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'device_type');
+ALTER SEQUENCE device_type_device_type_id_seq
+	 OWNED BY device_type.device_type_id;
+DROP TABLE IF EXISTS device_type_v71;
+DROP TABLE IF EXISTS audit.device_type_v71;
+-- DONE DEALING WITH TABLE device_type
+--------------------------------------------------------------------
+--------------------------------------------------------------------
 -- DEALING WITH NEW TABLE private_key
 CREATE TABLE private_key
 (
@@ -5908,7 +8815,42 @@ CREATE TABLE private_key
 	data_upd_user	varchar(255)  NULL,
 	data_upd_date	timestamp with time zone  NULL
 );
-SELECT schema_support.build_audit_table('audit', 'jazzhands', 'private_key', true);
+SELECT schema_support.build_audit_table('audit', 'jazzhands', 'private_key', 'false');
+
+
+-- BEGIN Manually written insert function
+
+INSERT INTO private_key
+SELECT x509_cert_id AS private_key_id,
+        'rsa' AS private_key_encryption_type, is_active,
+        subject_key_identifier, private_key, passphrase, encryption_key_id,
+        data_ins_user, data_ins_date, data_upd_user, data_upd_date
+FROM x509_certificate
+WHERE private_key is NOT NULL
+ORDER BY x509_cert_id;
+
+INSERT INTO audit.private_key
+SELECT x509_cert_id AS private_key_id,
+        'rsa' AS private_key_encryption_type, is_active,
+        subject_key_identifier, private_key, passphrase, encryption_key_id,
+        data_ins_user, data_ins_date, data_upd_user, data_upd_date,
+        "aud#action",
+        "aud#timestamp",
+        NULL,
+        NULL,
+        "aud#user",
+        "aud#seq"
+FROM audit.x509_certificate
+WHERE x509_cert_id IN (select x509_cert_id FROM audit.x509_certificate
+        WHERE private_key IS NOT NULL)
+ORDER BY "aud#seq";
+
+
+/**************************************************************************/
+
+
+-- END Manually written insert function
+SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'private_key');
 ALTER TABLE private_key
 	ALTER private_key_id
 	SET DEFAULT nextval('private_key_private_key_id_seq'::regclass);
@@ -7442,114 +10384,89 @@ ALTER TABLE x509_signed_certificate
 ALTER TABLE x509_signed_certificate
 	ALTER is_certificate_authority
 	SET DEFAULT 'N'::bpchar;
-INSERT INTO x509_signed_certificate (
-	x509_signed_certificate_id,		-- new column (x509_signed_certificate_id)
-	x509_certificate_type,		-- new column (x509_certificate_type)
-	subject,
-	friendly_name,
-	subject_key_identifier,
-	is_active,
-	is_certificate_authority,
-	signing_cert_id,
-	x509_ca_cert_serial_number,
-	public_key,
-	private_key_id,		-- new column (private_key_id)
-	certificate_signing_request_id,		-- new column (certificate_signing_request_id)
-	valid_from,
-	valid_to,
-	x509_revocation_date,
-	x509_revocation_reason,
-	ocsp_uri,
-	crl_uri,
-	data_ins_user,
-	data_ins_date,
-	data_upd_user,
-	data_upd_date
-) SELECT
-	nextval('x509_signed_certificate_x509_signed_certificate_id_seq'::regclass),		-- new column (x509_signed_certificate_id)
-	'default'::character varying,		-- new column (x509_certificate_type)
-	subject,
-	friendly_name,
-	subject_key_identifier,
-	is_active,
-	is_certificate_authority,
-	signing_cert_id,
-	x509_ca_cert_serial_number,
-	public_key,
-	NULL,		-- new column (private_key_id)
-	NULL,		-- new column (certificate_signing_request_id)
-	valid_from,
-	valid_to,
-	x509_revocation_date,
-	x509_revocation_reason,
-	ocsp_uri,
-	crl_uri,
-	data_ins_user,
-	data_ins_date,
-	data_upd_user,
-	data_upd_date
-FROM x509_certificate_v71;
 
-INSERT INTO audit.x509_signed_certificate (
-	x509_signed_certificate_id,		-- new column (x509_signed_certificate_id)
-	x509_certificate_type,		-- new column (x509_certificate_type)
-	subject,
-	friendly_name,
-	subject_key_identifier,
-	is_active,
-	is_certificate_authority,
-	signing_cert_id,
-	x509_ca_cert_serial_number,
-	public_key,
-	private_key_id,		-- new column (private_key_id)
-	certificate_signing_request_id,		-- new column (certificate_signing_request_id)
-	valid_from,
-	valid_to,
-	x509_revocation_date,
-	x509_revocation_reason,
-	ocsp_uri,
-	crl_uri,
-	data_ins_user,
-	data_ins_date,
-	data_upd_user,
-	data_upd_date,
-	"aud#action",
-	"aud#timestamp",
-	"aud#realtime",		-- new column (aud#realtime)
-	"aud#txid",		-- new column (aud#txid)
-	"aud#user",
-	"aud#seq"
-) SELECT
-	NULL,		-- new column (x509_signed_certificate_id)
-	NULL,		-- new column (x509_certificate_type)
-	subject,
-	friendly_name,
-	subject_key_identifier,
-	is_active,
-	is_certificate_authority,
-	signing_cert_id,
-	x509_ca_cert_serial_number,
-	public_key,
-	NULL,		-- new column (private_key_id)
-	NULL,		-- new column (certificate_signing_request_id)
-	valid_from,
-	valid_to,
-	x509_revocation_date,
-	x509_revocation_reason,
-	ocsp_uri,
-	crl_uri,
-	data_ins_user,
-	data_ins_date,
-	data_upd_user,
-	data_upd_date,
-	"aud#action",
-	"aud#timestamp",
-	NULL,		-- new column (aud#realtime)
-	NULL,		-- new column (aud#txid)
-	"aud#user",
-	"aud#seq"
-FROM audit.x509_certificate_v71;
 
+-- BEGIN Manually written insert function
+/**************************************************************************/
+
+INSERT INTO x509_signed_certificate
+SELECT
+        x509_cert_id,
+        'default',
+        subject,
+        friendly_name,
+        subject_key_identifier,
+        is_active,
+        is_certificate_authority,
+        signing_cert_id,
+        x509_ca_cert_serial_number,
+        public_key,
+        CASE WHEN private_key is NOT NULL THEN x509_cert_id ELSE NULL END,
+        CASE WHEN certificate_sign_req is NOT NULL THEN x509_cert_id ELSE NULL END,
+        valid_from,
+        valid_to,
+        x509_revocation_date,
+        x509_revocation_reason,
+        ocsp_uri,
+        crl_uri,
+        data_ins_user,
+        data_ins_date,
+        data_upd_user,
+        data_upd_date
+FROM x509_certificate_v71
+WHERE public_key IS NOT NULL
+;
+
+INSERT INTO audit.x509_signed_certificate
+SELECT x509_cert_id,
+        'default',
+        subject,
+        friendly_name,
+        subject_key_identifier,
+        is_active,
+        is_certificate_authority,
+        signing_cert_id,
+        x509_ca_cert_serial_number,
+        public_key,
+        CASE WHEN private_key is NOT NULL THEN x509_cert_id ELSE NULL END,
+        CASE WHEN certificate_sign_req is NOT NULL THEN x509_cert_id ELSE NULL END,
+        valid_from,
+        valid_to,
+        x509_revocation_date,
+        x509_revocation_reason,
+        ocsp_uri,
+        crl_uri,
+        data_ins_user,
+        data_ins_date,
+        data_upd_user,
+        data_upd_date,
+        "aud#action",
+        "aud#timestamp",
+        NULL,
+        NULL,
+        "aud#user",
+        "aud#seq"
+FROM audit.x509_certificate_v71
+WHERE x509_cert_id IN (select x509_cert_id FROM audit.x509_certificate_v71
+        WHERE public_key IS NOT NULL)
+ORDER BY "aud#seq";
+;
+
+/*
+SELECT schema_support.rebuild_audit_trigger
+                        ( 'audit', 'jazzhands', 'certificate_signing_request' );
+SELECT schema_support.rebuild_audit_trigger
+                        ( 'audit', 'jazzhands', 'private_key' );
+SELECT schema_support.rebuild_audit_trigger
+                        ( 'audit', 'jazzhands', 'x509_signed_certificate' );
+*/
+
+/**************************************************************************/
+
+
+
+
+-- END Manually written insert function
 ALTER TABLE x509_signed_certificate
 	ALTER x509_signed_certificate_id
 	SET DEFAULT nextval('x509_signed_certificate_x509_signed_certificate_id_seq'::regclass);
@@ -7790,7 +10707,6 @@ END;
 $function$
 ;
 
-
 -- New function
 CREATE OR REPLACE FUNCTION jazzhands.ins_x509_certificate()
  RETURNS trigger
@@ -7882,7 +10798,6 @@ BEGIN
 END;
 $function$
 ;
-
 
 -- New function
 CREATE OR REPLACE FUNCTION jazzhands.upd_x509_certificate()
@@ -8116,365 +11031,6 @@ BEGIN
 END;
 $function$
 ;
-
--- New function
-CREATE OR REPLACE FUNCTION jazzhands.del_x509_certificate()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO jazzhands
-AS $function$
-DECLARE
-	crt	x509_signed_certificate%ROWTYPE;
-BEGIN
-	SELECT * INTO crt FROM x509_signed_certificate
-		WHERE x509_signed_certificate_id = OLD.x509_cert_id;
-
-	DELETE FROM x509_signed_certificate
-		WHERE x509_signed_certificate_id = OLD.x509_cert_id;
-
-	IF crt.private_key_id IS NOT NULL THEN
-		DELETE FROM private_key
-		WHERE private_key_id = crt.private_key_id;
-	END IF;
-
-	IF crt.private_key_id IS NOT NULL THEN
-		DELETE FROM certificate_signing_request
-		WHERE certificate_signing_request_id =
-			crt.certificate_signing_request_id;
-	END IF;
-	RETURN OLD;
-END;
-$function$
-;
-
-
--- New function
-CREATE OR REPLACE FUNCTION jazzhands.ins_x509_certificate()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO jazzhands
-AS $function$
-DECLARE
-	key	private_key.private_key_id%TYPE;
-	csr	certificate_signing_request.certificate_signing_request_id%TYPE;
-	crt	x509_signed_certificate.x509_signed_certificate_id%TYPE;
-BEGIN
-	IF NEW.private_key IS NOT NULL THEN
-		INSERT INTO private_key (
-			private_key_encryption_type,
-			is_active,
-			subject_key_identifier,
-			private_key,
-			passphrase,
-			encryption_key_id
-		) VALUES (
-			'rsa',
-			NEW.is_active,
-			NEW.subject_key_identifier,
-			NEW.private_key,
-			NEW.passphrase,
-			NEW.encryption_key_id
-		) RETURNING private_key_id INTO key;
-		NEW.x509_cert_id := key;
-	END IF;
-
-	IF NEW.certificate_sign_req IS NOT NULL THEN
-		INSERT INTO certificate_sign_req (
-			friendly_name,
-			subject,
-			certificate_signing_request,
-			private_key_id
-		) VALUES (
-			NEW.friendly_name,
-			NEW.subject,
-			NEW.certificate_sign_req,
-			key
-		) RETURNING certificate_signing_request_id INTO csr;
-		IF NEW.x509_cert_id IS NULL THEN
-			NEW.x509_cert_id := csr;
-		END IF;
-	END IF;
-
-	IF NEW.public_key IS NOT NULL THEN
-		INSERT INTO x509_signed_certificate (
-			friendly_name,
-			is_active,
-			is_certificate_authority,
-			signing_cert_id,
-			x509_ca_cert_serial_number,
-			public_key,
-			subject,
-			subject_key_identifier,
-			valid_from,
-			valid_to,
-			x509_revocation_date,
-			x509_revocation_reason,
-			ocsp_uri,
-			crl_uri,
-			private_key_id,
-			certificate_signing_request_id
-		) VALUES (
-			NEW.friendly_name,
-			NEW.is_active,
-			NEW.is_certificate_authority,
-			NEW.signing_cert_id,
-			NEW.x509_ca_cert_serial_number,
-			NEW.public_key,
-			NEW.subject,
-			NEW.subject_key_identifier,
-			NEW.valid_from,
-			NEW.valid_to,
-			NEW.x509_revocation_date,
-			NEW.x509_revocation_reason,
-			NEW.ocsp_uri,
-			NEW.crl_uri,
-			key,
-			csr
-		) RETURNING x509_signed_certificate_id INTO crt;
-		NEW.x509_cert_id := crt;
-	END IF;
-
-	RETURN NEW;
-END;
-$function$
-;
-
-
--- New function
-CREATE OR REPLACE FUNCTION jazzhands.upd_x509_certificate()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO jazzhands
-AS $function$
-DECLARE
-	upq	TEXT[];
-	crt	x509_signed_certificate%ROWTYPE;
-	key private_key.private_key_id%TYPE;
-BEGIN
-	SELECT * INTO crt FROM x509_signed_certificate
-	WHERE x509_signed_certificate_id = OLD.x509_cert_id;
-
-	IF OLD.x509_cert_id != NEW.x509_cert_id THEN
-		RAISE EXCEPTION 'Can not change x509_cert_id' USING ERRCODE = 'invalid_parameter_value';
-	END IF;
-
-	key := crt.private_key_id;
-
-	IF crt.private_key_ID IS NULL AND NEW.private_key IS NOT NULL THEN
-		WITH ins AS (
-			INSERT INTO private_key (
-				private_key_encryption_type,
-				is_active,
-				subject_key_identifier,
-				private_key,
-				passphrase,
-				encryption_key_id
-			) VALUES (
-				'rsa',
-				NEW.is_active,
-				NEW.subject_key_identifier,
-				NEW.private_key,
-				NEW.passphrase,
-				NEW.encryption_key_id
-			) RETURNING *
-		), upd AS (
-			UPDATE x509_signed_certificate
-			SET private_key_id = ins.private_key_id
-			WHERE x509_signed_certificate_id = OLD.x509_cert_id
-			RETURNING *
-		)  SELECT private_key_id INTO key FROM upd;
-	ELSIF crt.private_key_id IS NOT NULL AND NEW.private_key IS NULL THEN
-		UPDATE x509_signed_certificate
-			SET private_key_id = NULL
-			WHERE x509_signed_certificate_id = OLD.x509_cert_id;
-		BEGIN
-			DELETE FROM private_key where private_key_id = crt.private_key_id;
-		EXCEPTION WHEN foreign_key_violation THEN
-			NULL;
-		END;
-	ELSE
-		IF OLD.is_active IS DISTINCT FROM NEW.is_active THEN
-			upq := array_append(upq,
-				'is_active = ' || quote_literal(NEW.is_active)
-			);
-		END IF;
-
-		IF OLD.subject_key_identifier IS DISTINCT FROM NEW.subject_key_identifier THEN
-			upq := array_append(upq,
-				'subject_key_identifier = ' || quote_nullable(NEW.subject_key_identifier)
-			);
-		END IF;
-
-		IF OLD.private_key IS DISTINCT FROM NEW.private_key THEN
-			upq := array_append(upq,
-				'private_key = ' || quote_nullable(NEW.private_key)
-			);
-		END IF;
-
-		IF OLD.passphrase IS DISTINCT FROM NEW.passphrase THEN
-			upq := array_append(upq,
-				'passphrase = ' || quote_nullable(NEW.passphrase)
-			);
-		END IF;
-
-		IF OLD.encryption_key_id IS DISTINCT FROM NEW.encryption_key_id THEN
-			upq := array_append(upq,
-				'encryption_key_id = ' || quote_nullable(NEW.encryption_key_id)
-			);
-		END IF;
-
-		IF array_length(upq, 1) > 0 THEN
-			EXECUTE 'UPDATE private_key SET '
-				|| array_to_string(upq, ', ')
-				|| ' WHERE private_key_id = '
-				|| crt.private_key_id;
-		END IF;
-	END IF;
-
-	upq := NULL;
-	IF crt.certificate_signing_request_id IS NULL AND NEW.certificate_sign_req IS NOT NULL THEN
-		WITH ins AS (
-			INSERT INTO certificate_sign_req (
-				friendly_name,
-				subject,
-				certificate_signing_request,
-				private_key_id
-			) VALUES (
-				NEW.friendly_name,
-				NEW.subject,
-				NEW.certificate_sign_req,
-				key
-			) RETURNING *
-		) UPDATE x509_signed_certificate
-		SET certificate_signing_request_id = ins.certificate_signing_request_id
-		WHERE x509_signed_certificate_id = OLD.x509_cert_id;
-	ELSIF crt.certificate_signing_request_id IS NOT NULL AND
-				NEW.certificate_sign_req IS NULL THEN
-		-- if its removed, we still keep the csr/key link
-		WITH del AS (
-			UPDATE x509_signed_certificate
-			SET certificate_signing_request = NULL
-			WHERE x509_signed_certificate_id = OLD.x509_cert_id
-			RETURNING *
-		) DELETE FROM certificate_signing_request
-		WHERE certificate_signing_request_id =
-			crt.certificate_signing_request_id;
-	ELSE
-		IF OLD.friendly_name IS DISTINCT FROM NEW.friendly_name THEN
-			upq := array_append(upq,
-				'friendly_name = ' || quote_literal(NEW.friendly_name)
-			);
-		END IF;
-
-		IF OLD.subject IS DISTINCT FROM NEW.subject THEN
-			upq := array_append(upq,
-				'subject = ' || quote_literal(NEW.subject)
-			);
-		END IF;
-
-		IF OLD.certificate_sign_req IS DISTINCT FROM
-				NEW.certificate_sign_req THEN
-			upq := array_append(upq,
-				'certificate_signing_request = ' ||
-					quote_literal(NEW.certificate_sign_req)
-			);
-		END IF;
-
-		IF array_length(upq, 1) > 0 THEN
-			EXECUTE 'UPDATE certificate_signing_request SET '
-				|| array_to_string(upq, ', ')
-				|| ' WHERE x509_signed_certificate_id = '
-				|| crt.x509_signed_certificate_id;
-		END IF;
-	END IF;
-
-	upq := NULL;
-	IF OLD.is_active IS DISTINCT FROM NEW.is_active THEN
-		upq := array_append(upq,
-			'is_active = ' || quote_literal(NEW.is_active)
-		);
-	END IF;
-	IF OLD.friendly_name IS DISTINCT FROM NEW.friendly_name THEN
-		upq := array_append(upq,
-			'friendly_name = ' || quote_literal(NEW.friendly_name)
-		);
-	END IF;
-	IF OLD.subject IS DISTINCT FROM NEW.subject THEN
-		upq := array_append(upq,
-			'subject = ' || quote_literal(NEW.subject)
-		);
-	END IF;
-	IF OLD.subject_key_identifier IS DISTINCT FROM NEW.subject_key_identifier THEN
-		upq := array_append(upq,
-			'subject_key_identifier = ' || quote_nullable(NEW.subject_key_identifier)
-		);
-	END IF;
-	IF OLD.is_certificate_authority IS DISTINCT FROM NEW.is_certificate_authority THEN
-		upq := array_append(upq,
-			'is_certificate_authority = ' || quote_nullable(NEW.is_certificate_authority)
-		);
-	END IF;
-	IF OLD.signing_cert_id IS DISTINCT FROM NEW.signing_cert_id THEN
-		upq := array_append(upq,
-			'signing_cert_id = ' || quote_nullable(NEW.signing_cert_id)
-		);
-	END IF;
-	IF OLD.x509_ca_cert_serial_number IS DISTINCT FROM NEW.x509_ca_cert_serial_number THEN
-		upq := array_append(upq,
-			'x509_ca_cert_serial_number = ' || quote_nullable(NEW.x509_ca_cert_serial_number)
-		);
-	END IF;
-	IF OLD.public_key IS DISTINCT FROM NEW.public_key THEN
-		upq := array_append(upq,
-			'public_key = ' || quote_nullable(NEW.public_key)
-		);
-	END IF;
-	IF OLD.valid_from IS DISTINCT FROM NEW.valid_from THEN
-		upq := array_append(upq,
-			'valid_from = ' || quote_nullable(NEW.valid_from)
-		);
-	END IF;
-	IF OLD.valid_to IS DISTINCT FROM NEW.valid_to THEN
-		upq := array_append(upq,
-			'valid_to = ' || quote_nullable(NEW.valid_to)
-		);
-	END IF;
-	IF OLD.x509_revocation_date IS DISTINCT FROM NEW.x509_revocation_date THEN
-		upq := array_append(upq,
-			'x509_revocation_date = ' || quote_nullable(NEW.x509_revocation_date)
-		);
-	END IF;
-	IF OLD.x509_revocation_reason IS DISTINCT FROM NEW.x509_revocation_reason THEN
-		upq := array_append(upq,
-			'x509_revocation_reason = ' || quote_nullable(NEW.x509_revocation_reason)
-		);
-	END IF;
-	IF OLD.ocsp_uri IS DISTINCT FROM NEW.ocsp_uri THEN
-		upq := array_append(upq,
-			'ocsp_uri = ' || quote_nullable(NEW.ocsp_uri)
-		);
-	END IF;
-	IF OLD.crl_uri IS DISTINCT FROM NEW.crl_uri THEN
-		upq := array_append(upq,
-			'crl_uri = ' || quote_nullable(NEW.crl_uri)
-		);
-	END IF;
-
-	IF array_length(upq, 1) > 0 THEN
-		EXECUTE 'UPDATE x509_signed_certificate SET '
-			|| array_to_string(upq, ', ')
-			|| ' WHERE x509_signed_certificate_id = '
-			|| NEW.x509_cert_id;
-	END IF;
-
-	RETURN NEW;
-END;
-$function$
-;
-
 
 
 -- DONE DEALING WITH TABLE x509_certificate
@@ -8757,6 +11313,692 @@ SELECT schema_support.replay_object_recreates();
 -- Process drops in jazzhands
 --
 -- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'account_automated_reporting_ac');
+CREATE OR REPLACE FUNCTION jazzhands.account_automated_reporting_ac()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	_tally	INTEGER;
+	_numrpt	INTEGER;
+	_r		RECORD;
+BEGIN
+	IF TG_OP = 'DELETE' THEN
+		IF OLD.account_role != 'primary' THEN
+			RETURN OLD;
+		END IF;
+	ELSIF TG_OP = 'INSERT' THEN
+		IF NEW.account_role != 'primary' THEN
+			RETURN NEW;
+		END IF;
+	ELSIF TG_OP = 'UPDATE' THEN
+		IF NEW.account_role != 'primary' AND OLD.account_role != 'primary' THEN
+			RETURN NEW;
+		END IF;
+	END IF;
+
+	-- XXX check account realm to see if we should be inserting for this
+	-- XXX account realm
+
+	IF TG_OP = 'INSERT' THEN
+		PERFORM auto_ac_manip.make_all_auto_acs_right(
+			account_id := NEW.account_id,
+			account_realm_id := NEW.account_realm_id,
+			login := NEW.login
+		);
+	ELSIF TG_OP = 'UPDATE' THEN
+		PERFORM auto_ac_manip.rename_automated_report_acs(
+			NEW.account_id, OLD.login, NEW.login, NEW.account_realm_id);
+	ELSIF TG_OP = 'DELETE' THEN
+		DELETE FROM account_collection_account WHERE account_id
+			= OLD.account_id
+		AND account_collection_id IN ( select account_collection_id
+			FROM account_collection where account_collection_type
+			= 'automated'
+		);
+		-- PERFORM auto_ac_manip.destroy_report_account_collections(
+		-- 	account_id := OLD.account_id,
+		-- 	account_realm_id := OLD.account_realm_id
+		-- );
+	END IF;
+
+	IF TG_OP = 'DELETE' THEN
+		RETURN OLD;
+	ELSE
+		RETURN NEW;
+	END IF;
+END;
+$function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'account_change_realm_aca_realm');
+CREATE OR REPLACE FUNCTION jazzhands.account_change_realm_aca_realm()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	_tally	integer;
+BEGIN
+	SELECT	count(*)
+	INTO	_tally
+	FROM	account_collection_account
+			JOIN account_collection USING (account_collection_id)
+			JOIN val_account_collection_type vt USING (account_collection_type)
+	WHERE	vt.account_realm_id IS NOT NULL
+	AND		vt.account_realm_id != NEW.account_realm_id
+	AND		account_id = NEW.account_id;
+
+	IF _tally > 0 THEN
+		RAISE EXCEPTION 'New account realm (%) is part of % account collections with a type restriction',
+			NEW.account_realm_id,
+			_tally
+			USING ERRCODE = 'integrity_constraint_violation';
+	END IF;
+	RETURN NEW;
+END;
+$function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'account_collection_account_realm');
+CREATE OR REPLACE FUNCTION jazzhands.account_collection_account_realm()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	_a	account%ROWTYPE;
+	_at	val_account_collection_type%ROWTYPE;
+BEGIN
+	SELECT *
+	INTO	_at
+	FROM	val_account_collection_type
+		JOIN account_collection USING (account_collection_type)
+	WHERE
+		account_collection_id = NEW.account_collection_id;
+
+	-- no restrictions, so do not care
+	IF _at.account_realm_id IS NULL THEN
+		RETURN NEW;
+	END IF;
+
+	-- check to see if the account's account realm matches
+	IF TG_OP = 'INSERT' OR OLD.account_id != NEW.account_id THEN
+		SELECT	*
+		INTO	_a
+		FROM	account
+		WHERE	account_id = NEW.account_id;
+
+		IF _a.account_realm_id != _at.account_realm_id THEN
+			RAISE EXCEPTION 'account realm of % does not match account realm restriction on account_collection %',
+				NEW.account_id, NEW.account_collection_id
+				USING ERRCODE = 'integrity_constraint_violation';
+		END IF;
+	END IF;
+	RETURN NEW;
+END;
+$function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'approval_instance_step_auto_complete');
+CREATE OR REPLACE FUNCTION jazzhands.approval_instance_step_auto_complete()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	_tally	INTEGER;
+BEGIN
+	--
+	-- on insert, if the parent was already marked as completed, fail.
+	-- arguably, this should happen on updates as well
+	--	possibly should move this to a before trigger
+	--
+	IF TG_OP = 'INSERT' THEN
+		SELECT	count(*)
+		INTO	_tally
+		FROM	approval_instance_step
+		WHERE	approval_instance_step_id = NEW.approval_instance_step_id
+		AND		is_completed = 'Y';
+
+		IF _tally > 0 THEN
+			RAISE EXCEPTION 'Completed attestation cycles may not have items added';
+		END IF;
+	END IF;
+
+	IF NEW.is_approved IS NOT NULL THEN
+		SELECT	count(*)
+		INTO	_tally
+		FROM	approval_instance_item
+		WHERE	approval_instance_step_id = NEW.approval_instance_step_id
+		AND		approval_instance_item_id != NEW.approval_instance_item_id
+		AND		is_approved IS NOT NULL;
+
+		IF _tally = 0 THEN
+			UPDATE	approval_instance_step
+			SET		is_completed = 'Y',
+					approval_instance_step_end = now()
+			WHERE	approval_instance_step_id = NEW.approval_instance_step_id;
+		END IF;
+
+	END IF;
+	RETURN NEW;
+END;
+$function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'automated_ac_on_account');
+CREATE OR REPLACE FUNCTION jazzhands.automated_ac_on_account()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	_tally	INTEGER;
+	_r		RECORD;
+BEGIN
+	IF TG_OP = 'DELETE' THEN
+		IF OLD.account_role != 'primary' THEN
+			RETURN OLD;
+		END IF;
+	ELSIF TG_OP = 'INSERT' THEN
+		IF NEW.account_role != 'primary' THEN
+			RETURN NEW;
+		END IF;
+	ELSIF TG_OP = 'UPDATE' THEN
+		IF NEW.account_role != 'primary' AND OLD.account_role != 'primary' THEN
+			RETURN NEW;
+		END IF;
+	END IF;
+
+
+	IF TG_OP = 'INSERT' OR TG_OP = 'UPDATE'  THEN
+		PERFORM auto_ac_manip.make_site_acs_right(NEW.account_id);
+		PERFORM auto_ac_manip.make_personal_acs_right(NEW.account_id);
+
+		-- update the person's manager to match
+		WITH RECURSIVE map AS (
+			SELECT account_id as root_account_id,
+				account_id, login, manager_account_id, manager_login
+			FROM v_account_manager_map
+			UNION
+			SELECT map.root_account_id, m.account_id, m.login,
+				m.manager_account_id, m.manager_login
+				from v_account_manager_map m
+					join map on m.account_id = map.manager_account_id
+			), x AS ( SELECT auto_ac_manip.make_auto_report_acs_right(
+					account_id := manager_account_id,
+					account_realm_id := NEW.account_realm_id,
+					login := manager_login)
+				FROM map
+				WHERE root_account_id = NEW.account_id
+			) SELECT count(*) INTO _tally FROM x;
+	END IF;
+
+	IF TG_OP = 'UPDATE'  THEN
+		PERFORM auto_ac_manip.make_site_acs_right(OLD.account_id);
+		PERFORM auto_ac_manip.make_personal_acs_right(OLD.account_id);
+	END IF;
+
+	-- when deleting, do nothing rather than calling the above, same as
+	-- update; pointless because account is getting deleted anyway.
+
+	IF TG_OP = 'DELETE' THEN
+		RETURN OLD;
+	ELSE
+		RETURN NEW;
+	END IF;
+END;
+$function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'automated_ac_on_person_company');
+CREATE OR REPLACE FUNCTION jazzhands.automated_ac_on_person_company()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	_tally	INTEGER;
+	_r		RECORD;
+BEGIN
+	IF ( TG_OP = 'INSERT' OR TG_OP = 'UPDATE' ) THEN
+		PERFORM	auto_ac_manip.make_personal_acs_right(account_id)
+		FROM	v_corp_family_account
+				INNER JOIN person_company USING (person_id,company_id)
+		WHERE	account_role = 'primary'
+		AND		person_id = NEW.person_id
+		AND		company_id = NEW.company_id;
+
+		IF ( TG_OP = 'INSERT' OR ( TG_OP = 'UPDATE' AND
+				NEW.manager_person_id != OLD.manager_person_id )
+		) THEN
+			-- update the person's manager to match
+			WITH RECURSIVE map As (
+				SELECT account_id as root_account_id,
+					account_id, login, manager_account_id, manager_login
+				FROM v_account_manager_map
+				UNION
+				SELECT map.root_account_id, m.account_id, m.login,
+					m.manager_account_id, m.manager_login
+					from v_account_manager_map m
+						join map on m.account_id = map.manager_account_id
+			), x AS ( SELECT auto_ac_manip.make_auto_report_acs_right(
+						account_id := manager_account_id,
+						account_realm_id := account_realm_id,
+						login := manager_login)
+					FROM map m
+							join v_corp_family_account a ON
+								a.account_id = m.root_account_id
+					WHERE a.person_id = NEW.person_id
+					AND a.company_id = NEW.company_id
+			) SELECT count(*) into _tally from x;
+			IF TG_OP = 'UPDATE' THEN
+				PERFORM auto_ac_manip.make_auto_report_acs_right(
+							account_id := account_id)
+				FROM    v_corp_family_account
+				WHERE   account_role = 'primary'
+				AND     is_enabled = 'Y'
+				AND     person_id = OLD.manager_person_id;
+			END IF;
+		END IF;
+	END IF;
+
+	IF ( TG_OP = 'DELETE' OR TG_OP = 'UPDATE' ) THEN
+		PERFORM	auto_ac_manip.make_personal_acs_right(account_id)
+		FROM	v_corp_family_account
+				INNER JOIN person_company USING (person_id,company_id)
+		WHERE	account_role = 'primary'
+		AND		person_id = OLD.person_id
+		AND		company_id = OLD.company_id;
+	END IF;
+	IF ( TG_OP = 'UPDATE' ) THEN
+		PERFORM	auto_ac_manip.make_personal_acs_right(account_id)
+		FROM	v_corp_family_account
+				INNER JOIN person_company USING (person_id,company_id)
+		WHERE	account_role = 'primary'
+		AND		person_id = NEW.person_id
+		AND		company_id = NEW.company_id;
+	END IF;
+
+	IF TG_OP = 'DELETE' THEN
+		RETURN OLD;
+	ELSE
+		RETURN NEW;
+	END IF;
+END;
+$function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'check_svcenv_colllection_hier_loop');
+CREATE OR REPLACE FUNCTION jazzhands.check_svcenv_colllection_hier_loop()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+BEGIN
+	IF NEW.service_env_collection_id =
+		NEW.child_service_env_coll_id THEN
+			RAISE EXCEPTION 'svcenv Collection Loops Not Pernitted '
+			USING ERRCODE = 20704;	/* XXX */
+	END IF;
+	RETURN NEW;
+END;
+$function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'create_device_component_by_trigger');
+CREATE OR REPLACE FUNCTION jazzhands.create_device_component_by_trigger()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	devtype		RECORD;
+	ctid		integer;
+	cid			integer;
+	scarr       integer[];
+	dcarr       integer[];
+	server_ver	integer;
+BEGIN
+
+	SELECT
+		dt.device_type_id,
+		dt.component_type_id,
+		dt.template_device_id,
+		d.component_id
+	INTO
+		devtype
+	FROM
+		device_type dt LEFT JOIN
+		device d ON (dt.template_device_id = d.device_id)
+	WHERE
+		dt.device_type_id = NEW.device_type_id;
+
+	IF NEW.component_id IS NOT NULL THEN
+		IF devtype.component_type_id IS NOT NULL THEN
+			SELECT
+				component_type_id INTO ctid
+			FROM
+				component c
+			WHERE
+				c.component_id = NEW.component_id;
+
+			IF ctid != devtype.component_type_id THEN
+				UPDATE
+					component
+				SET
+					component_type_id = devtype.component_type_id
+				WHERE
+					component_id = NEW.component_id;
+			END IF;
+		END IF;
+
+		RETURN NEW;
+	END IF;
+
+	--
+	-- If template_device_id doesn't exist, then create an instance of
+	-- the component_id if it exists
+	--
+	IF devtype.component_id IS NULL THEN
+		--
+		-- If the component_id doesn't exist, then we're done
+		--
+		IF devtype.component_type_id IS NULL THEN
+			RETURN NEW;
+		END IF;
+		--
+		-- Insert a component of the given type and tie it to the device
+		--
+		INSERT INTO component (component_type_id)
+			VALUES (devtype.component_type_id)
+			RETURNING component_id INTO cid;
+
+		NEW.component_id := cid;
+		RETURN NEW;
+	ELSE
+		SELECT setting INTO server_ver FROM pg_catalog.pg_settings
+			WHERE name = 'server_version_num';
+
+		IF (server_ver < 90400) THEN
+			--
+			-- This is pretty nasty; welcome to SQL
+			--
+			--
+			-- This returns data into a temporary table (ugh) that's used as a
+			-- key/value store to map each template component to the
+			-- newly-created one
+			--
+			CREATE TEMPORARY TABLE trig_comp_ins AS
+			WITH comp_ins AS (
+				INSERT INTO component (
+					component_type_id
+				) SELECT
+					c.component_type_id
+				FROM
+					device_type dt JOIN
+					v_device_components dc ON
+						(dc.device_id = dt.template_device_id) JOIN
+					component c USING (component_id)
+				WHERE
+					device_type_id = NEW.device_type_id
+				ORDER BY
+					level, c.component_type_id
+				RETURNING component_id
+			)
+			SELECT
+				src_comp.component_id as src_component_id,
+				dst_comp.component_id as dst_component_id,
+				src_comp.level as level
+			FROM
+				(SELECT
+					c.component_id,
+					level,
+					row_number() OVER (ORDER BY level, c.component_type_id)
+						AS rownum
+				 FROM
+					device_type dt JOIN
+					v_device_components dc ON
+						(dc.device_id = dt.template_device_id) JOIN
+					component c USING (component_id)
+				 WHERE
+					device_type_id = NEW.device_type_id
+				) src_comp,
+				(SELECT
+					component_id,
+					row_number() OVER () AS rownum
+				 FROM
+					comp_ins
+				) dst_comp
+			WHERE
+				src_comp.rownum = dst_comp.rownum;
+
+			/*
+				 Now take the mapping of components that were inserted above,
+				 and tie the new components to the appropriate slot on the
+				 parent.
+				 The logic below is:
+					- Take the template component, and locate its parent slot
+					- Find the correct slot on the corresponding new parent
+					  component by locating one with the same slot_name and
+					  slot_type_id on the mapped parent component_id
+					- Update the parent_slot_id of the component with the
+					  mapped component_id to this slot_id
+
+				 This works even if the top-level component is attached to some
+				 other device, since there will not be a mapping for those in
+				 the table to locate.
+			*/
+
+			UPDATE
+				component dc
+			SET
+				parent_slot_id = ds.slot_id
+			FROM
+				trig_comp_ins tt,
+				trig_comp_ins ptt,
+				component sc,
+				slot ss,
+				slot ds
+			WHERE
+				tt.src_component_id = sc.component_id AND
+				tt.dst_component_id = dc.component_id AND
+				ss.slot_id = sc.parent_slot_id AND
+				ss.component_id = ptt.src_component_id AND
+				ds.component_id = ptt.dst_component_id AND
+				ss.slot_type_id = ds.slot_type_id AND
+				ss.slot_name = ds.slot_name;
+
+			SELECT dst_component_id INTO cid FROM trig_comp_ins WHERE
+				level = 1;
+
+			NEW.component_id := cid;
+
+			DROP TABLE trig_comp_ins;
+
+			RETURN NEW;
+		ELSE
+			WITH dev_comps AS (
+				SELECT
+					c.component_id,
+					c.component_type_id,
+					level,
+					row_number() OVER (ORDER BY level, c.component_type_id) AS
+						rownum
+				FROM
+					device_type dt JOIN
+					v_device_components dc ON
+						(dc.device_id = dt.template_device_id) JOIN
+					component c USING (component_id)
+				WHERE
+					device_type_id = NEW.device_type_id
+			),
+			comp_ins AS (
+				INSERT INTO component (
+					component_type_id
+				) SELECT
+					component_type_id
+				FROM
+					dev_comps
+				ORDER BY
+					rownum
+				RETURNING component_id, component_type_id
+			),
+			comp_ins_arr AS (
+				SELECT
+					array_agg(component_id) AS dst_arr
+				FROM
+					comp_ins
+			),
+			dev_comps_arr AS (
+				SELECT
+					array_agg(component_id) as src_arr
+				FROM
+					dev_comps
+			)
+			SELECT src_arr, dst_arr INTO scarr, dcarr FROM
+				dev_comps_arr, comp_ins_arr;
+
+			UPDATE
+				component dc
+			SET
+				parent_slot_id = ds.slot_id
+			FROM
+				unnest(scarr, dcarr) AS
+					tt(src_component_id, dst_component_id),
+				unnest(scarr, dcarr) AS
+					ptt(src_component_id, dst_component_id),
+				component sc,
+				slot ss,
+				slot ds
+			WHERE
+				tt.src_component_id = sc.component_id AND
+				tt.dst_component_id = dc.component_id AND
+				ss.slot_id = sc.parent_slot_id AND
+				ss.component_id = ptt.src_component_id AND
+				ds.component_id = ptt.dst_component_id AND
+				ss.slot_type_id = ds.slot_type_id AND
+				ss.slot_name = ds.slot_name;
+
+			SELECT
+				component_id INTO NEW.component_id
+			FROM
+				component c
+			WHERE
+				component_id = ANY(dcarr) AND
+				parent_slot_id IS NULL;
+
+			RETURN NEW;
+		END IF;
+	END IF;
+	RETURN NEW;
+END;
+$function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'create_new_unix_account');
+CREATE OR REPLACE FUNCTION jazzhands.create_new_unix_account()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	unix_id 		INTEGER;
+	_account_collection_id 	INTEGER;
+	_arid			INTEGER;
+BEGIN
+	--
+	-- This should be a property that shows which account collections
+	-- get unix accounts created by default, but the mapping of unix-groups
+	-- to account collection across realms needs to be resolved
+	--
+	SELECT  account_realm_id
+	INTO    _arid
+	FROM    property
+	WHERE   property_name = '_root_account_realm_id'
+	AND     property_type = 'Defaults';
+
+	IF _arid IS NOT NULL AND NEW.account_realm_id = _arid THEN
+		IF NEW.person_id != 0 THEN
+			PERFORM person_manip.setup_unix_account(
+				in_account_id := NEW.account_id,
+				in_account_type := NEW.account_type
+			);
+		END IF;
+	END IF;
+	RETURN NEW;
+END;
+$function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'device_type_model_to_name');
+CREATE OR REPLACE FUNCTION jazzhands.device_type_model_to_name()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	_tally	INTEGER;
+BEGIN
+	IF TG_OP = 'UPDATE' AND  (NEW.model IS DISTINCT FROM OLD.model AND
+			NEW.device_type_name IS DISTINCT FROM OLD.device_type_name) THEN
+		RAISE EXCEPTION 'Only device_type_name should be updated.'
+			USING ERRCODE = 'integrity_constraint_violation';
+	ELSIF TG_OP = 'INSERT' THEN
+		IF NEW.model IS NOT NULL AND NEW.device_type_name IS NOT NULL THEN
+			RAISE EXCEPTION 'Only model should be set.'
+				USING ERRCODE = 'integrity_constraint_violation';
+		END IF;
+
+	END IF;
+
+	IF TG_OP = 'UPDATE' THEN
+		IF OLD.model IS DISTINCT FROM NEW.model THEN
+			NEW.device_type_name = NEW.model;
+		ELSIF OLD.device_type_name IS DISTINCT FROM NEW.device_type_name THEN
+			NEW.model = NEW.device_type_name;
+		END IF;
+	ELSIF TG_OP = 'INSERT' THEN
+		IF NEW.model IS NOT NULL THEN
+			NEW.device_type_name = NEW.model;
+		ELSIF NEW.device_type_name IS NOT NULL THEN
+			NEW.model = NEW.device_type_name;
+		END IF;
+	ELSE
+	END IF;
+
+	-- company_id is going away
+	IF NEW.company_id IS NULL THEN
+		NEW.company_id := 0;
+	END IF;
+
+	RETURN NEW;
+END;
+$function$
+;
+
+-- Changed function
 SELECT schema_support.save_grants_for_replay('jazzhands', 'dns_a_rec_validation');
 CREATE OR REPLACE FUNCTION jazzhands.dns_a_rec_validation()
  RETURNS trigger
@@ -8820,6 +12062,1128 @@ $function$
 ;
 
 -- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'dns_domain_trigger_change');
+CREATE OR REPLACE FUNCTION jazzhands.dns_domain_trigger_change()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+BEGIN
+	IF new.SHOULD_GENERATE = 'Y' THEN
+		insert into DNS_CHANGE_RECORD
+			(dns_domain_id) VALUES (NEW.dns_domain_id);
+	END IF;
+	RETURN NEW;
+END;
+$function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'dns_rec_prevent_dups');
+CREATE OR REPLACE FUNCTION jazzhands.dns_rec_prevent_dups()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	_tally	INTEGER;
+BEGIN
+	-- should not be able to insert the same record(s) twice
+	SELECT	count(*)
+	  INTO	_tally
+	  FROM	dns_record
+	  WHERE
+	  		( lower(dns_name) = lower(NEW.dns_name) OR
+				(dns_name IS NULL AND NEW.dns_name is NULL)
+			)
+		AND
+	  		( dns_domain_id = NEW.dns_domain_id )
+		AND
+	  		( dns_class = NEW.dns_class )
+		AND
+	  		( dns_type = NEW.dns_type )
+		AND
+	  		( dns_srv_service = NEW.dns_srv_service OR
+				(dns_srv_service IS NULL and NEW.dns_srv_service is NULL)
+			)
+		AND
+	  		( dns_srv_protocol = NEW.dns_srv_protocol OR
+				(dns_srv_protocol IS NULL and NEW.dns_srv_protocol is NULL)
+			)
+		AND
+	  		( dns_srv_port = NEW.dns_srv_port OR
+				(dns_srv_port IS NULL and NEW.dns_srv_port is NULL)
+			)
+		AND
+	  		( dns_value = NEW.dns_value OR
+				(dns_value IS NULL and NEW.dns_value is NULL)
+			)
+		AND
+	  		( netblock_id = NEW.netblock_id OR
+				(netblock_id IS NULL AND NEW.netblock_id is NULL)
+			)
+		AND	is_enabled = 'Y'
+	    AND dns_record_id != NEW.dns_record_id
+	;
+
+	IF _tally != 0 THEN
+		RAISE EXCEPTION 'Attempt to insert the same dns record'
+			USING ERRCODE = 'unique_violation';
+	END IF;
+
+	IF NEW.DNS_TYPE = 'A' OR NEW.DNS_TYPE = 'AAAA' THEN
+		IF NEW.SHOULD_GENERATE_PTR = 'Y' THEN
+			SELECT	count(*)
+			 INTO	_tally
+			 FROM	dns_record
+			WHERE dns_class = 'IN'
+			AND dns_type = 'A'
+			AND should_generate_ptr = 'Y'
+			AND is_enabled = 'Y'
+			AND netblock_id = NEW.NETBLOCK_ID
+			AND dns_record_id != NEW.DNS_RECORD_ID;
+
+			IF _tally != 0 THEN
+				RAISE EXCEPTION 'May not have more than one SHOULD_GENERATE_PTR record on the same IP on netblock_id %', NEW.netblock_id
+					USING ERRCODE = 'JH201';
+			END IF;
+		END IF;
+	END IF;
+
+	RETURN NEW;
+END;
+$function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'dns_record_cname_checker');
+CREATE OR REPLACE FUNCTION jazzhands.dns_record_cname_checker()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	_tally	INTEGER;
+	_dom	TEXT;
+BEGIN
+	_tally := 0;
+	IF TG_OP = 'INSERT' OR NEW.DNS_TYPE != OLD.DNS_TYPE THEN
+		IF NEW.DNS_TYPE = 'CNAME' THEN
+			IF TG_OP = 'UPDATE' THEN
+			SELECT	COUNT(*)
+				  INTO	_tally
+				  FROM	dns_record x
+				 WHERE
+				 		NEW.dns_domain_id = x.dns_domain_id
+				 AND	OLD.dns_record_id != x.dns_record_id
+				 AND	(
+				 			NEW.dns_name IS NULL and x.dns_name is NULL
+							or
+							lower(NEW.dns_name) = lower(x.dns_name)
+						)
+				;
+			ELSE
+				-- only difference between above and this is the use of OLD
+				SELECT	COUNT(*)
+				  INTO	_tally
+				  FROM	dns_record x
+				 WHERE
+				 		NEW.dns_domain_id = x.dns_domain_id
+				 AND	(
+				 			NEW.dns_name IS NULL and x.dns_name is NULL
+							or
+							lower(NEW.dns_name) = lower(x.dns_name)
+						)
+				;
+			END IF;
+		-- this clause is basically the same as above except = 'CANME'
+		ELSIF NEW.DNS_TYPE != 'CNAME' THEN
+			IF TG_OP = 'UPDATE' THEN
+				SELECT	COUNT(*)
+				  INTO	_tally
+				  FROM	dns_record x
+				 WHERE	x.dns_type = 'CNAME'
+				 AND	NEW.dns_domain_id = x.dns_domain_id
+				 AND	OLD.dns_record_id != x.dns_record_id
+				 AND	(
+				 			NEW.dns_name IS NULL and x.dns_name is NULL
+							or
+							lower(NEW.dns_name) = lower(x.dns_name)
+						)
+				;
+			ELSE
+				-- only difference between above and this is the use of OLD
+				SELECT	COUNT(*)
+				  INTO	_tally
+				  FROM	dns_record x
+				 WHERE	x.dns_type = 'CNAME'
+				 AND	NEW.dns_domain_id = x.dns_domain_id
+				 AND	(
+				 			NEW.dns_name IS NULL and x.dns_name is NULL
+							or
+							lower(NEW.dns_name) = lower(x.dns_name)
+						)
+				;
+			END IF;
+		END IF;
+	END IF;
+
+	IF _tally > 0 THEN
+		SELECT soa_name INTO _dom FROM dns_domain
+		WHERE dns_domain_id = NEW.dns_domain_id ;
+
+		if NEW.dns_name IS NULL THEN
+			RAISE EXCEPTION '% may not have CNAME and other records (%)',
+				_dom, _tally
+				USING ERRCODE = 'unique_violation';
+		ELSE
+			RAISE EXCEPTION '%.% may not have CNAME and other records (%)',
+				NEW.dns_name, _dom, _tally
+				USING ERRCODE = 'unique_violation';
+		END IF;
+	END IF;
+	RETURN NEW;
+END;
+$function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'dns_record_update_nontime');
+CREATE OR REPLACE FUNCTION jazzhands.dns_record_update_nontime()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	_dnsdomainid	DNS_DOMAIN.DNS_DOMAIN_ID%type;
+	_ipaddr			NETBLOCK.IP_ADDRESS%type;
+	_mkold			boolean;
+	_mknew			boolean;
+	_mkdom			boolean;
+	_mkip			boolean;
+BEGIN
+	_mkold = false;
+	_mkold = false;
+	_mknew = true;
+
+	IF TG_OP = 'DELETE' THEN
+		_mknew := false;
+		_mkold := true;
+		_mkdom := true;
+		if  OLD.netblock_id is not null  THEN
+			_mkip := true;
+		END IF;
+	ELSIF TG_OP = 'INSERT' THEN
+		_mkold := false;
+		_mkdom := true;
+		if  NEW.netblock_id is not null  THEN
+			_mkip := true;
+		END IF;
+	ELSIF TG_OP = 'UPDATE' THEN
+		IF OLD.DNS_DOMAIN_ID != NEW.DNS_DOMAIN_ID THEN
+			_mkold := true;
+			_mkip := true;
+		END IF;
+		_mkdom := true;
+
+		IF OLD.dns_name IS DISTINCT FROM NEW.dns_name THEN
+			_mknew := true;
+			IF NEW.DNS_TYPE = 'A' OR NEW.DNS_TYPE = 'AAAA' THEN
+				IF NEW.SHOULD_GENERATE_PTR = 'Y' THEN
+					_mkip := true;
+				END IF;
+			END IF;
+		END IF;
+
+		IF OLD.SHOULD_GENERATE_PTR != NEW.SHOULD_GENERATE_PTR THEN
+			_mkold := true;
+			_mkip := true;
+		END IF;
+
+		IF (OLD.netblock_id IS DISTINCT FROM NEW.netblock_id) THEN
+			_mkold := true;
+			_mknew := true;
+			_mkip := true;
+		END IF;
+	END IF;
+
+	if _mkold THEN
+		IF _mkdom THEN
+			_dnsdomainid := OLD.dns_domain_id;
+		ELSE
+			_dnsdomainid := NULL;
+		END IF;
+		if _mkip and OLD.netblock_id is not NULL THEN
+			SELECT	ip_address
+			  INTO	_ipaddr
+			  FROM	netblock
+			 WHERE	netblock_id  = OLD.netblock_id;
+		ELSE
+			_ipaddr := NULL;
+		END IF;
+		insert into DNS_CHANGE_RECORD
+			(dns_domain_id, ip_address) VALUES (_dnsdomainid, _ipaddr);
+	END IF;
+	if _mknew THEN
+		if _mkdom THEN
+			_dnsdomainid := NEW.dns_domain_id;
+		ELSE
+			_dnsdomainid := NULL;
+		END IF;
+		if _mkip and NEW.netblock_id is not NULL THEN
+			SELECT	ip_address
+			  INTO	_ipaddr
+			  FROM	netblock
+			 WHERE	netblock_id  = NEW.netblock_id;
+		ELSE
+			_ipaddr := NULL;
+		END IF;
+		insert into DNS_CHANGE_RECORD
+			(dns_domain_id, ip_address) VALUES (_dnsdomainid, _ipaddr);
+	END IF;
+	IF TG_OP = 'DELETE' THEN
+		return OLD;
+	END IF;
+	return NEW;
+END;
+$function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'fix_person_image_oid_ownership');
+CREATE OR REPLACE FUNCTION jazzhands.fix_person_image_oid_ownership()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+   b	integer;
+   str	varchar;
+BEGIN
+	b := NEW.image_blob;
+	BEGIN
+		str := 'GRANT SELECT on LARGE OBJECT ' || b || ' to picture_image_ro';
+		EXECUTE str;
+		str :=  'GRANT UPDATE on LARGE OBJECT ' || b || ' to picture_image_rw';
+		EXECUTE str;
+	EXCEPTION WHEN OTHERS THEN
+		RAISE NOTICE 'Unable to grant on %', b;
+	END;
+
+	BEGIN
+		EXECUTE 'ALTER large object ' || b || ' owner to jazzhands';
+	EXCEPTION WHEN OTHERS THEN
+		RAISE NOTICE 'Unable to adjust ownership of %', b;
+	END;
+	RETURN NEW;
+END;
+$function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'net_int_physical_id_to_slot_id_enforce');
+CREATE OR REPLACE FUNCTION jazzhands.net_int_physical_id_to_slot_id_enforce()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	_tally	INTEGER;
+BEGIN
+	IF TG_OP = 'UPDATE' AND  (NEW.slot_id IS DISTINCT FROM OLD.slot_ID AND
+			NEW.physical_port_id IS DISTINCT FROM OLD.physical_port_id) THEN
+		RAISE EXCEPTION 'Only slot_id should be updated.'
+			USING ERRCODE = 'integrity_constraint_violation';
+	ELSIF TG_OP = 'INSERT' THEN
+		IF NEW.physical_port_id IS NOT NULL AND NEW.slot_id IS NOT NULL THEN
+			RAISE EXCEPTION 'Only slot_id should be set.'
+				USING ERRCODE = 'integrity_constraint_violation';
+		END IF;
+
+	END IF;
+
+	IF TG_OP = 'UPDATE' THEN
+		IF OLD.slot_id IS DISTINCT FROM NEW.slot_id THEN
+			NEW.physical_port_id = NEW.slot_id;
+		ELSIF OLD.physical_port_id IS DISTINCT FROM NEW.physical_port_id THEN
+			NEW.slot_id = NEW.physical_port_id;
+		END IF;
+	ELSIF TG_OP = 'INSERT' THEN
+		IF NEW.slot_id IS NOT NULL THEN
+			NEW.physical_port_id = NEW.slot_id;
+		ELSIF NEW.physical_port_id IS NOT NULL THEN
+			NEW.slot_id = NEW.physical_port_id;
+		END IF;
+	ELSE
+	END IF;
+	RETURN NEW;
+END;
+$function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'phys_conn_physical_id_to_slot_id_enforce');
+CREATE OR REPLACE FUNCTION jazzhands.phys_conn_physical_id_to_slot_id_enforce()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	_tally	INTEGER;
+BEGIN
+	IF TG_OP = 'UPDATE' AND
+		((NEW.slot1_id IS DISTINCT FROM OLD.slot1_ID AND
+			NEW.physical_port1_id IS DISTINCT FROM OLD.physical_port1_id) OR
+		(NEW.slot2_id IS DISTINCT FROM OLD.slot2_ID AND
+			NEW.physical_port2_id IS DISTINCT FROM OLD.physical_port2_id))
+	THEN
+		RAISE EXCEPTION 'Only slot1_id OR slot2_id should be updated.'
+			USING ERRCODE = 'integrity_constraint_violation';
+	ELSIF TG_OP = 'INSERT' THEN
+		IF (NEW.physical_port1_id IS NOT NULL AND NEW.slot1_id IS NOT NULL) OR
+			(NEW.physical_port2_id IS NOT NULL AND NEW.slot2_id IS NOT NULL)
+		THEN
+			RAISE EXCEPTION 'Only slot1_id OR slot2_id should be set.'
+				USING ERRCODE = 'integrity_constraint_violation';
+		END IF;
+
+	END IF;
+
+	IF TG_OP = 'UPDATE' THEN
+		IF OLD.slot1_id IS DISTINCT FROM NEW.slot1_id THEN
+			NEW.physical_port1_id = NEW.slot1_id;
+		ELSIF OLD.physical_port1_id IS DISTINCT FROM NEW.physical_port1_id THEN
+			NEW.slot1_id = NEW.physical_port1_id;
+		END IF;
+		IF OLD.slot2_id IS DISTINCT FROM NEW.slot2_id THEN
+			NEW.physical_port2_id = NEW.slot2_id;
+		ELSIF OLD.physical_port2_id IS DISTINCT FROM NEW.physical_port2_id THEN
+			NEW.slot2_id = NEW.physical_port2_id;
+		END IF;
+	ELSIF TG_OP = 'INSERT' THEN
+		IF NEW.slot1_id IS NOT NULL THEN
+			NEW.physical_port1_id = NEW.slot_id;
+		ELSIF NEW.physical_port1_id IS NOT NULL THEN
+			NEW.slot1_id = NEW.physical_port1_id;
+		END IF;
+		IF NEW.slot2_id IS NOT NULL THEN
+			NEW.physical_port2_id = NEW.slot_id;
+		ELSIF NEW.physical_port2_id IS NOT NULL THEN
+			NEW.slot2_id = NEW.physical_port2_id;
+		END IF;
+	ELSE
+	END IF;
+	RETURN NEW;
+END;
+$function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'property_collection_member_enforce');
+CREATE OR REPLACE FUNCTION jazzhands.property_collection_member_enforce()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	pct	val_property_collection_type%ROWTYPE;
+	tally integer;
+BEGIN
+	SELECT *
+	INTO	pct
+	FROM	val_property_collection_type
+	WHERE	property_collection_type =
+		(select property_collection_type from property_collection
+			where property_collection_id = NEW.property_collection_id);
+
+	IF pct.MAX_NUM_MEMBERS IS NOT NULL THEN
+		select count(*)
+		  into tally
+		  from property_collection_property
+		  where property_collection_id = NEW.property_collection_id;
+		IF tally > pct.MAX_NUM_MEMBERS THEN
+			RAISE EXCEPTION 'Too many members'
+				USING ERRCODE = 'unique_violation';
+		END IF;
+	END IF;
+
+	IF pct.MAX_NUM_COLLECTIONS IS NOT NULL THEN
+		select count(*)
+		  into tally
+		  from property_collection_property
+		  		inner join property_collection using (property_collection_id)
+		  where
+				property_name = NEW.property_name
+		  and	property_type = NEW.property_type
+		  and	property_collection_type = pct.property_collection_type;
+		IF tally > pct.MAX_NUM_COLLECTIONS THEN
+			RAISE EXCEPTION 'Property may not be a member of more than % collections of type %',
+				pct.MAX_NUM_COLLECTIONS, pct.property_collection_type
+				USING ERRCODE = 'unique_violation';
+		END IF;
+	END IF;
+
+	RETURN NEW;
+END;
+$function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'service_environment_coll_hier_enforce');
+CREATE OR REPLACE FUNCTION jazzhands.service_environment_coll_hier_enforce()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	svcenvt	val_service_env_coll_type%ROWTYPE;
+BEGIN
+	SELECT *
+	INTO	svcenvt
+	FROM	val_service_env_coll_type
+	WHERE	service_env_collection_type =
+		(select service_env_collection_type
+			from service_environment_collection
+			where service_env_collection_id =
+				NEW.service_env_collection_id);
+
+	IF svcenvt.can_have_hierarchy = 'N' THEN
+		RAISE EXCEPTION 'Service Environment Collections of type % may not be hierarcical',
+			svcenvt.service_env_collection_type
+			USING ERRCODE= 'unique_violation';
+	END IF;
+	RETURN NEW;
+END;
+$function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'service_environment_collection_member_enforce');
+CREATE OR REPLACE FUNCTION jazzhands.service_environment_collection_member_enforce()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	svcenvt	val_service_env_coll_type%ROWTYPE;
+	tally integer;
+BEGIN
+	SELECT *
+	INTO	svcenvt
+	FROM	val_service_env_coll_type
+	WHERE	service_env_collection_type =
+		(select service_env_collection_type
+			from service_environment_collection
+			where service_env_collection_id =
+				NEW.service_env_collection_id);
+
+	IF svcenvt.MAX_NUM_MEMBERS IS NOT NULL THEN
+		select count(*)
+		  into tally
+		  from svc_environment_coll_svc_env
+		  where service_env_collection_id = NEW.service_env_collection_id;
+		IF tally > svcenvt.MAX_NUM_MEMBERS THEN
+			RAISE EXCEPTION 'Too many members'
+				USING ERRCODE = 'unique_violation';
+		END IF;
+	END IF;
+
+	IF svcenvt.MAX_NUM_COLLECTIONS IS NOT NULL THEN
+		select count(*)
+		  into tally
+		  from svc_environment_coll_svc_env
+		  		inner join service_environment_collection
+					USING (service_env_collection_id)
+		  where service_environment_id = NEW.service_environment_id
+		  and	service_env_collection_type =
+					svcenvt.service_env_collection_type;
+		IF tally > svcenvt.MAX_NUM_COLLECTIONS THEN
+			RAISE EXCEPTION 'Service Environment may not be a member of more than % collections of type %',
+				svcenvt.MAX_NUM_COLLECTIONS, svcenvt.service_env_collection_type
+				USING ERRCODE = 'unique_violation';
+		END IF;
+	END IF;
+
+	RETURN NEW;
+END;
+$function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'upd_v_corp_family_account');
+CREATE OR REPLACE FUNCTION jazzhands.upd_v_corp_family_account()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	acct_realm_id	account_realm.account_realm_id%TYPE;
+	setstr		TEXT;
+	_r		RECORD;
+	val		TEXT;
+BEGIN
+	SELECT	account_realm_id
+	INTO	acct_realm_id
+	FROM	property
+	WHERE	property_name = '_root_account_realm_id'
+	AND	property_type = 'Defaults';
+
+	IF acct_realm_id != OLD.account_realm_id OR
+			acct_realm_id != NEW.account_realm_id THEN
+		RAISE EXCEPTION 'Invalid account_realm_id'
+		USING ERRCODE = 'foreign_key_violation';
+	END IF;
+
+	setstr = '';
+	FOR _r IN SELECT * FROM json_each_text( row_to_json(NEW) )
+	LOOP
+		IF _r.key NOT SIMILAR TO 'data_(ins|upd)_(user|date)' THEN
+			EXECUTE 'SELECT ' || _r.key ||' FROM account
+				WHERE account_id = ' || OLD.account_id
+				INTO val;
+			IF ( _r.value IS NULL  AND val IS NOT NULL) OR
+				( _r.value IS NOT NULL AND val IS NULL) OR
+				(_r.value::text NOT SIMILAR TO val::text) THEN
+				-- RAISE NOTICE 'Changing %: "%" to "%"', _r.key, val, _r.value;
+				IF char_length(setstr) > 0 THEN
+					setstr = setstr || ',
+					';
+				END IF;
+				IF _r.value IS NOT  NULL THEN
+					setstr = setstr || _r.key || ' = ' ||
+						quote_nullable(_r.value) || ' ' ;
+				ELSE
+					setstr = setstr || _r.key || ' = ' ||
+						' NULL ' ;
+				END IF;
+			END IF;
+		END IF;
+	END LOOP;
+
+
+	IF char_length(setstr) > 0 THEN
+		setstr = 'UPDATE account SET ' || setstr || '
+			WHERE	account_id = ' || OLD.account_id;
+		-- RAISE NOTICE 'executing %', setstr;
+		EXECUTE setstr;
+	END IF;
+	RETURN NEW;
+
+END;
+$function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'update_per_svc_env_svc_env_collection');
+CREATE OR REPLACE FUNCTION jazzhands.update_per_svc_env_svc_env_collection()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	secid		service_environment_collection.service_env_collection_id%TYPE;
+BEGIN
+	IF TG_OP = 'INSERT' THEN
+		insert into service_environment_collection
+			(service_env_collection_name, service_env_collection_type)
+		values
+			(NEW.service_environment_name, 'per-environment')
+		RETURNING service_env_collection_id INTO secid;
+		insert into svc_environment_coll_svc_env
+			(service_env_collection_id, service_environment_id)
+		VALUES
+			(secid, NEW.service_environment_id);
+	ELSIF TG_OP = 'UPDATE'  AND OLD.service_environment_id != NEW.service_environment_id THEN
+		UPDATE	service_environment_collection
+		   SET	service_env_collection_name = NEW.service_environment_name
+		 WHERE	service_env_collection_name != NEW.service_environment_name
+		   AND	service_env_collection_type = 'per-environment'
+		   AND	service_environment_id in (
+			SELECT	service_environment_id
+			  FROM	svc_environment_coll_svc_env
+			 WHERE	service_environment_id =
+				NEW.service_environment_id
+			);
+	END IF;
+	RETURN NEW;
+END;
+$function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'validate_component_parent_slot_id');
+CREATE OR REPLACE FUNCTION jazzhands.validate_component_parent_slot_id()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	stid	integer;
+BEGIN
+	IF NEW.parent_slot_id IS NULL THEN
+		RETURN NEW;
+	END IF;
+
+	PERFORM
+		*
+	FROM
+		slot s JOIN
+		slot_type_prmt_comp_slot_type stpcst USING (slot_type_id) JOIN
+		component_type ct ON (stpcst.component_slot_type_id = ct.slot_type_id)
+	WHERE
+		ct.component_type_id = NEW.component_type_id AND
+		s.slot_id = NEW.parent_slot_id;
+
+	IF NOT FOUND THEN
+		SELECT slot_type_id INTO stid FROM slot WHERE slot_id = NEW.parent_slot_id;
+		RAISE EXCEPTION 'Component type % is not permitted in slot % (slot type %)',
+			NEW.component_type_id, NEW.parent_slot_id, stid
+			USING ERRCODE = 'foreign_key_violation';
+	END IF;
+
+	RETURN NEW;
+END;
+$function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'validate_component_property');
+CREATE OR REPLACE FUNCTION jazzhands.validate_component_property()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	tally				INTEGER;
+	v_comp_prop			RECORD;
+	v_comp_prop_type	RECORD;
+	v_num				bigint;
+	v_listvalue			TEXT;
+	component_attrs		RECORD;
+BEGIN
+
+	-- Pull in the data from the property and property_type so we can
+	-- figure out what is and is not valid
+
+	BEGIN
+		SELECT * INTO STRICT v_comp_prop FROM val_component_property WHERE
+			component_property_name = NEW.component_property_name AND
+			component_property_type = NEW.component_property_type;
+
+		SELECT * INTO STRICT v_comp_prop_type FROM val_component_property_type
+			WHERE component_property_type = NEW.component_property_type;
+	EXCEPTION
+		WHEN NO_DATA_FOUND THEN
+			RAISE EXCEPTION
+				'Component property name or type does not exist'
+				USING ERRCODE = 'foreign_key_violation';
+			RETURN NULL;
+	END;
+
+	-- Check to see if the property itself is multivalue.  That is, if only
+	-- one value can be set for this property for a specific property LHS
+
+	IF (v_comp_prop.is_multivalue != 'Y') THEN
+		PERFORM 1 FROM component_property WHERE
+			component_property_id != NEW.component_property_id AND
+			component_property_name = NEW.component_property_name AND
+			component_property_type = NEW.component_property_type AND
+			component_type_id IS NOT DISTINCT FROM NEW.component_type_id AND
+			component_function IS NOT DISTINCT FROM NEW.component_function AND
+			component_id iS NOT DISTINCT FROM NEW.component_id AND
+			slot_type_id IS NOT DISTINCT FROM NEW.slot_type_id AND
+			slot_function IS NOT DISTINCT FROM NEW.slot_function AND
+			slot_id IS NOT DISTINCT FROM NEW.slot_id;
+
+		IF FOUND THEN
+			RAISE EXCEPTION
+				'Property with name % and type % already exists for given LHS and property is not multivalue',
+				NEW.component_property_name,
+				NEW.component_property_type
+				USING ERRCODE = 'unique_violation';
+			RETURN NULL;
+		END IF;
+	END IF;
+
+	-- Check to see if the property type is multivalue.  That is, if only
+	-- one property and value can be set for any properties with this type
+	-- for a specific property LHS
+
+	IF (v_comp_prop_type.is_multivalue != 'Y') THEN
+		PERFORM 1 FROM component_property WHERE
+			component_property_id != NEW.component_property_id AND
+			component_property_type = NEW.component_property_type AND
+			component_type_id IS NOT DISTINCT FROM NEW.component_type_id AND
+			component_function IS NOT DISTINCT FROM NEW.component_function AND
+			component_id iS NOT DISTINCT FROM NEW.component_id AND
+			slot_type_id IS NOT DISTINCT FROM NEW.slot_type_id AND
+			slot_function IS NOT DISTINCT FROM NEW.slot_function AND
+			slot_id IS NOT DISTINCT FROM NEW.slot_id;
+
+		IF FOUND THEN
+			RAISE EXCEPTION
+				'Property % of type % already exists for given LHS and property type is not multivalue',
+				NEW.component_property_name, NEW.component_property_type
+				USING ERRCODE = 'unique_violation';
+			RETURN NULL;
+		END IF;
+	END IF;
+
+	-- now validate the property_value columns.
+	tally := 0;
+
+	--
+	-- first determine if the property_value is set properly.
+	--
+
+	-- at this point, tally will be set to 1 if one of the other property
+	-- values is set to something valid.  Now, check the various options for
+	-- PROPERTY_VALUE itself.  If a new type is added to the val table, this
+	-- trigger needs to be updated or it will be considered invalid.  If a
+	-- new PROPERTY_VALUE_* column is added, then it will pass through without
+	-- trigger modification.  This should be considered bad.
+
+	IF NEW.property_value IS NOT NULL THEN
+		tally := tally + 1;
+		IF v_comp_prop.property_data_type = 'boolean' THEN
+			IF NEW.Property_Value != 'Y' AND NEW.Property_Value != 'N' THEN
+				RAISE 'Boolean property_value must be Y or N' USING
+					ERRCODE = 'invalid_parameter_value';
+			END IF;
+		ELSIF v_comp_prop.property_data_type = 'number' THEN
+			BEGIN
+				v_num := to_number(NEW.property_value, '9');
+			EXCEPTION
+				WHEN OTHERS THEN
+					RAISE 'property_value must be numeric' USING
+						ERRCODE = 'invalid_parameter_value';
+			END;
+		ELSIF v_comp_prop.property_data_type = 'list' THEN
+			BEGIN
+				SELECT valid_property_value INTO STRICT v_listvalue FROM
+					val_component_property_value WHERE
+						component_property_name = NEW.component_property_name AND
+						component_property_type = NEW.component_property_type AND
+						valid_property_value = NEW.property_value;
+			EXCEPTION
+				WHEN NO_DATA_FOUND THEN
+					RAISE 'property_value must be a valid value' USING
+						ERRCODE = 'invalid_parameter_value';
+			END;
+		ELSIF v_comp_prop.property_data_type != 'string' THEN
+			RAISE 'property_data_type is not a known type' USING
+				ERRCODE = 'invalid_parameter_value';
+		END IF;
+	END IF;
+
+	IF v_comp_prop.property_data_type != 'none' AND tally = 0 THEN
+		RAISE 'One of the property_value fields must be set.' USING
+			ERRCODE = 'invalid_parameter_value';
+	END IF;
+
+	IF tally > 1 THEN
+		RAISE 'Only one of the property_value fields may be set.' USING
+			ERRCODE = 'invalid_parameter_value';
+	END IF;
+
+	--
+	-- At this point, the value itself is valid for this property, now
+	-- determine whether the property is allowed on the target
+	--
+	-- There needs to be a stanza here for every "lhs".  If a new column is
+	-- added to the component_property table, a new stanza needs to be added
+	-- here, otherwise it will not be validated.  This should be considered bad.
+
+	IF v_comp_prop.permit_component_type_id = 'REQUIRED' THEN
+		IF NEW.component_type_id IS NULL THEN
+			RAISE 'component_type_id is required.'
+				USING ERRCODE = 'invalid_parameter_value';
+		END IF;
+	ELSIF v_comp_prop.permit_component_type_id = 'PROHIBITED' THEN
+		IF NEW.component_type_id IS NOT NULL THEN
+			RAISE 'component_type_id is prohibited.'
+				USING ERRCODE = 'invalid_parameter_value';
+		END IF;
+	END IF;
+
+	IF v_comp_prop.permit_component_function = 'REQUIRED' THEN
+		IF NEW.component_function IS NULL THEN
+			RAISE 'component_function is required.'
+				USING ERRCODE = 'invalid_parameter_value';
+		END IF;
+	ELSIF v_comp_prop.permit_component_function = 'PROHIBITED' THEN
+		IF NEW.component_function IS NOT NULL THEN
+			RAISE 'component_function is prohibited.'
+				USING ERRCODE = 'invalid_parameter_value';
+		END IF;
+	END IF;
+
+	IF v_comp_prop.permit_component_id = 'REQUIRED' THEN
+		IF NEW.component_id IS NULL THEN
+			RAISE 'component_id is required.'
+				USING ERRCODE = 'invalid_parameter_value';
+		END IF;
+	ELSIF v_comp_prop.permit_component_id = 'PROHIBITED' THEN
+		IF NEW.component_id IS NOT NULL THEN
+			RAISE 'component_id is prohibited.'
+				USING ERRCODE = 'invalid_parameter_value';
+		END IF;
+	END IF;
+
+	IF v_comp_prop.permit_intcomp_conn_id = 'REQUIRED' THEN
+		IF NEW.inter_component_connection_id IS NULL THEN
+			RAISE 'inter_component_connection_id is required.'
+				USING ERRCODE = 'invalid_parameter_value';
+		END IF;
+	ELSIF v_comp_prop.permit_intcomp_conn_id = 'PROHIBITED' THEN
+		IF NEW.inter_component_connection_id IS NOT NULL THEN
+			RAISE 'inter_component_connection_id is prohibited.'
+				USING ERRCODE = 'invalid_parameter_value';
+		END IF;
+	END IF;
+
+	IF v_comp_prop.permit_slot_type_id = 'REQUIRED' THEN
+		IF NEW.slot_type_id IS NULL THEN
+			RAISE 'slot_type_id is required.'
+				USING ERRCODE = 'invalid_parameter_value';
+		END IF;
+	ELSIF v_comp_prop.permit_slot_type_id = 'PROHIBITED' THEN
+		IF NEW.slot_type_id IS NOT NULL THEN
+			RAISE 'slot_type_id is prohibited.'
+				USING ERRCODE = 'invalid_parameter_value';
+		END IF;
+	END IF;
+
+	IF v_comp_prop.permit_slot_function = 'REQUIRED' THEN
+		IF NEW.slot_function IS NULL THEN
+			RAISE 'slot_function is required.'
+				USING ERRCODE = 'invalid_parameter_value';
+		END IF;
+	ELSIF v_comp_prop.permit_slot_function = 'PROHIBITED' THEN
+		IF NEW.slot_function IS NOT NULL THEN
+			RAISE 'slot_function is prohibited.'
+				USING ERRCODE = 'invalid_parameter_value';
+		END IF;
+	END IF;
+
+	IF v_comp_prop.permit_slot_id = 'REQUIRED' THEN
+		IF NEW.slot_id IS NULL THEN
+			RAISE 'slot_id is required.'
+				USING ERRCODE = 'invalid_parameter_value';
+		END IF;
+	ELSIF v_comp_prop.permit_slot_id = 'PROHIBITED' THEN
+		IF NEW.slot_id IS NOT NULL THEN
+			RAISE 'slot_id is prohibited.'
+				USING ERRCODE = 'invalid_parameter_value';
+		END IF;
+	END IF;
+
+	--
+	-- LHS population is verified; now validate any particular restrictions
+	-- on individual values
+	--
+
+	--
+	-- For slot_id, validate that the component_type, component_function,
+	-- slot_type, and slot_function are all valid
+	--
+	IF NEW.slot_id IS NOT NULL AND COALESCE(
+			v_comp_prop.required_component_type_id::text,
+			v_comp_prop.required_component_function,
+			v_comp_prop.required_slot_type_id::text,
+			v_comp_prop.required_slot_function) IS NOT NULL THEN
+
+		WITH x AS (
+			SELECT
+				component_type_id,
+				array_agg(component_function) as component_function
+			FROM
+				component_type_component_func
+			GROUP BY
+				component_type_id
+		) SELECT
+			component_type_id,
+			component_function,
+			st.slot_type_id,
+			slot_function
+		INTO
+			component_attrs
+		FROM
+			slot cs JOIN
+			slot_type st USING (slot_type_id) JOIN
+			component c USING (component_id) JOIN
+			component_type ct USING (component_type_id) LEFT JOIN
+			x USING (component_type_id)
+		WHERE
+			slot_id = NEW.slot_id;
+
+		IF v_comp_prop.required_component_type_id IS NOT NULL AND
+				v_comp_prop.required_component_type_id !=
+				component_attrs.component_type_id THEN
+			RAISE 'component_type for slot_id must be % (is: %)',
+					v_comp_prop.required_component_type_id,
+					component_attrs.component_type_id
+				USING ERRCODE = 'invalid_parameter_value';
+		END IF;
+
+		IF v_comp_prop.required_component_function IS NOT NULL AND
+				NOT (v_comp_prop.required_component_function =
+					ANY(component_attrs.component_function)) THEN
+			RAISE 'component_function for slot_id must be % (is: %)',
+					v_comp_prop.required_component_function,
+					component_attrs.component_function
+				USING ERRCODE = 'invalid_parameter_value';
+		END IF;
+
+		IF v_comp_prop.required_slot_type_id IS NOT NULL AND
+				v_comp_prop.required_slot_type_id !=
+				component_attrs.slot_type_id THEN
+			RAISE 'slot_type_id for slot_id must be % (is: %)',
+					v_comp_prop.required_slot_type_id,
+					component_attrs.slot_type_id
+				USING ERRCODE = 'invalid_parameter_value';
+		END IF;
+
+		IF v_comp_prop.required_slot_function IS NOT NULL AND
+				v_comp_prop.required_slot_function !=
+				component_attrs.slot_function THEN
+			RAISE 'slot_function for slot_id must be % (is: %)',
+					v_comp_prop.required_slot_function,
+					component_attrs.slot_function
+				USING ERRCODE = 'invalid_parameter_value';
+		END IF;
+	END IF;
+
+	IF NEW.slot_type_id IS NOT NULL AND
+			v_comp_prop.required_slot_function IS NOT NULL THEN
+
+		SELECT
+			slot_function
+		INTO
+			component_attrs
+		FROM
+			slot_type st
+		WHERE
+			slot_type_id = NEW.slot_type_id;
+
+		IF v_comp_prop.required_slot_function !=
+				component_attrs.slot_function THEN
+			RAISE 'slot_function for slot_type_id must be % (is: %)',
+					v_comp_prop.required_slot_function,
+					component_attrs.slot_function
+				USING ERRCODE = 'invalid_parameter_value';
+		END IF;
+	END IF;
+
+	IF NEW.component_id IS NOT NULL AND COALESCE(
+			v_comp_prop.required_component_type_id::text,
+			v_comp_prop.required_component_function) IS NOT NULL THEN
+
+		SELECT
+			component_type_id,
+			array_agg(component_function) as component_function
+		INTO
+			component_attrs
+		FROM
+			component c JOIN
+			component_type_component_func ctcf USING (component_type_id)
+		WHERE
+			component_id = NEW.component_id
+		GROUP BY
+			component_type_id;
+
+		IF v_comp_prop.required_component_type_id IS NOT NULL AND
+				v_comp_prop.required_component_type_id !=
+				component_attrs.component_type_id THEN
+			RAISE 'component_type for component_id must be % (is: %)',
+					v_comp_prop.required_component_type_id,
+					component_attrs.component_type_id
+				USING ERRCODE = 'invalid_parameter_value';
+		END IF;
+
+		IF v_comp_prop.required_component_function IS NOT NULL AND
+				NOT (v_comp_prop.required_component_function =
+					ANY(component_attrs.component_function)) THEN
+			RAISE 'component_function for component_id must be % (is: %)',
+					v_comp_prop.required_component_function,
+					component_attrs.component_function
+				USING ERRCODE = 'invalid_parameter_value';
+		END IF;
+	END IF;
+
+	IF NEW.component_type_id IS NOT NULL AND
+			v_comp_prop.required_component_function IS NOT NULL THEN
+
+		SELECT
+			component_type_id,
+			array_agg(component_function) as component_function
+		INTO
+			component_attrs
+		FROM
+			component_type_component_func ctcf
+		WHERE
+			component_type_id = NEW.component_type_id
+		GROUP BY
+			component_type_id;
+
+		IF v_comp_prop.required_component_function IS NOT NULL AND
+				NOT (v_comp_prop.required_component_function =
+					ANY(component_attrs.component_function)) THEN
+			RAISE 'component_function for component_type_id must be % (is: %)',
+					v_comp_prop.required_component_function,
+					component_attrs.component_function
+				USING ERRCODE = 'invalid_parameter_value';
+		END IF;
+	END IF;
+
+	RETURN NEW;
+END;
+$function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'validate_device_collection_type_change');
+CREATE OR REPLACE FUNCTION jazzhands.validate_device_collection_type_change()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	_tally	integer;
+BEGIN
+	IF OLD.device_collection_type != NEW.device_collection_type THEN
+		SELECT	COUNT(*)
+		INTO	_tally
+		FROM	property p
+			join val_property vp USING (property_name,property_type)
+		WHERE	vp.device_collection_type = OLD.device_collection_type
+		AND	p.device_collection_id = NEW.device_collection_id;
+
+		IF _tally > 0 THEN
+			RAISE EXCEPTION 'device_collection % of type % is used by % restricted properties.',
+				NEW.device_collection_id, NEW.device_collection_type, _tally
+				USING ERRCODE = 'foreign_key_violation';
+		END IF;
+	END IF;
+	RETURN NEW;
+END;
+$function$
+;
+
+-- Changed function
 SELECT schema_support.save_grants_for_replay('jazzhands', 'validate_device_component_assignment');
 CREATE OR REPLACE FUNCTION jazzhands.validate_device_component_assignment()
  RETURNS trigger
@@ -8865,6 +13229,694 @@ BEGIN
 		USING ERRCODE = 'foreign_key_violation';
 	END IF;
 
+	RETURN NEW;
+END;
+$function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'validate_dns_domain_collection_type_change');
+CREATE OR REPLACE FUNCTION jazzhands.validate_dns_domain_collection_type_change()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	_tally	integer;
+BEGIN
+	IF OLD.dns_domain_collection_type != NEW.dns_domain_collection_type THEN
+		SELECT	COUNT(*)
+		INTO	_tally
+		FROM	property p
+			join val_property vp USING (property_name,property_type)
+		WHERE	vp.dns_domain_collection_type = OLD.dns_domain_collection_type
+		AND	p.dns_domain_collection_id = NEW.dns_domain_collection_id;
+
+		IF _tally > 0 THEN
+			RAISE EXCEPTION 'dns_domain_collection % of type % is used by % restricted properties.',
+				NEW.dns_domain_collection_id, NEW.dns_domain_collection_type, _tally
+				USING ERRCODE = 'foreign_key_violation';
+		END IF;
+	END IF;
+	RETURN NEW;
+END;
+$function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'validate_inter_component_connection');
+CREATE OR REPLACE FUNCTION jazzhands.validate_inter_component_connection()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	slot_type_info	RECORD;
+	csid_rec	RECORD;
+BEGIN
+	IF NEW.slot1_id = NEW.slot2_id THEN
+		RAISE EXCEPTION 'A slot may not be connected to itself'
+			USING ERRCODE = 'check_violation';
+	END IF;
+
+	--
+	-- Validate that slot_ids are not already connected
+	-- to something else
+	--
+
+	SELECT
+		slot1_id,
+		slot2_id
+	INTO
+		csid_rec
+	FROM
+		inter_component_connection icc
+	WHERE
+		icc.inter_component_connection_id != NEW.inter_component_connection_id
+			AND
+		(icc.slot1_id = NEW.slot1_id OR
+		 icc.slot1_id = NEW.slot2_id OR
+		 icc.slot2_id = NEW.slot1_id OR
+		 icc.slot2_id = NEW.slot2_id )
+	LIMIT 1;
+
+	IF FOUND THEN
+		IF csid_rec.slot1_id = NEW.slot1_id THEN
+			RAISE EXCEPTION
+				'slot_id % is already attached to slot_id %',
+				NEW.slot1_id, csid_rec.slot2_id
+				USING ERRCODE = 'unique_violation';
+		ELSIF csid_rec.slot1_id = NEW.slot2_id THEN
+			RAISE EXCEPTION
+				'slot_id % is already attached to slot_id %',
+				NEW.slot1_id, csid_rec.slot1_id
+				USING ERRCODE = 'unique_violation';
+		ELSIF csid_rec.slot2_id = NEW.slot1_id THEN
+			RAISE EXCEPTION
+				'slot_id % is already attached to slot_id %',
+				NEW.slot2_id, csid_rec.slot2_id
+				USING ERRCODE = 'unique_violation';
+		ELSIF csid_rec.slot2_id = NEW.slot2_id THEN
+			RAISE EXCEPTION
+				'slot_id % is already attached to slot_id %',
+				NEW.slot2_id, csid_rec.slot1_id
+				USING ERRCODE = 'unique_violation';
+		END IF;
+	END IF;
+
+	PERFORM
+		*
+	FROM
+		(slot cs1 JOIN slot_type st1 USING (slot_type_id)) slot1,
+		(slot cs2 JOIN slot_type st2 USING (slot_type_id)) slot2,
+		slot_type_prmt_rem_slot_type pst
+	WHERE
+		slot1.slot_id = NEW.slot1_id AND
+		slot2.slot_id = NEW.slot2_id AND
+		-- Remove next line if we ever decide to allow cross-function
+		-- connections
+		slot1.slot_function = slot2.slot_function AND
+		((slot1.slot_type_id = pst.slot_type_id AND
+				slot2.slot_type_id = pst.remote_slot_type_id) OR
+			(slot2.slot_type_id = pst.slot_type_id AND
+				slot1.slot_type_id = pst.remote_slot_type_id));
+
+	IF NOT FOUND THEN
+		RAISE EXCEPTION 'Slot types are not allowed to be connected'
+			USING ERRCODE = 'check_violation';
+	END IF;
+
+	RETURN NEW;
+END;
+$function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'validate_layer2_network_collection_type_change');
+CREATE OR REPLACE FUNCTION jazzhands.validate_layer2_network_collection_type_change()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	_tally	integer;
+BEGIN
+	IF OLD.layer2_network_collection_type != NEW.layer2_network_collection_type THEN
+		SELECT	COUNT(*)
+		INTO	_tally
+		FROM	property p
+			join val_property vp USING (property_name,property_type)
+		WHERE	vp.layer2_network_collection_type = OLD.layer2_network_collection_type
+		AND	p.layer2_network_collection_id = NEW.layer2_network_collection_id;
+
+		IF _tally > 0 THEN
+			RAISE EXCEPTION 'layer2_network_collection % of type % is used by % restricted properties.',
+				NEW.layer2_network_collection_id, NEW.layer2_network_collection_type, _tally
+				USING ERRCODE = 'foreign_key_violation';
+		END IF;
+	END IF;
+	RETURN NEW;
+END;
+$function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'validate_layer3_network_collection_type_change');
+CREATE OR REPLACE FUNCTION jazzhands.validate_layer3_network_collection_type_change()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	_tally	integer;
+BEGIN
+	IF OLD.layer3_network_collection_type != NEW.layer3_network_collection_type THEN
+		SELECT	COUNT(*)
+		INTO	_tally
+		FROM	property p
+			join val_property vp USING (property_name,property_type)
+		WHERE	vp.layer3_network_collection_type = OLD.layer3_network_collection_type
+		AND	p.layer3_network_collection_id = NEW.layer3_network_collection_id;
+
+		IF _tally > 0 THEN
+			RAISE EXCEPTION 'layer3_network_collection % of type % is used by % restricted properties.',
+				NEW.layer3_network_collection_id, NEW.layer3_network_collection_type, _tally
+				USING ERRCODE = 'foreign_key_violation';
+		END IF;
+	END IF;
+	RETURN NEW;
+END;
+$function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'validate_netblock_collection_type_change');
+CREATE OR REPLACE FUNCTION jazzhands.validate_netblock_collection_type_change()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	_tally	integer;
+BEGIN
+	IF OLD.netblock_collection_type != NEW.netblock_collection_type THEN
+		SELECT	COUNT(*)
+		INTO	_tally
+		FROM	property p
+			join val_property vp USING (property_name,property_type)
+		WHERE	vp.netblock_collection_type = OLD.netblock_collection_type
+		AND	p.netblock_collection_id = NEW.netblock_collection_id;
+
+		IF _tally > 0 THEN
+			RAISE EXCEPTION 'netblock_collection % of type % is used by % restricted properties.',
+				NEW.netblock_collection_id, NEW.netblock_collection_type, _tally
+				USING ERRCODE = 'foreign_key_violation';
+		END IF;
+	END IF;
+	RETURN NEW;
+END;
+$function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'validate_netblock_parentage');
+CREATE OR REPLACE FUNCTION jazzhands.validate_netblock_parentage()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	nbrec			record;
+	realnew			record;
+	nbtype			record;
+	parent_nbid		netblock.netblock_id%type;
+	ipaddr			inet;
+	parent_ipaddr	inet;
+	single_count	integer;
+	nonsingle_count	integer;
+	pip	    		netblock.ip_address%type;
+BEGIN
+
+	RAISE DEBUG 'Validating % of netblock %', TG_OP, NEW.netblock_id;
+
+	SELECT * INTO nbtype FROM val_netblock_type WHERE
+		netblock_type = NEW.netblock_type;
+
+	/*
+	 * It's possible that due to delayed triggers that what is stored in
+	 * NEW is not current, so fetch the current values
+	 */
+
+	SELECT * INTO realnew FROM netblock WHERE netblock_id =
+		NEW.netblock_id;
+	IF NOT FOUND THEN
+		/*
+		 * If the netblock isn't there, it was subsequently deleted, so
+		 * our parentage doesn't need to be checked
+		 */
+		RETURN NULL;
+	END IF;
+
+
+	/*
+	 * If the parent changed above (or somewhere else between update and
+	 * now), just bail, because another trigger will have been fired that
+	 * we can do the full check with.
+	 */
+	IF NEW.parent_netblock_id != realnew.parent_netblock_id AND
+		realnew.parent_netblock_id IS NOT NULL
+	THEN
+		RAISE DEBUG '... skipping for now';
+		RETURN NULL;
+	END IF;
+
+	/*
+	 * Validate that parent and all children are of the same netblock_type and
+	 * in the same ip_universe.  We care about this even if the
+	 * netblock type is not a validated type.
+	 */
+
+	RAISE DEBUG 'Verifying child ip_universe and type match';
+	PERFORM netblock_id FROM netblock WHERE
+		parent_netblock_id = realnew.netblock_id AND
+		netblock_type != realnew.netblock_type AND
+		ip_universe_id != realnew.ip_universe_id;
+
+	IF FOUND THEN
+		RAISE EXCEPTION 'Netblock children must all be of the same type and universe as the parent'
+			USING ERRCODE = 'JH109';
+	END IF;
+
+	RAISE DEBUG '... OK';
+
+	/*
+	 * validate that this netblock is attached to its correct parent
+	 */
+	IF realnew.parent_netblock_id IS NULL THEN
+		IF nbtype.is_validated_hierarchy='N' THEN
+			RETURN NULL;
+		END IF;
+		RAISE DEBUG 'Checking hierarchical netblock_id % with NULL parent',
+			NEW.netblock_id;
+
+		IF realnew.is_single_address = 'Y' THEN
+			RAISE 'A single address (%) must be the child of a parent netblock, which must have can_subnet=N',
+				realnew.ip_address
+				USING ERRCODE = 'JH105';
+		END IF;
+
+		/*
+		 * Validate that a netblock has a parent, unless
+		 * it is the root of a hierarchy
+		 */
+		parent_nbid := netblock_utils.find_best_parent_id(
+			realnew.ip_address,
+			NULL,
+			realnew.netblock_type,
+			realnew.ip_universe_id,
+			realnew.is_single_address,
+			realnew.netblock_id
+		);
+
+		IF parent_nbid IS NOT NULL THEN
+			SELECT * INTO nbrec FROM netblock WHERE netblock_id =
+				parent_nbid;
+
+			RAISE EXCEPTION 'Netblock % (%) has NULL parent; should be % (%)',
+				realnew.netblock_id, realnew.ip_address,
+				parent_nbid, nbrec.ip_address USING ERRCODE = 'JH102';
+		END IF;
+
+		/*
+		 * Validate that none of the other top-level netblocks should
+		 * belong to this netblock
+		 */
+		PERFORM netblock_id FROM netblock WHERE
+			parent_netblock_id IS NULL AND
+			netblock_id != NEW.netblock_id AND
+			netblock_type = NEW.netblock_type AND
+			ip_universe_id = NEW.ip_universe_id AND
+			ip_address <<= NEW.ip_address;
+		IF FOUND THEN
+			RAISE EXCEPTION 'Other top-level netblocks should belong to this parent'
+				USING ERRCODE = 'JH108';
+		END IF;
+	ELSE
+	 	/*
+		 * Reject a block that is self-referential
+		 */
+	 	IF realnew.parent_netblock_id = realnew.netblock_id THEN
+			RAISE EXCEPTION 'Netblock may not have itself as a parent'
+				USING ERRCODE = 'JH101';
+		END IF;
+
+		SELECT * INTO nbrec FROM netblock WHERE netblock_id =
+			realnew.parent_netblock_id;
+
+		/*
+		 * This shouldn't happen, but may because of deferred constraints
+		 */
+		IF NOT FOUND THEN
+			RAISE EXCEPTION 'Parent netblock % does not exist',
+			realnew.parent_netblock_id
+			USING ERRCODE = 'foreign_key_violation';
+		END IF;
+
+		IF nbrec.is_single_address = 'Y' THEN
+			RAISE EXCEPTION 'A parent netblock (% for %) may not be a single address',
+			nbrec.netblock_id, realnew.ip_address
+			USING ERRCODE = 'JH10A';
+		END IF;
+
+		IF nbrec.ip_universe_id != realnew.ip_universe_id OR
+				nbrec.netblock_type != realnew.netblock_type THEN
+			RAISE EXCEPTION 'Netblock children must all be of the same type and universe as the parent'
+			USING ERRCODE = 'JH109';
+		END IF;
+
+		IF nbtype.is_validated_hierarchy='N' THEN
+			RETURN NULL;
+		ELSE
+			parent_nbid := netblock_utils.find_best_parent_id(
+				realnew.ip_address,
+				NULL,
+				realnew.netblock_type,
+				realnew.ip_universe_id,
+				realnew.is_single_address,
+				realnew.netblock_id
+				);
+
+			IF realnew.can_subnet = 'N' THEN
+				PERFORM netblock_id FROM netblock WHERE
+					parent_netblock_id = realnew.netblock_id AND
+					is_single_address = 'N';
+				IF FOUND THEN
+					RAISE EXCEPTION 'A non-subnettable netblock (%) may not have child network netblocks',
+					realnew.netblock_id
+					USING ERRCODE = 'JH10B';
+				END IF;
+			END IF;
+			IF realnew.is_single_address = 'Y' THEN
+				SELECT * INTO nbrec FROM netblock
+					WHERE netblock_id = realnew.parent_netblock_id;
+				IF (nbrec.can_subnet = 'Y') THEN
+					RAISE 'Parent netblock % for single-address % must have can_subnet=N',
+						nbrec.netblock_id,
+						realnew.ip_address
+						USING ERRCODE = 'JH10D';
+				END IF;
+				IF (masklen(realnew.ip_address) !=
+						masklen(nbrec.ip_address)) THEN
+					RAISE 'Parent netblock % does not have the same netmask as single-address child % (% vs %)',
+						parent_nbid, realnew.netblock_id,
+						masklen(nbrec.ip_address),
+						masklen(realnew.ip_address)
+						USING ERRCODE = 'JH105';
+				END IF;
+			END IF;
+			IF (parent_nbid IS NULL OR realnew.parent_netblock_id != parent_nbid) THEN
+				SELECT ip_address INTO parent_ipaddr FROM netblock
+				WHERE
+					netblock_id = parent_nbid;
+				SELECT ip_address INTO ipaddr FROM netblock WHERE
+					netblock_id = realnew.parent_netblock_id;
+
+				RAISE EXCEPTION
+					'Parent netblock % (%) for netblock % (%) is not the correct parent (should be % (%))',
+					realnew.parent_netblock_id, ipaddr,
+					realnew.netblock_id, realnew.ip_address,
+					parent_nbid, parent_ipaddr
+					USING ERRCODE = 'JH102';
+			END IF;
+			/*
+			 * Validate that all children are is_single_address='Y' or
+			 * all children are is_single_address='N'
+			 */
+			SELECT count(*) INTO single_count FROM netblock WHERE
+				is_single_address='Y' and parent_netblock_id =
+				realnew.parent_netblock_id;
+			SELECT count(*) INTO nonsingle_count FROM netblock WHERE
+				is_single_address='N' and parent_netblock_id =
+				realnew.parent_netblock_id;
+
+			IF (single_count > 0 and nonsingle_count > 0) THEN
+				SELECT * INTO nbrec FROM netblock WHERE netblock_id =
+					realnew.parent_netblock_id;
+				RAISE EXCEPTION 'Netblock % (%) may not have direct children for both single and multiple addresses simultaneously',
+					nbrec.netblock_id, nbrec.ip_address
+					USING ERRCODE = 'JH107';
+			END IF;
+			/*
+			 *  If we're updating and we changed our ip_address (including
+			 *  netmask bits), then check that our children still belong to
+			 *  us
+			 */
+			 IF (TG_OP = 'UPDATE' AND NEW.ip_address != OLD.ip_address) THEN
+				PERFORM netblock_id FROM netblock WHERE
+					parent_netblock_id = realnew.netblock_id AND
+					((is_single_address = 'Y' AND NEW.ip_address !=
+						ip_address::cidr) OR
+					(is_single_address = 'N' AND realnew.netblock_id !=
+						netblock_utils.find_best_parent_id(netblock_id)));
+				IF FOUND THEN
+					RAISE EXCEPTION 'Update for netblock % (%) causes parent to have children that do not belong to it',
+						realnew.netblock_id, realnew.ip_address
+						USING ERRCODE = 'JH10E';
+				END IF;
+			END IF;
+
+			/*
+			 * Validate that none of the children of the parent netblock are
+			 * children of this netblock (e.g. if inserting into the middle
+			 * of the hierarchy)
+			 */
+			IF (realnew.is_single_address = 'N') THEN
+				PERFORM netblock_id FROM netblock WHERE
+					parent_netblock_id = realnew.parent_netblock_id AND
+					netblock_id != realnew.netblock_id AND
+					ip_address <<= realnew.ip_address;
+				IF FOUND THEN
+					RAISE EXCEPTION 'Other netblocks have children that should belong to parent % (%)',
+						realnew.parent_netblock_id, realnew.ip_address
+						USING ERRCODE = 'JH108';
+				END IF;
+			END IF;
+		END IF;
+	END IF;
+
+	RETURN NULL;
+END;
+$function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'validate_netblock_to_range_changes');
+CREATE OR REPLACE FUNCTION jazzhands.validate_netblock_to_range_changes()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+BEGIN
+	PERFORM
+	FROM	network_range nr
+			JOIN netblock p on p.netblock_id = nr.parent_netblock_id
+			JOIN netblock start on start.netblock_id = nr.start_netblock_id
+			JOIN netblock stop on stop.netblock_id = nr.stop_netblock_id
+			JOIN val_network_range_type vnrt USING (network_range_type)
+	WHERE	( p.netblock_id = NEW.netblock_id
+				OR start.netblock_id = NEW.netblock_id
+				OR stop.netblock_id = NEW.netblock_id
+			) AND (
+					p.can_subnet = 'Y'
+				OR 	start.is_single_address = 'N'
+				OR 	stop.is_single_address = 'N'
+				OR NOT (
+					host(start.ip_address)::inet <<= p.ip_address
+					AND host(stop.ip_address)::inet <<= p.ip_address
+				)
+				OR ( vnrt.netblock_type IS NOT NULL
+				OR NOT
+					( start.netblock_type IS NOT DISTINCT FROM vnrt.netblock_type
+					AND	stop.netblock_type IS NOT DISTINCT FROM vnrt.netblock_type
+					)
+				)
+			)
+	;
+
+	IF FOUND THEN
+		RAISE EXCEPTION 'Netblock changes conflict with network range requirements '
+			USING ERRCODE = 'integrity_constraint_violation';
+	END IF;
+	RETURN NEW;
+END; $function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'validate_network_range_ips');
+CREATE OR REPLACE FUNCTION jazzhands.validate_network_range_ips()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	v_nrt	val_network_range_type%ROWTYPE;
+	v_nbt	val_netblock_type.netblock_type%TYPE;
+BEGIN
+	SELECT	*
+	INTO	v_nrt
+	FROM	val_network_range_type
+	WHERE	network_range_type = NEW.network_range_type;
+
+	--
+	-- check to make sure type mapping works
+	--
+	IF v_nrt.netblock_type IS NOT NULL THEN
+		SELECT	netblock_type
+		INTO	v_nbt
+		FROM	netblock
+		WHERE	netblock_id = NEW.start_netblock_id
+		AND		netblock_type != v_nrt.netblock_type;
+
+		IF FOUND THEN
+			RAISE EXCEPTION 'For range %, start netblock_type must be %, not %',
+				NEW.network_range_type, v_nrt.netblock_type, v_nbt
+				USING ERRCODE = 'integrity_constraint_violation';
+		END IF;
+
+		SELECT	netblock_type
+		INTO	v_nbt
+		FROM	netblock
+		WHERE	netblock_id = NEW.stop_netblock_id
+		AND		netblock_type != v_nrt.netblock_type;
+
+		IF FOUND THEN
+			RAISE EXCEPTION 'For range %, stop netblock_type must be %, not %',
+				NEW.network_range_type, v_brt.netblock_type, v_nbt
+				USING ERRCODE = 'integrity_constraint_violation';
+		END IF;
+	END IF;
+
+	--
+	-- Check to ensure both stop and start have is_single_address = 'Y'
+	--
+	PERFORM
+	FROM	netblock
+	WHERE	( netblock_id = NEW.start_netblock_id
+				OR netblock_id = NEW.stop_netblock_id
+			) AND is_single_address = 'N';
+
+	IF FOUND THEN
+		RAISE EXCEPTION 'Start and stop types must be single addresses'
+			USING ERRCODE = 'integrity_constraint_violation';
+	END IF;
+
+	PERFORM
+	FROM	netblock
+	WHERE	netblock_id = NEW.parent_netblock_id
+	AND can_subnet = 'Y';
+
+	IF FOUND THEN
+		RAISE EXCEPTION 'Can not set ranges on subnetable netblocks'
+			USING ERRCODE = 'integrity_constraint_violation';
+	END IF;
+
+	PERFORM
+	FROM	netblock parent
+			JOIN netblock start ON start.netblock_id = NEW.start_netblock_id
+			JOIN netblock stop ON stop.netblock_id = NEW.stop_netblock_id
+	WHERE
+			parent.netblock_id = NEW.parent_netblock_id
+			AND NOT ( host(start.ip_address)::inet <<= parent.ip_address
+				AND host(stop.ip_address)::inet <<= parent.ip_address
+			)
+	;
+
+	IF FOUND THEN
+		RAISE EXCEPTION 'Start and stop must be within parents'
+			USING ERRCODE = 'integrity_constraint_violation';
+	END IF;
+
+	RETURN NEW;
+END; $function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'validate_service_env_collection_type_change');
+CREATE OR REPLACE FUNCTION jazzhands.validate_service_env_collection_type_change()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	_tally	integer;
+BEGIN
+	IF OLD.service_env_collection_type != NEW.service_env_collection_type THEN
+		SELECT	COUNT(*)
+		INTO	_tally
+		FROM	property p
+			join val_property vp USING (property_name,property_type)
+		WHERE	vp.service_env_collection_type = OLD.service_env_collection_type
+		AND	p.service_env_collection_id = NEW.service_env_collection_id;
+
+		IF _tally > 0 THEN
+			RAISE EXCEPTION 'service_env_collection % of type % is used by % restricted properties.',
+				NEW.service_env_collection_id, NEW.service_env_collection_type, _tally
+				USING ERRCODE = 'foreign_key_violation';
+		END IF;
+	END IF;
+	RETURN NEW;
+END;
+$function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'verify_physical_connection');
+CREATE OR REPLACE FUNCTION jazzhands.verify_physical_connection()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+BEGIN
+	PERFORM 1 FROM
+		physical_connection l1
+		JOIN physical_connection l2 ON
+			l1.slot1_id = l2.slot2_id AND
+			l1.slot2_id = l2.slot1_id;
+	IF FOUND THEN
+		RAISE EXCEPTION 'Connection already exists in opposite direction';
+	END IF;
+	RETURN NEW;
+END;
+$function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'verify_physicalish_volume');
+CREATE OR REPLACE FUNCTION jazzhands.verify_physicalish_volume()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+BEGIN
+	IF NEW.logical_volume_id IS NOT NULL AND NEW.component_Id IS NOT NULL THEN
+		RAISE EXCEPTION 'One and only one of logical_volume_id or component_id must be set'
+			USING ERRCODE = 'unique_violation';
+	END IF;
+	IF NEW.logical_volume_id IS NULL AND NEW.component_Id IS NULL THEN
+		RAISE EXCEPTION 'One and only one of logical_volume_id or component_id must be set'
+			USING ERRCODE = 'not_null_violation';
+	END IF;
 	RETURN NEW;
 END;
 $function$
@@ -9668,8 +14720,8 @@ BEGIN
     END IF;
     _companyid := company_id;
 
-    SELECT arc.account_realm_id
-      INTO _account_realm_id
+    SELECT arc.account_realm_id 
+      INTO _account_realm_id 
       FROM account_realm_company arc
      WHERE arc.company_id = _companyid;
     IF NOT FOUND THEN
@@ -9677,9 +14729,9 @@ BEGIN
     END IF;
 
     IF login is NULL THEN
-        IF first_name IS NULL or last_name IS NULL THEN
+        IF first_name IS NULL or last_name IS NULL THEN 
             RAISE EXCEPTION 'Must specify login name or first name+last name';
-        ELSE
+        ELSE 
             login := person_manip.pick_login(
                 in_account_realm_id := _account_realm_id,
                 in_first_name := coalesce(preferred_first_name, first_name),
@@ -9732,7 +14784,7 @@ BEGIN
     END IF;
 
     IF physical_address_id IS NOT NULL AND site_code IS NOT NULL THEN
-        INSERT INTO person_location
+        INSERT INTO person_location 
             (person_id, person_location_type, site_code, physical_address_id)
         VALUES
             (person_id, person_location_type, site_code, physical_address_id);
@@ -9880,8 +14932,8 @@ BEGIN
 	IF _company_short_name IS NULL and _isfam = 'Y' THEN
 		_short := lower(regexp_replace(
 				regexp_replace(
-					regexp_replace(_company_name,
-						E'\\s+(ltd|sarl|limited|pt[ye]|GmbH|ag|ab|inc)',
+					regexp_replace(_company_name, 
+						E'\\s+(ltd|sarl|limited|pt[ye]|GmbH|ag|ab|inc)', 
 						'', 'gi'),
 					E'[,\\.\\$#@]', '', 'mg'),
 				E'\\s+', '_', 'gi'));
@@ -9992,7 +15044,7 @@ BEGIN
 
 	SELECT * INTO _d FROM device WHERE device_id = in_Device_id;
 	delete from dns_record where netblock_id in (
-		select netblock_id
+		select netblock_id 
 		from network_interface where device_id = in_Device_id
 	);
 
@@ -10011,7 +15063,7 @@ BEGIN
 --	PERFORM device_utils.purge_power_ports( in_Device_id);
 
 	delete from property where device_collection_id in (
-		SELECT	dc.device_collection_id
+		SELECT	dc.device_collection_id 
 		  FROM	device_collection dc
 				INNER JOIN device_collection_device dcd
 		 			USING (device_collection_id)
@@ -10022,9 +15074,9 @@ BEGIN
 	delete from device_collection_device where device_id = in_Device_id;
 	delete from snmp_commstr where device_id = in_Device_id;
 
-
+		
 	IF _d.rack_location_id IS NOT NULL  THEN
-		UPDATE device SET rack_location_id = NULL
+		UPDATE device SET rack_location_id = NULL 
 		WHERE device_id = in_Device_id;
 
 		-- This should not be permitted based on constraints, but in case
@@ -10035,7 +15087,7 @@ BEGIN
 		 WHERE	rack_location_id = _d.RACK_LOCATION_ID;
 
 		IF tally = 0 THEN
-			DELETE FROM rack_location
+			DELETE FROM rack_location 
 			WHERE rack_location_id = _d.RACK_LOCATION_ID;
 		END IF;
 	END IF;
@@ -10073,7 +15125,7 @@ BEGIN
 
 	--
 	-- If there is no notes or serial number its save to remove
-	--
+	-- 
 	IF tally = 0 AND _d.ASSET_ID is NULL THEN
 		_purgedev := true;
 	END IF;
@@ -10091,7 +15143,7 @@ BEGIN
 		END;
 	END IF;
 
-	UPDATE device SET
+	UPDATE device SET 
 		device_name =NULL,
 		service_environment_id = (
 			select service_environment_id from service_environment
@@ -10126,7 +15178,7 @@ AS $function$
 DECLARE
 	netblock_rec	RECORD;
 BEGIN
-	RETURN QUERY
+	RETURN QUERY 
 		SELECT * into netblock_rec FROM netblock_manip.allocate_netblock(
 		parent_netblock_list := ARRAY[parent_netblock_id],
 		netmask_bits := netmask_bits,
@@ -10177,7 +15229,7 @@ BEGIN
 	END IF;
 
 	IF ip_address IS NOT NULL THEN
-		SELECT
+		SELECT 
 			array_agg(netblock_id)
 		INTO
 			parent_netblock_list
@@ -10195,7 +15247,7 @@ BEGIN
 	-- Lock the parent row, which should keep parallel processes from
 	-- trying to obtain the same address
 
-	FOR parent_rec IN SELECT * FROM jazzhands.netblock WHERE netblock_id =
+	FOR parent_rec IN SELECT * FROM jazzhands.netblock WHERE netblock_id = 
 			ANY(allocate_netblock.parent_netblock_list) ORDER BY netblock_id
 			FOR UPDATE LOOP
 
@@ -10206,15 +15258,15 @@ BEGIN
 
 		IF inet_family IS NULL THEN
 			inet_family := family(parent_rec.ip_address);
-		ELSIF inet_family != family(parent_rec.ip_address)
+		ELSIF inet_family != family(parent_rec.ip_address) 
 				AND ip_address IS NULL THEN
 			RAISE EXCEPTION 'Allocation may not mix IPv4 and IPv6 addresses'
 			USING ERRCODE = 'JH10F';
 		END IF;
 
 		IF address_type = 'loopback' THEN
-			loopback_bits :=
-				CASE WHEN
+			loopback_bits := 
+				CASE WHEN 
 					family(parent_rec.ip_address) = 4 THEN 32 ELSE 128 END;
 
 			IF parent_rec.can_subnet = 'N' THEN
@@ -10367,7 +15419,7 @@ BEGIN
 			allocate_netblock.description,
 			allocate_netblock.netblock_status
 		) RETURNING * INTO netblock_rec;
-
+		
 		RAISE DEBUG 'Allocated netblock_id % for %',
 			netblock_rec.netblock_id,
 			netblock_rec.ip_address;
@@ -10402,18 +15454,18 @@ BEGIN
 	--
 	-- If the network range already exists, then just return it
 	--
-	SELECT
+	SELECT 
 		nr.* INTO netrange
 	FROM
 		jazzhands.network_range nr JOIN
-		jazzhands.netblock startnb ON (nr.start_netblock_id =
+		jazzhands.netblock startnb ON (nr.start_netblock_id = 
 			startnb.netblock_id) JOIN
 		jazzhands.netblock stopnb ON (nr.stop_netblock_id = stopnb.netblock_id)
 	WHERE
 		nr.network_range_type = nrtype AND
 		host(startnb.ip_address) = host(start_ip_address) AND
 		host(stopnb.ip_address) = host(stop_ip_address) AND
-		CASE WHEN pnbid IS NOT NULL THEN
+		CASE WHEN pnbid IS NOT NULL THEN 
 			(pnbid = nr.parent_netblock_id)
 		ELSE
 			true
@@ -10426,11 +15478,11 @@ BEGIN
 	--
 	-- If any other network ranges exist that overlap this, then error
 	--
-	PERFORM
+	PERFORM 
 		*
 	FROM
 		jazzhands.network_range nr JOIN
-		jazzhands.netblock startnb ON
+		jazzhands.netblock startnb ON 
 			(nr.start_netblock_id = startnb.netblock_id) JOIN
 		jazzhands.netblock stopnb ON (nr.stop_netblock_id = stopnb.netblock_id)
 	WHERE
@@ -10449,7 +15501,7 @@ BEGIN
 	END IF;
 
 	IF parent_netblock_id IS NOT NULL THEN
-		SELECT * INTO par_netblock FROM jazzhands.netblock WHERE
+		SELECT * INTO par_netblock FROM jazzhands.netblock WHERE 
 			netblock_id = pnbid;
 		IF NOT FOUND THEN
 			RAISE 'create_network_range: parent_netblock_id % does not exist',
@@ -10457,7 +15509,7 @@ BEGIN
 		END IF;
 	ELSE
 		SELECT * INTO par_netblock FROM jazzhands.netblock WHERE netblock_id = (
-			SELECT
+			SELECT 
 				*
 			FROM
 				netblock_utils.find_best_parent_id(
@@ -10472,7 +15524,7 @@ BEGIN
 		END IF;
 	END IF;
 
-	IF par_netblock.can_subnet != 'N' OR
+	IF par_netblock.can_subnet != 'N' OR 
 			par_netblock.is_single_address != 'N' THEN
 		RAISE 'create_network_range: parent netblock % must not be subnettable or a single address',
 			par_netblock.netblock_id USING ERRCODE = 'check_violation';
@@ -10501,7 +15553,7 @@ BEGIN
 	-- range, unless allow_assigned is set
 	--
 	IF NOT allow_assigned THEN
-		PERFORM
+		PERFORM 
 			*
 		FROM
 			jazzhands.netblock n
@@ -10668,7 +15720,7 @@ BEGIN
 	-- The device type doesn't exist, so attempt to insert it
 	--
 
-	IF NOT FOUND THEN
+	IF NOT FOUND THEN	
 		IF pci_device_name IS NULL OR component_function_list IS NULL THEN
 			RAISE EXCEPTION 'component_id not found and pci_device_name or component_function_list was not passed' USING ERRCODE = 'JH501';
 		END IF;
@@ -10685,14 +15737,14 @@ BEGIN
 			property_type = 'DeviceProvisioning' AND
 			property_name = 'PCIVendorID' AND
 			property_value = pci_vendor_id::text;
-
+		
 		IF NOT FOUND THEN
 			IF pci_vendor_name IS NULL THEN
 				RAISE EXCEPTION 'PCI vendor id mapping not found and pci_vendor_name was not passed' USING ERRCODE = 'JH501';
 			END IF;
 			SELECT company_id INTO comp_id FROM company
 			WHERE company_name = pci_vendor_name;
-
+		
 			IF NOT FOUND THEN
 				SELECT company_manip.add_company(
 					_company_name := pci_vendor_name,
@@ -10724,14 +15776,14 @@ BEGIN
 			property_type = 'DeviceProvisioning' AND
 			property_name = 'PCIVendorID' AND
 			property_value = pci_sub_vendor_id::text;
-
+		
 		IF NOT FOUND THEN
 			IF pci_sub_vendor_name IS NULL THEN
 				RAISE EXCEPTION 'PCI subsystem vendor id mapping not found and pci_sub_vendor_name was not passed' USING ERRCODE = 'JH501';
 			END IF;
 			SELECT company_id INTO sub_comp_id FROM company
 			WHERE company_name = pci_sub_vendor_name;
-
+		
 			IF NOT FOUND THEN
 				SELECT company_manip.add_company(
 					_company_name := pci_sub_vendor_name,
@@ -10758,7 +15810,7 @@ BEGIN
 		-- Fetch the slot type
 		--
 
-		SELECT
+		SELECT 
 			slot_type_id INTO stid
 		FROM
 			slot_type st
@@ -10776,11 +15828,11 @@ BEGIN
 		-- Figure out the best name/description to insert this component with
 		--
 		IF pci_sub_device_name IS NOT NULL AND pci_sub_device_name != 'Device' THEN
-			model_name = concat_ws(' ',
+			model_name = concat_ws(' ', 
 				sub_vendor_name, pci_sub_device_name,
 				'(' || vendor_name, pci_device_name || ')');
 		ELSIF pci_sub_device_name = 'Device' THEN
-			model_name = concat_ws(' ',
+			model_name = concat_ws(' ', 
 				vendor_name, '(' || sub_vendor_name || ')', pci_device_name);
 		ELSE
 			model_name = concat_ws(' ', vendor_name, pci_device_name);
@@ -10792,7 +15844,7 @@ BEGIN
 			asset_permitted,
 			description
 		) VALUES (
-			CASE WHEN
+			CASE WHEN 
 				sub_comp_id IS NULL OR
 				pci_sub_device_name IS NULL OR
 				pci_sub_device_name = 'Device'
@@ -10821,17 +15873,17 @@ BEGIN
 			component_property_type,
 			component_type_id,
 			property_value
-		) VALUES
+		) VALUES 
 			('PCIVendorID', 'PCI', ctid, pci_vendor_id),
 			('PCIDeviceID', 'PCI', ctid, pci_device_id);
-
+		
 		IF (pci_subsystem_id IS NOT NULL) THEN
 			INSERT INTO component_property (
 				component_property_name,
 				component_property_type,
 				component_type_id,
 				property_value
-			) VALUES
+			) VALUES 
 				('PCISubsystemVendorID', 'PCI', ctid, pci_sub_vendor_id),
 				('PCISubsystemID', 'PCI', ctid, pci_subsystem_id);
 		END IF;
@@ -10855,7 +15907,7 @@ BEGIN
 	-- serial number already exists
 	--
 	IF serial_number IS NOT NULL THEN
-		SELECT
+		SELECT 
 			component.* INTO c
 		FROM
 			component JOIN
@@ -10908,7 +15960,7 @@ BEGIN
 	cid := NULL;
 
 	IF sn IS NOT NULL THEN
-		SELECT
+		SELECT 
 			comp.* INTO c
 		FROM
 			component comp JOIN
@@ -12631,7 +17683,7 @@ BEGIN
 		PERFORM schema_support.refresh_mv_if_needed(object, 'jazzhands');
 	END IF;
 END;
-$$
+$$ 
 SET search_path=jazzhands
 LANGUAGE plpgsql SECURITY DEFINER;
 
@@ -12646,7 +17698,7 @@ $$
 BEGIN
 	RETURN schema_support.relation_last_changed(view);
 END;
-$$
+$$ 
 SET search_path=jazzhands
 LANGUAGE plpgsql SECURITY DEFINER;
 
@@ -12703,7 +17755,7 @@ WITH conn_props AS (
 	FROM	component_property
 	WHERE	component_property_type = 'tcpsrv-connections'
 	AND		component_property_name = 'tcpsrv_enabled'
-) SELECT
+) SELECT	
 	icc.inter_component_connection_id  AS layer1_connection_id,
 	icc.slot1_id			AS physical_port1_id,
 	icc.slot2_id			AS physical_port2_id,
@@ -12775,7 +17827,7 @@ FROM inter_component_connection icc
 
 create or replace view physical_port
 AS
-SELECT
+SELECT	
 	sl.slot_id			AS physical_port_id,
 	d.device_id,
 	sl.slot_name			AS port_name,
@@ -12794,7 +17846,7 @@ SELECT
 	sl.data_ins_date,
 	sl.data_upd_user,
 	sl.data_upd_date
-  FROM	slot sl
+  FROM	slot sl 
 	INNER JOIN slot_type st USING (slot_type_id)
 	INNER JOIN v_device_slots d USING (slot_id)
 	INNER JOIN component c ON (sl.component_id = c.component_id)
@@ -12852,27 +17904,27 @@ SELECT
 -- assigned to the users in order of their priorities.
 
 CREATE OR REPLACE VIEW v_dev_col_user_prop_expanded AS
-SELECT
+SELECT	
 	property_id,
 	dchd.device_collection_id,
 	a.account_id, a.login, a.account_status,
 	ar.account_realm_id, ar.account_realm_name,
 	a.is_enabled,
 	upo.property_type property_type,
-	upo.property_name property_name,
-	upo.property_rank property_rank,
+	upo.property_name property_name, 
+	upo.property_rank property_rank, 
 	coalesce(Property_Value_Password_Type, Property_Value) AS property_value,
 	CASE WHEN upn.is_multivalue = 'N' THEN 0
 		ELSE 1 END is_multivalue,
 	CASE WHEN pdt.property_data_type = 'boolean' THEN 1 ELSE 0 END is_boolean
 FROM	v_acct_coll_acct_expanded_detail uued
-	INNER JOIN Account_Collection u
+	INNER JOIN Account_Collection u 
 		USING (account_collection_id)
-	INNER JOIN v_property upo ON
+	INNER JOIN v_property upo ON 
 		upo.Account_Collection_id = u.Account_Collection_id
 		AND upo.property_type in (
-			'CCAForceCreation', 'CCARight', 'ConsoleACL', 'RADIUS',
-			'TokenMgmt', 'UnixPasswdFileValue', 'UserMgmt', 'cca',
+			'CCAForceCreation', 'CCARight', 'ConsoleACL', 'RADIUS', 
+			'TokenMgmt', 'UnixPasswdFileValue', 'UserMgmt', 'cca', 
 			'feed-attributes', 'wwwgroup', 'HOTPants')
 	INNER JOIN val_property upn
 		ON upo.property_name = upn.property_name
@@ -12890,17 +17942,17 @@ ORDER BY device_collection_level,
 	ELSE 3 END,
   CASE WHEN uued.assign_method = 'Account_CollectionAssignedToPerson' THEN 0
 	WHEN uued.assign_method = 'Account_CollectionAssignedToDept' THEN 1
-	WHEN uued.assign_method =
+	WHEN uued.assign_method = 
 	'ParentAccount_CollectionOfAccount_CollectionAssignedToPerson' THEN 2
-	WHEN uued.assign_method =
+	WHEN uued.assign_method = 
 	'ParentAccount_CollectionOfAccount_CollectionAssignedToDept' THEN 2
-	WHEN uued.assign_method =
+	WHEN uued.assign_method = 
 	'Account_CollectionAssignedToParentDept' THEN 3
-	WHEN uued.assign_method =
-	'ParentAccount_CollectionOfAccount_CollectionAssignedToParentDep'
+	WHEN uued.assign_method = 
+	'ParentAccount_CollectionOfAccount_CollectionAssignedToParentDep' 
 			THEN 3
         ELSE 6 END,
-  uued.dept_level, uued.acct_coll_level, dchd.device_collection_id,
+  uued.dept_level, uued.acct_coll_level, dchd.device_collection_id, 
   u.Account_Collection_id;
 
 
@@ -12958,7 +18010,7 @@ WITH perdevtomclass AS  (
 	FROM perdevtomclass p
 		INNER JOIN v_device_coll_hier_detail d ON
 			d.device_collection_id = p.mclass_device_collection_id
-)
+) 
 SELECT device_collection_id, account_collection_id,
 	array_agg(setting ORDER BY rn) AS setting
 FROM (
@@ -12966,12 +18018,12 @@ FROM (
 		SELECT device_collection_id, account_collection_id,
 				unnest(ARRAY[property_name, property_value]) AS setting
 		FROM (
-			SELECT  dchd.device_collection_id,
+			SELECT  dchd.device_collection_id, 
 					acpe.account_collection_id,
-					p.property_name,
-					coalesce(p.property_value,
+					p.property_name, 
+					coalesce(p.property_value, 
 						p.property_value_password_type) as property_value,
-					row_number() OVER (partition by
+					row_number() OVER (partition by 
 							dchd.device_collection_id,
 							acpe.account_collection_id,
 							acpe.property_name
@@ -12982,12 +18034,12 @@ FROM (
 				INNER JOIN unix_group ug USING (account_collection_id)
 				INNER JOIN v_property p USING (property_id)
 				INNER JOIN dcmap dchd
-					ON dchd.parent_device_collection_id =
+					ON dchd.parent_device_collection_id = 
 						p.device_collection_id
-			WHERE	p.property_type IN ('UnixPasswdFileValue',
+			WHERE	p.property_type IN ('UnixPasswdFileValue', 
 						'UnixGroupFileProperty',
 						'MclassUnixProp')
-			AND		p.property_name NOT IN
+			AND		p.property_name NOT IN 
 					('UnixLogin','UnixGroup','UnixGroupMemberOverride')
 		) dc_acct_prop_list
 		WHERE ord = 1
@@ -13029,13 +18081,13 @@ SELECT	property_id,
 	property_value,
 	property_rank,
 	is_boolean
-FROM	v_dev_col_user_prop_expanded
+FROM	v_dev_col_user_prop_expanded 
 	INNER JOIN Device_Collection USING (Device_Collection_ID)
 WHERE	is_enabled = 'Y'
 AND	(
 		Device_Collection_Type IN ('HOTPants-app', 'HOTPants')
 	OR
-		Property_Type IN ('RADIUS', 'HOTPants')
+		Property_Type IN ('RADIUS', 'HOTPants') 
 	)
 ;
 
@@ -13123,7 +18175,7 @@ FROM (
 -- properties are set.  Its primary use is by other views.
 --
 -- It includes entries for all mclasses and will also include contrived entries
--- for every -- per-device device collection by mapping it through devices
+-- for every -- per-device device collection by mapping it through devices 
 -- to an mclass.
 -- That is, if there is a ForceHome (or whatever) on an mclass and that user is
 -- added to the per-device collection, the ForceHome will show up on the
@@ -13154,7 +18206,7 @@ WITH perdevtomclass AS  (
 	FROM perdevtomclass p
 		INNER JOIN v_device_coll_hier_detail d ON
 			d.device_collection_id = p.mclass_device_collection_id
-) SELECT device_collection_id, account_id,
+) SELECT device_collection_id, account_id, 
 	array_agg(setting ORDER BY rn) AS setting
 FROM (
 	SELECT *, row_number() over () AS rn FROM (
@@ -13163,10 +18215,10 @@ FROM (
 		FROM (
 			SELECT  dchd.device_collection_id,
 					acae.account_id,
-					p.property_name,
-					coalesce(p.property_value,
+					p.property_name, 
+					coalesce(p.property_value, 
 						p.property_value_password_type) as property_value,
-					row_number() OVER (partition by
+					row_number() OVER (partition by 
 							dchd.device_collection_id,
 							acae.account_id,
 							acpe.property_name
@@ -13174,15 +18226,15 @@ FROM (
 								property_id
 					) AS ord
 			FROM    v_acct_coll_prop_expanded acpe
-				INNER JOIN v_acct_coll_acct_expanded acae
+				INNER JOIN v_acct_coll_acct_expanded acae 
 						USING (account_collection_id)
 				INNER JOIN v_property p USING (property_id)
 				INNER JOIN dcmap dchd
 					ON dchd.parent_device_collection_id = p.device_collection_id
-			WHERE	p.property_type IN ('UnixPasswdFileValue',
+			WHERE	p.property_type IN ('UnixPasswdFileValue', 
 						'UnixGroupFileProperty',
 						'MclassUnixProp')
-			AND		p.property_name NOT IN
+			AND		p.property_name NOT IN 
 					('UnixLogin','UnixGroup','UnixGroupMemberOverride')
 		) dc_acct_prop_list
 		WHERE ord = 1
@@ -13224,8 +18276,8 @@ SELECT DISTINCT
 			dc.device_collection_id = dcr.parent_device_collection_id
                 LEFT JOIN device_collection_device dcd ON
                         dcd.device_collection_id = dcr.device_collection_id
-                LEFT JOIN Device USING (Device_Id)
-                LEFT JOIN Network_Interface NI USING (Device_ID)
+                LEFT JOIN Device USING (Device_Id) 
+                LEFT JOIN Network_Interface NI USING (Device_ID) 
                 LEFT JOIN Netblock NB USING (Netblock_id)
 	WHERE
 		device_collection_type IN ('HOTPants', 'HOTPants-app')
@@ -13334,16 +18386,18 @@ CREATE TRIGGER trigger_upd_x509_certificate
         INSTEAD OF UPDATE ON x509_certificate
         FOR EACH ROW
         EXECUTE PROCEDURE upd_x509_certificate();
-CREATE TRIGGER trigger_del_x509_certificate
-        INSTEAD OF DELETE ON x509_certificate
-        FOR EACH ROW EXECUTE
-        PROCEDURE del_x509_certificate();
+CREATE TRIGGER trigger_del_x509_certificate 
+	INSTEAD OF DELETE ON x509_certificate 
+	FOR EACH ROW EXECUTE 
+	PROCEDURE del_x509_certificate();
 
 --- view defaults
-ALTER TABLE ONLY x509_certificate
-        ALTER COLUMN is_active SET DEFAULT 'Y'::bpchar;
-ALTER TABLE ONLY x509_certificate
-        ALTER COLUMN is_certificate_authority SET DEFAULT 'N'::bpchar;
+ALTER TABLE ONLY x509_certificate 
+	ALTER COLUMN is_active SET DEFAULT 'Y'::bpchar;
+ALTER TABLE ONLY x509_certificate 
+	ALTER COLUMN is_certificate_authority SET DEFAULT 'N'::bpchar;
+
+
 
 -- END Misc that does not apply to above
 

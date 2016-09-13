@@ -2955,6 +2955,7 @@ CREATE TABLE DEVICE_TYPE
 	COMPONENT_TYPE_ID    NUMBER NULL ,
 	DEVICE_TYPE_NAME     varchar2(50) NOT NULL ,
 	TEMPLATE_DEVICE_ID   NUMBER NULL ,
+	IDEALIZED_DEVICE_ID  NUMBER NULL ,
 	DESCRIPTION          VARCHAR2(4000 BYTE) NULL ,
 	COMPANY_ID           NUMBER NULL ,
 	MODEL                VARCHAR2(255 BYTE) NOT NULL ,
@@ -2979,9 +2980,11 @@ COMMENT ON TABLE DEVICE_TYPE IS 'Conceptual device type.  This represents how it
 
 COMMENT ON COLUMN DEVICE_TYPE.COMPONENT_TYPE_ID IS 'reference to the type of hardware that underlies this type';
 
-COMMENT ON COLUMN DEVICE_TYPE.TEMPLATE_DEVICE_ID IS 'foreign key to a device that represents the typical/initial/minimum configuration of a given device type.  This device is typically non real but a template.';
+COMMENT ON COLUMN DEVICE_TYPE.TEMPLATE_DEVICE_ID IS 'Represents a non-real but template device that is used to describe how to setup a device when its inserted into the database with this device type.  Its used to get port names and other information correct when it needs to be inserted before probing.  Probing may deviate from the template.';
 
 COMMENT ON COLUMN DEVICE_TYPE.DEVICE_TYPE_NAME IS 'Human readable name of the device type.  The company and a model can be gleaned from component.';
+
+COMMENT ON COLUMN DEVICE_TYPE.IDEALIZED_DEVICE_ID IS 'Indicates what a device of this type looks like; primarily used for either reverse engineering a probe to a device type or valdating that a device type has all the pieces it is expcted to.  This device is typically not real.';
 
 CREATE UNIQUE INDEX PK_DEVICE_TYPE ON DEVICE_TYPE
 (DEVICE_TYPE_ID   ASC);
@@ -3021,6 +3024,9 @@ ALTER TABLE DEVICE_TYPE
 
 CREATE  INDEX XIF4DEVICE_TYPE ON DEVICE_TYPE
 (COMPANY_ID   ASC);
+
+CREATE  INDEX XIF_DEV_TYP_IDEALIZED_DEV_ID ON DEVICE_TYPE
+(IDEALIZED_DEVICE_ID   ASC);
 
 CREATE  INDEX XIF_DEV_TYP_TMPLT_DEV_TYP_ID ON DEVICE_TYPE
 (TEMPLATE_DEVICE_ID   ASC);
@@ -11947,6 +11953,9 @@ ALTER TABLE DEVICE_TYPE
 
 ALTER TABLE DEVICE_TYPE
 	ADD (CONSTRAINT FK_DEVTYP_COMPANY FOREIGN KEY (COMPANY_ID) REFERENCES COMPANY (COMPANY_ID)  DEFERRABLE  INITIALLY IMMEDIATE);
+
+ALTER TABLE DEVICE_TYPE
+	ADD (CONSTRAINT FK_DEV_TYP_IDEALIZED_DEV_ID FOREIGN KEY (IDEALIZED_DEVICE_ID) REFERENCES DEVICE (DEVICE_ID));
 
 ALTER TABLE DEVICE_TYPE
 	ADD (CONSTRAINT FK_DEV_TYP_TMPLT_DEV_TYP_ID FOREIGN KEY (TEMPLATE_DEVICE_ID) REFERENCES DEVICE (DEVICE_ID));

@@ -27,8 +27,8 @@ DO $$
 DECLARE
 	_tal INTEGER;
 BEGIN
-	select count(*) 
-	from pg_catalog.pg_namespace 
+	select count(*)
+	from pg_catalog.pg_namespace
 	into _tal
 	where nspname = 'schema_support';
 	IF _tal = 0 THEN
