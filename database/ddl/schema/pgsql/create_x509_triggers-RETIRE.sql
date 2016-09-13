@@ -85,7 +85,6 @@ BEGIN
 			private_key_id,
 			certificate_signing_request_id
 		) VALUES (
-			NEW.x509_cert_id,
 			NEW.friendly_name,
 			NEW.is_active,
 			NEW.is_certificate_authority,
@@ -99,7 +98,9 @@ BEGIN
 			NEW.x509_revocation_date,
 			NEW.x509_revocation_reason,
 			NEW.ocsp_uri,
-			NEW.crl_uri
+			NEW.crl_uri,
+			key,
+			csr
 		) RETURNING x509_signed_certificate_id INTO crt;
 		NEW.x509_cert_id := crt;
 	END IF;
@@ -351,4 +352,38 @@ CREATE TRIGGER trigger_upd_x509_certificate
 	INSTEAD OF UPDATE ON x509_certificate
 	FOR EACH ROW
 	EXECUTE PROCEDURE upd_x509_certificate();
+
+---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION del_x509_certificate()
+RETURNS TRIGGER AS $$
+DECLARE
+	crt	x509_signed_certificate%ROWTYPE;
+BEGIN
+	SELECT * INTO crt FROM x509_signed_certificate
+		WHERE x509_signed_certificate_id = OLD.x509_cert_id;
+
+	DELETE FROM x509_signed_certificate
+		WHERE x509_signed_certificate_id = OLD.x509_cert_id;
+
+	IF crt.private_key_id IS NOT NULL THEN
+		DELETE FROM private_key
+		WHERE private_key_id = crt.private_key_id;
+	END IF;
+
+	IF crt.private_key_id IS NOT NULL THEN
+		DELETE FROM certificate_signing_request
+		WHERE certificate_signing_request_id =
+			crt.certificate_signing_request_id;
+	END IF;
+	RETURN OLD;
+END;
+$$
+SET search_path=jazzhands
+LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS trigger_del_x509_certificate ON x509_certificate;
+CREATE TRIGGER trigger_del_x509_certificate
+	INSTEAD OF DELETE ON x509_certificate
+	FOR EACH ROW
+	EXECUTE PROCEDURE del_x509_certificate();
 

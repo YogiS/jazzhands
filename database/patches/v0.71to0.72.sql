@@ -92,8 +92,8 @@ DO $$
 DECLARE
 	_tal INTEGER;
 BEGIN
-	select count(*) 
-	from pg_catalog.pg_namespace 
+	select count(*)
+	from pg_catalog.pg_namespace
 	into _tal
 	where nspname = 'schema_support';
 	IF _tal = 0 THEN
@@ -152,7 +152,7 @@ BEGIN
 			USING ERRCODE = 'not_null_violation';
 	END IF;
 
-	IF NEW.netblock_Id is not NULL and 
+	IF NEW.netblock_Id is not NULL and
 			( NEW.dns_value IS NOT NULL OR NEW.dns_value_record_id IS NOT NULL ) THEN
 		RAISE EXCEPTION 'Both dns_value and netblock_id may not be set'
 			USING ERRCODE = 'JH001';
@@ -168,7 +168,7 @@ BEGIN
 			USING ERRCODE = 'JH001';
 	END IF;
 
-	-- XXX need to deal with changing a netblock type and breaking dns_record.. 
+	-- XXX need to deal with changing a netblock type and breaking dns_record..
 	IF NEW.netblock_id IS NOT NULL THEN
 		SELECT ip_address, is_single_address
 		  INTO _ip, _sing
@@ -186,7 +186,7 @@ BEGIN
 		END IF;
 
 		IF _sing = 'N' AND NEW.dns_type IN ('A','AAAA') THEN
-			RAISE EXCEPTION 'Non-single addresses may not have % records', NEW.dns_type 
+			RAISE EXCEPTION 'Non-single addresses may not have % records', NEW.dns_type
 				USING ERRCODE = 'foreign_key_violation';
 		END IF;
 
@@ -217,14 +217,14 @@ BEGIN
 	END IF;
 
 	SELECT
-		device_type_id, component_type_id 
+		device_type_id, component_type_id
 	INTO
 		dtid, dt_ctid
 	FROM
 		device_type
 	WHERE
 		device_type_id = NEW.device_type_id;
-	
+
 	IF NOT FOUND OR dt_ctid IS NULL THEN
 		RAISE EXCEPTION 'No component_type_id set for device type'
 		USING ERRCODE = 'foreign_key_violation';
@@ -236,7 +236,7 @@ BEGIN
 		component
 	WHERE
 		component_id = NEW.component_id;
-	
+
 	IF NOT FOUND OR ctid IS DISTINCT FROM dt_ctid THEN
 		RAISE EXCEPTION 'Component type of component_id % (%s) does not match component_type for device_type_id % (%)',
 			NEW.component_id, ctid, dtid, dt_ctid
@@ -281,7 +281,7 @@ BEGIN
 	IF NEW.DNS_NAME IS NOT NULL THEN
 		-- rfc rfc952
 		IF NEW.DNS_NAME !~ '[-a-zA-Z0-9\._]*' THEN
-			RAISE EXCEPTION 'Invalid DNS NAME %', 
+			RAISE EXCEPTION 'Invalid DNS NAME %',
 				NEW.DNS_NAME
 				USING ERRCODE = 'integrity_constraint_violation';
 		END IF;
@@ -290,7 +290,6 @@ BEGIN
 END;
 $function$
 ;
-
 -- New function
 CREATE OR REPLACE FUNCTION jazzhands.l2_net_coll_member_enforce_on_type_change()
  RETURNS trigger
@@ -317,7 +316,7 @@ BEGIN
 	-- We only need to check this if we are enforcing now where we didn't used
 	-- to need to
 	--
-	IF l2ct.max_num_members IS NOT NULL AND 
+	IF l2ct.max_num_members IS NOT NULL AND
 			l2ct.max_num_members IS DISTINCT FROM old_l2ct.max_num_members THEN
 		select count(*)
 		  into tally
@@ -380,7 +379,7 @@ BEGIN
 	-- We only need to check this if we are enforcing now where we didn't used
 	-- to need to
 	--
-	IF l3ct.max_num_members IS NOT NULL AND 
+	IF l3ct.max_num_members IS NOT NULL AND
 			l3ct.max_num_members IS DISTINCT FROM old_l3ct.max_num_members THEN
 		select count(*)
 		  into tally
@@ -465,7 +464,7 @@ BEGIN
 			AND		dns_type IN ('A', 'AAAA');
 
 		IF _tal > 0 THEN
-			RAISE EXCEPTION 'Non-single addresses may not have % records', NEW.dns_type 
+			RAISE EXCEPTION 'Non-single addresses may not have % records', NEW.dns_type
 				USING ERRCODE = 'foreign_key_violation';
 		END IF;
 	END IF;
@@ -486,7 +485,7 @@ BEGIN
 	IF TG_OP = 'UPDATE' OR TG_OP = 'DELETE' THEN
 		PERFORM	*
 		FROM	property_collection
-				JOIN property_collection_property pcp 
+				JOIN property_collection_property pcp
 					USING (property_collection_id)
 				JOIN property p
 					USING (property_name, property_type)
@@ -502,7 +501,7 @@ BEGIN
 	IF TG_OP = 'UPDATE' OR TG_OP = 'INSERT' THEN
 		PERFORM	*
 		FROM	property_collection
-				JOIN property_collection_property pcp 
+				JOIN property_collection_property pcp
 					USING (property_collection_id)
 				JOIN property p
 					USING (property_name, property_type)
@@ -689,8 +688,8 @@ BEGIN
     END IF;
     _companyid := company_id;
 
-    SELECT arc.account_realm_id 
-      INTO _account_realm_id 
+    SELECT arc.account_realm_id
+      INTO _account_realm_id
       FROM account_realm_company arc
      WHERE arc.company_id = _companyid;
     IF NOT FOUND THEN
@@ -698,9 +697,9 @@ BEGIN
     END IF;
 
     IF login is NULL THEN
-        IF first_name IS NULL or last_name IS NULL THEN 
+        IF first_name IS NULL or last_name IS NULL THEN
             RAISE EXCEPTION 'Must specify login name or first name+last name';
-        ELSE 
+        ELSE
             login := person_manip.pick_login(
                 in_account_realm_id := _account_realm_id,
                 in_first_name := coalesce(preferred_first_name, first_name),
@@ -753,7 +752,7 @@ BEGIN
     END IF;
 
     IF physical_address_id IS NOT NULL AND site_code IS NOT NULL THEN
-        INSERT INTO person_location 
+        INSERT INTO person_location
             (person_id, person_location_type, site_code, physical_address_id)
         VALUES
             (person_id, person_location_type, site_code, physical_address_id);
@@ -901,8 +900,8 @@ BEGIN
 	IF _company_short_name IS NULL and _isfam = 'Y' THEN
 		_short := lower(regexp_replace(
 				regexp_replace(
-					regexp_replace(_company_name, 
-						E'\\s+(ltd|sarl|limited|pt[ye]|GmbH|ag|ab|inc)', 
+					regexp_replace(_company_name,
+						E'\\s+(ltd|sarl|limited|pt[ye]|GmbH|ag|ab|inc)',
 						'', 'gi'),
 					E'[,\\.\\$#@]', '', 'mg'),
 				E'\\s+', '_', 'gi'));
@@ -1013,7 +1012,7 @@ BEGIN
 
 	SELECT * INTO _d FROM device WHERE device_id = in_Device_id;
 	delete from dns_record where netblock_id in (
-		select netblock_id 
+		select netblock_id
 		from network_interface where device_id = in_Device_id
 	);
 
@@ -1032,7 +1031,7 @@ BEGIN
 --	PERFORM device_utils.purge_power_ports( in_Device_id);
 
 	delete from property where device_collection_id in (
-		SELECT	dc.device_collection_id 
+		SELECT	dc.device_collection_id
 		  FROM	device_collection dc
 				INNER JOIN device_collection_device dcd
 		 			USING (device_collection_id)
@@ -1043,9 +1042,9 @@ BEGIN
 	delete from device_collection_device where device_id = in_Device_id;
 	delete from snmp_commstr where device_id = in_Device_id;
 
-		
+
 	IF _d.rack_location_id IS NOT NULL  THEN
-		UPDATE device SET rack_location_id = NULL 
+		UPDATE device SET rack_location_id = NULL
 		WHERE device_id = in_Device_id;
 
 		-- This should not be permitted based on constraints, but in case
@@ -1056,7 +1055,7 @@ BEGIN
 		 WHERE	rack_location_id = _d.RACK_LOCATION_ID;
 
 		IF tally = 0 THEN
-			DELETE FROM rack_location 
+			DELETE FROM rack_location
 			WHERE rack_location_id = _d.RACK_LOCATION_ID;
 		END IF;
 	END IF;
@@ -1094,7 +1093,7 @@ BEGIN
 
 	--
 	-- If there is no notes or serial number its save to remove
-	-- 
+	--
 	IF tally = 0 AND _d.ASSET_ID is NULL THEN
 		_purgedev := true;
 	END IF;
@@ -1112,7 +1111,7 @@ BEGIN
 		END;
 	END IF;
 
-	UPDATE device SET 
+	UPDATE device SET
 		device_name =NULL,
 		service_environment_id = (
 			select service_environment_id from service_environment
@@ -1147,7 +1146,7 @@ AS $function$
 DECLARE
 	netblock_rec	RECORD;
 BEGIN
-	RETURN QUERY 
+	RETURN QUERY
 		SELECT * into netblock_rec FROM netblock_manip.allocate_netblock(
 		parent_netblock_list := ARRAY[parent_netblock_id],
 		netmask_bits := netmask_bits,
@@ -1198,7 +1197,7 @@ BEGIN
 	END IF;
 
 	IF ip_address IS NOT NULL THEN
-		SELECT 
+		SELECT
 			array_agg(netblock_id)
 		INTO
 			parent_netblock_list
@@ -1216,7 +1215,7 @@ BEGIN
 	-- Lock the parent row, which should keep parallel processes from
 	-- trying to obtain the same address
 
-	FOR parent_rec IN SELECT * FROM jazzhands.netblock WHERE netblock_id = 
+	FOR parent_rec IN SELECT * FROM jazzhands.netblock WHERE netblock_id =
 			ANY(allocate_netblock.parent_netblock_list) ORDER BY netblock_id
 			FOR UPDATE LOOP
 
@@ -1227,15 +1226,15 @@ BEGIN
 
 		IF inet_family IS NULL THEN
 			inet_family := family(parent_rec.ip_address);
-		ELSIF inet_family != family(parent_rec.ip_address) 
+		ELSIF inet_family != family(parent_rec.ip_address)
 				AND ip_address IS NULL THEN
 			RAISE EXCEPTION 'Allocation may not mix IPv4 and IPv6 addresses'
 			USING ERRCODE = 'JH10F';
 		END IF;
 
 		IF address_type = 'loopback' THEN
-			loopback_bits := 
-				CASE WHEN 
+			loopback_bits :=
+				CASE WHEN
 					family(parent_rec.ip_address) = 4 THEN 32 ELSE 128 END;
 
 			IF parent_rec.can_subnet = 'N' THEN
@@ -1388,7 +1387,7 @@ BEGIN
 			allocate_netblock.description,
 			allocate_netblock.netblock_status
 		) RETURNING * INTO netblock_rec;
-		
+
 		RAISE DEBUG 'Allocated netblock_id % for %',
 			netblock_rec.netblock_id,
 			netblock_rec.ip_address;
@@ -1423,18 +1422,18 @@ BEGIN
 	--
 	-- If the network range already exists, then just return it
 	--
-	SELECT 
+	SELECT
 		nr.* INTO netrange
 	FROM
 		jazzhands.network_range nr JOIN
-		jazzhands.netblock startnb ON (nr.start_netblock_id = 
+		jazzhands.netblock startnb ON (nr.start_netblock_id =
 			startnb.netblock_id) JOIN
 		jazzhands.netblock stopnb ON (nr.stop_netblock_id = stopnb.netblock_id)
 	WHERE
 		nr.network_range_type = nrtype AND
 		host(startnb.ip_address) = host(start_ip_address) AND
 		host(stopnb.ip_address) = host(stop_ip_address) AND
-		CASE WHEN pnbid IS NOT NULL THEN 
+		CASE WHEN pnbid IS NOT NULL THEN
 			(pnbid = nr.parent_netblock_id)
 		ELSE
 			true
@@ -1447,11 +1446,11 @@ BEGIN
 	--
 	-- If any other network ranges exist that overlap this, then error
 	--
-	PERFORM 
+	PERFORM
 		*
 	FROM
 		jazzhands.network_range nr JOIN
-		jazzhands.netblock startnb ON 
+		jazzhands.netblock startnb ON
 			(nr.start_netblock_id = startnb.netblock_id) JOIN
 		jazzhands.netblock stopnb ON (nr.stop_netblock_id = stopnb.netblock_id)
 	WHERE
@@ -1470,7 +1469,7 @@ BEGIN
 	END IF;
 
 	IF parent_netblock_id IS NOT NULL THEN
-		SELECT * INTO par_netblock FROM jazzhands.netblock WHERE 
+		SELECT * INTO par_netblock FROM jazzhands.netblock WHERE
 			netblock_id = pnbid;
 		IF NOT FOUND THEN
 			RAISE 'create_network_range: parent_netblock_id % does not exist',
@@ -1478,7 +1477,7 @@ BEGIN
 		END IF;
 	ELSE
 		SELECT * INTO par_netblock FROM jazzhands.netblock WHERE netblock_id = (
-			SELECT 
+			SELECT
 				*
 			FROM
 				netblock_utils.find_best_parent_id(
@@ -1493,7 +1492,7 @@ BEGIN
 		END IF;
 	END IF;
 
-	IF par_netblock.can_subnet != 'N' OR 
+	IF par_netblock.can_subnet != 'N' OR
 			par_netblock.is_single_address != 'N' THEN
 		RAISE 'create_network_range: parent netblock % must not be subnettable or a single address',
 			par_netblock.netblock_id USING ERRCODE = 'check_violation';
@@ -1522,7 +1521,7 @@ BEGIN
 	-- range, unless allow_assigned is set
 	--
 	IF NOT allow_assigned THEN
-		PERFORM 
+		PERFORM
 			*
 		FROM
 			jazzhands.netblock n
@@ -1689,7 +1688,7 @@ BEGIN
 	-- The device type doesn't exist, so attempt to insert it
 	--
 
-	IF NOT FOUND THEN	
+	IF NOT FOUND THEN
 		IF pci_device_name IS NULL OR component_function_list IS NULL THEN
 			RAISE EXCEPTION 'component_id not found and pci_device_name or component_function_list was not passed' USING ERRCODE = 'JH501';
 		END IF;
@@ -1706,14 +1705,14 @@ BEGIN
 			property_type = 'DeviceProvisioning' AND
 			property_name = 'PCIVendorID' AND
 			property_value = pci_vendor_id::text;
-		
+
 		IF NOT FOUND THEN
 			IF pci_vendor_name IS NULL THEN
 				RAISE EXCEPTION 'PCI vendor id mapping not found and pci_vendor_name was not passed' USING ERRCODE = 'JH501';
 			END IF;
 			SELECT company_id INTO comp_id FROM company
 			WHERE company_name = pci_vendor_name;
-		
+
 			IF NOT FOUND THEN
 				SELECT company_manip.add_company(
 					_company_name := pci_vendor_name,
@@ -1745,14 +1744,14 @@ BEGIN
 			property_type = 'DeviceProvisioning' AND
 			property_name = 'PCIVendorID' AND
 			property_value = pci_sub_vendor_id::text;
-		
+
 		IF NOT FOUND THEN
 			IF pci_sub_vendor_name IS NULL THEN
 				RAISE EXCEPTION 'PCI subsystem vendor id mapping not found and pci_sub_vendor_name was not passed' USING ERRCODE = 'JH501';
 			END IF;
 			SELECT company_id INTO sub_comp_id FROM company
 			WHERE company_name = pci_sub_vendor_name;
-		
+
 			IF NOT FOUND THEN
 				SELECT company_manip.add_company(
 					_company_name := pci_sub_vendor_name,
@@ -1779,7 +1778,7 @@ BEGIN
 		-- Fetch the slot type
 		--
 
-		SELECT 
+		SELECT
 			slot_type_id INTO stid
 		FROM
 			slot_type st
@@ -1797,11 +1796,11 @@ BEGIN
 		-- Figure out the best name/description to insert this component with
 		--
 		IF pci_sub_device_name IS NOT NULL AND pci_sub_device_name != 'Device' THEN
-			model_name = concat_ws(' ', 
+			model_name = concat_ws(' ',
 				sub_vendor_name, pci_sub_device_name,
 				'(' || vendor_name, pci_device_name || ')');
 		ELSIF pci_sub_device_name = 'Device' THEN
-			model_name = concat_ws(' ', 
+			model_name = concat_ws(' ',
 				vendor_name, '(' || sub_vendor_name || ')', pci_device_name);
 		ELSE
 			model_name = concat_ws(' ', vendor_name, pci_device_name);
@@ -1813,7 +1812,7 @@ BEGIN
 			asset_permitted,
 			description
 		) VALUES (
-			CASE WHEN 
+			CASE WHEN
 				sub_comp_id IS NULL OR
 				pci_sub_device_name IS NULL OR
 				pci_sub_device_name = 'Device'
@@ -1842,17 +1841,17 @@ BEGIN
 			component_property_type,
 			component_type_id,
 			property_value
-		) VALUES 
+		) VALUES
 			('PCIVendorID', 'PCI', ctid, pci_vendor_id),
 			('PCIDeviceID', 'PCI', ctid, pci_device_id);
-		
+
 		IF (pci_subsystem_id IS NOT NULL) THEN
 			INSERT INTO component_property (
 				component_property_name,
 				component_property_type,
 				component_type_id,
 				property_value
-			) VALUES 
+			) VALUES
 				('PCISubsystemVendorID', 'PCI', ctid, pci_sub_vendor_id),
 				('PCISubsystemID', 'PCI', ctid, pci_subsystem_id);
 		END IF;
@@ -1876,7 +1875,7 @@ BEGIN
 	-- serial number already exists
 	--
 	IF serial_number IS NOT NULL THEN
-		SELECT 
+		SELECT
 			component.* INTO c
 		FROM
 			component JOIN
@@ -1929,7 +1928,7 @@ BEGIN
 	cid := NULL;
 
 	IF sn IS NOT NULL THEN
-		SELECT 
+		SELECT
 			comp.* INTO c
 		FROM
 			component comp JOIN
@@ -5847,43 +5846,13 @@ CREATE TABLE certificate_signing_request
 	data_upd_user	varchar(255)  NULL,
 	data_upd_date	timestamp with time zone  NULL
 );
-SELECT schema_support.build_audit_table('audit', 'jazzhands', 'certificate_signing_request', false);
+SELECT schema_support.build_audit_table('audit', 'jazzhands', 'certificate_signing_request', true);
 ALTER TABLE certificate_signing_request
 	ALTER certificate_signing_request_id
 	SET DEFAULT nextval('certificate_signing_request_certificate_signing_request_id_seq'::regclass);
 
 -- PRIMARY AND ALTERNATE KEYS
 ALTER TABLE certificate_signing_request ADD CONSTRAINT pk_certificate_signing_request PRIMARY KEY (certificate_signing_request_id);
-
-INSERT INTO certificate_signing_request
-SELECT x509_cert_id, friendly_name, subject,
-        certificate_sign_req,
-        CASE WHEN private_key is NOT NULL THEN x509_cert_id ELSE NULL END,
-        data_ins_user, data_ins_date,
-        data_upd_user, data_upd_date
-FROM x509_certificate
-WHERE certificate_sign_req IS NOT NULL
-ORDER BY x509_cert_id;
-
-INSERT INTO audit.certificate_signing_request
-SELECT x509_cert_id, friendly_name, subject,
-        certificate_sign_req,
-        CASE WHEN private_key is NOT NULL THEN x509_cert_id ELSE NULL END,
-        data_ins_user, data_ins_date,
-        data_upd_user, data_upd_date,
-        "aud#action",
-        "aud#timestamp",
-        NULL,
-        NULL,
-        "aud#user",
-        "aud#seq"
-FROM audit.x509_certificate
-WHERE x509_cert_id IN (select x509_cert_id FROM audit.x509_certificate
-        WHERE certificate_sign_req IS NOT NULL)
-ORDER BY "aud#seq";
-
-/**************************************************************************/
-
 
 -- Table/Column Comments
 COMMENT ON TABLE certificate_signing_request IS 'Certificiate Signing Requests generated from public key.  This is mostly kept for posterity since its possible to generate these at-wil from the private key.';
@@ -5939,42 +5908,13 @@ CREATE TABLE private_key
 	data_upd_user	varchar(255)  NULL,
 	data_upd_date	timestamp with time zone  NULL
 );
-SELECT schema_support.build_audit_table('audit', 'jazzhands', 'private_key', false);
+SELECT schema_support.build_audit_table('audit', 'jazzhands', 'private_key', true);
 ALTER TABLE private_key
 	ALTER private_key_id
 	SET DEFAULT nextval('private_key_private_key_id_seq'::regclass);
 ALTER TABLE private_key
 	ALTER is_active
 	SET DEFAULT 'Y'::bpchar;
-
-INSERT INTO private_key
-SELECT x509_cert_id AS private_key_id,
-        'rsa' AS private_key_encryption_type, is_active,
-        subject_key_identifier, private_key, passphrase, encryption_key_id,
-        data_ins_user, data_ins_date, data_upd_user, data_upd_date
-FROM x509_certificate
-WHERE private_key is NOT NULL
-ORDER BY x509_cert_id;
-
-INSERT INTO audit.private_key
-SELECT x509_cert_id AS private_key_id,
-        'rsa' AS private_key_encryption_type, is_active,
-        subject_key_identifier, private_key, passphrase, encryption_key_id,
-        data_ins_user, data_ins_date, data_upd_user, data_upd_date,
-        "aud#action",
-        "aud#timestamp",
-        NULL,
-        NULL,
-        "aud#user",
-        "aud#seq"
-FROM audit.x509_certificate
-WHERE x509_cert_id IN (select x509_cert_id FROM audit.x509_certificate
-        WHERE private_key IS NOT NULL)
-ORDER BY "aud#seq";
-
-
-/**************************************************************************/
-
 
 -- PRIMARY AND ALTERNATE KEYS
 ALTER TABLE private_key ADD CONSTRAINT ak_private_key UNIQUE (subject_key_identifier);
@@ -7411,6 +7351,9 @@ DROP TABLE IF EXISTS audit.property_v71;
 -- DEALING WITH TABLE x509_certificate
 -- Save grants for later reapplication
 SELECT schema_support.save_grants_for_replay('jazzhands', 'x509_certificate', 'x509_signed_certificate');
+-- transfering grants from old object to new
+-- Save grants for later reapplication
+SELECT schema_support.save_grants_for_replay('jazzhands', 'x509_certificate', 'x509_certificate');
 
 -- FOREIGN KEYS FROM
 ALTER TABLE x509_key_usage_attribute DROP CONSTRAINT IF EXISTS fk_x509_certificate;
@@ -7499,80 +7442,113 @@ ALTER TABLE x509_signed_certificate
 ALTER TABLE x509_signed_certificate
 	ALTER is_certificate_authority
 	SET DEFAULT 'N'::bpchar;
+INSERT INTO x509_signed_certificate (
+	x509_signed_certificate_id,		-- new column (x509_signed_certificate_id)
+	x509_certificate_type,		-- new column (x509_certificate_type)
+	subject,
+	friendly_name,
+	subject_key_identifier,
+	is_active,
+	is_certificate_authority,
+	signing_cert_id,
+	x509_ca_cert_serial_number,
+	public_key,
+	private_key_id,		-- new column (private_key_id)
+	certificate_signing_request_id,		-- new column (certificate_signing_request_id)
+	valid_from,
+	valid_to,
+	x509_revocation_date,
+	x509_revocation_reason,
+	ocsp_uri,
+	crl_uri,
+	data_ins_user,
+	data_ins_date,
+	data_upd_user,
+	data_upd_date
+) SELECT
+	nextval('x509_signed_certificate_x509_signed_certificate_id_seq'::regclass),		-- new column (x509_signed_certificate_id)
+	'default'::character varying,		-- new column (x509_certificate_type)
+	subject,
+	friendly_name,
+	subject_key_identifier,
+	is_active,
+	is_certificate_authority,
+	signing_cert_id,
+	x509_ca_cert_serial_number,
+	public_key,
+	NULL,		-- new column (private_key_id)
+	NULL,		-- new column (certificate_signing_request_id)
+	valid_from,
+	valid_to,
+	x509_revocation_date,
+	x509_revocation_reason,
+	ocsp_uri,
+	crl_uri,
+	data_ins_user,
+	data_ins_date,
+	data_upd_user,
+	data_upd_date
+FROM x509_certificate_v71;
 
-INSERT INTO x509_signed_certificate
-SELECT
-        x509_cert_id,
-        'default',
-        subject,
-        friendly_name,
-        subject_key_identifier,
-        is_active,
-        is_certificate_authority,
-        signing_cert_id,
-        x509_ca_cert_serial_number,
-        public_key,
-        CASE WHEN private_key is NOT NULL THEN x509_cert_id ELSE NULL END,
-        CASE WHEN certificate_sign_req is NOT NULL THEN x509_cert_id ELSE NULL END,
-        valid_from,
-        valid_to,
-        x509_revocation_date,
-        x509_revocation_reason,
-        ocsp_uri,
-        crl_uri,
-        data_ins_user,
-        data_ins_date,
-        data_upd_user,
-        data_upd_date
-FROM x509_certificate_v71
-WHERE public_key IS NOT NULL
-;
-
-INSERT INTO audit.x509_signed_certificate
-SELECT x509_cert_id,
-        'default',
-        subject,
-        friendly_name,
-        subject_key_identifier,
-        is_active,
-        is_certificate_authority,
-        signing_cert_id,
-        x509_ca_cert_serial_number,
-        public_key,
-        CASE WHEN private_key is NOT NULL THEN x509_cert_id ELSE NULL END,
-        CASE WHEN certificate_sign_req is NOT NULL THEN x509_cert_id ELSE NULL END,
-        valid_from,
-        valid_to,
-        x509_revocation_date,
-        x509_revocation_reason,
-        ocsp_uri,
-        crl_uri,
-        data_ins_user,
-        data_ins_date,
-        data_upd_user,
-        data_upd_date,
-        "aud#action",
-        "aud#timestamp",
-        NULL,
-        NULL,
-        "aud#user",
-        "aud#seq"
-FROM audit.x509_certificate_v71
-WHERE x509_cert_id IN (select x509_cert_id FROM audit.x509_certificate_v71
-        WHERE public_key IS NOT NULL)
-ORDER BY "aud#seq";
-;
-
-SELECT schema_support.rebuild_audit_trigger
-                        ( 'audit', 'jazzhands', 'certificate_signing_request' );
-SELECT schema_support.rebuild_audit_trigger
-                        ( 'audit', 'jazzhands', 'private_key' );
-SELECT schema_support.rebuild_audit_trigger
-                        ( 'audit', 'jazzhands', 'x509_signed_certificate' );
-
-/**************************************************************************/
-
-
+INSERT INTO audit.x509_signed_certificate (
+	x509_signed_certificate_id,		-- new column (x509_signed_certificate_id)
+	x509_certificate_type,		-- new column (x509_certificate_type)
+	subject,
+	friendly_name,
+	subject_key_identifier,
+	is_active,
+	is_certificate_authority,
+	signing_cert_id,
+	x509_ca_cert_serial_number,
+	public_key,
+	private_key_id,		-- new column (private_key_id)
+	certificate_signing_request_id,		-- new column (certificate_signing_request_id)
+	valid_from,
+	valid_to,
+	x509_revocation_date,
+	x509_revocation_reason,
+	ocsp_uri,
+	crl_uri,
+	data_ins_user,
+	data_ins_date,
+	data_upd_user,
+	data_upd_date,
+	"aud#action",
+	"aud#timestamp",
+	"aud#realtime",		-- new column (aud#realtime)
+	"aud#txid",		-- new column (aud#txid)
+	"aud#user",
+	"aud#seq"
+) SELECT
+	NULL,		-- new column (x509_signed_certificate_id)
+	NULL,		-- new column (x509_certificate_type)
+	subject,
+	friendly_name,
+	subject_key_identifier,
+	is_active,
+	is_certificate_authority,
+	signing_cert_id,
+	x509_ca_cert_serial_number,
+	public_key,
+	NULL,		-- new column (private_key_id)
+	NULL,		-- new column (certificate_signing_request_id)
+	valid_from,
+	valid_to,
+	x509_revocation_date,
+	x509_revocation_reason,
+	ocsp_uri,
+	crl_uri,
+	data_ins_user,
+	data_ins_date,
+	data_upd_user,
+	data_upd_date,
+	"aud#action",
+	"aud#timestamp",
+	NULL,		-- new column (aud#realtime)
+	NULL,		-- new column (aud#txid)
+	"aud#user",
+	"aud#seq"
+FROM audit.x509_certificate_v71;
 
 ALTER TABLE x509_signed_certificate
 	ALTER x509_signed_certificate_id
@@ -7782,6 +7758,131 @@ CREATE VIEW jazzhands.x509_certificate AS
    FROM x509_signed_certificate crt
      LEFT JOIN private_key key USING (private_key_id)
      LEFT JOIN certificate_signing_request csr USING (certificate_signing_request_id);
+
+-- New function
+CREATE OR REPLACE FUNCTION jazzhands.del_x509_certificate()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	crt	x509_signed_certificate%ROWTYPE;
+BEGIN
+	SELECT * INTO crt FROM x509_signed_certificate
+		WHERE x509_signed_certificate_id = OLD.x509_cert_id;
+
+	DELETE FROM x509_signed_certificate
+		WHERE x509_signed_certificate_id = OLD.x509_cert_id;
+
+	IF crt.private_key_id IS NOT NULL THEN
+		DELETE FROM private_key
+		WHERE private_key_id = crt.private_key_id;
+	END IF;
+
+	IF crt.private_key_id IS NOT NULL THEN
+		DELETE FROM certificate_signing_request
+		WHERE certificate_signing_request_id =
+			crt.certificate_signing_request_id;
+	END IF;
+	RETURN OLD;
+END;
+$function$
+;
+
+
+-- New function
+CREATE OR REPLACE FUNCTION jazzhands.ins_x509_certificate()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	key	private_key.private_key_id%TYPE;
+	csr	certificate_signing_request.certificate_signing_request_id%TYPE;
+	crt	x509_signed_certificate.x509_signed_certificate_id%TYPE;
+BEGIN
+	IF NEW.private_key IS NOT NULL THEN
+		INSERT INTO private_key (
+			private_key_encryption_type,
+			is_active,
+			subject_key_identifier,
+			private_key,
+			passphrase,
+			encryption_key_id
+		) VALUES (
+			'rsa',
+			NEW.is_active,
+			NEW.subject_key_identifier,
+			NEW.private_key,
+			NEW.passphrase,
+			NEW.encryption_key_id
+		) RETURNING private_key_id INTO key;
+		NEW.x509_cert_id := key;
+	END IF;
+
+	IF NEW.certificate_sign_req IS NOT NULL THEN
+		INSERT INTO certificate_sign_req (
+			friendly_name,
+			subject,
+			certificate_signing_request,
+			private_key_id
+		) VALUES (
+			NEW.friendly_name,
+			NEW.subject,
+			NEW.certificate_sign_req,
+			key
+		) RETURNING certificate_signing_request_id INTO csr;
+		IF NEW.x509_cert_id IS NULL THEN
+			NEW.x509_cert_id := csr;
+		END IF;
+	END IF;
+
+	IF NEW.public_key IS NOT NULL THEN
+		INSERT INTO x509_signed_certificate (
+			friendly_name,
+			is_active,
+			is_certificate_authority,
+			signing_cert_id,
+			x509_ca_cert_serial_number,
+			public_key,
+			subject,
+			subject_key_identifier,
+			valid_from,
+			valid_to,
+			x509_revocation_date,
+			x509_revocation_reason,
+			ocsp_uri,
+			crl_uri,
+			private_key_id,
+			certificate_signing_request_id
+		) VALUES (
+			NEW.friendly_name,
+			NEW.is_active,
+			NEW.is_certificate_authority,
+			NEW.signing_cert_id,
+			NEW.x509_ca_cert_serial_number,
+			NEW.public_key,
+			NEW.subject,
+			NEW.subject_key_identifier,
+			NEW.valid_from,
+			NEW.valid_to,
+			NEW.x509_revocation_date,
+			NEW.x509_revocation_reason,
+			NEW.ocsp_uri,
+			NEW.crl_uri,
+			key,
+			csr
+		) RETURNING x509_signed_certificate_id INTO crt;
+		NEW.x509_cert_id := crt;
+	END IF;
+
+	RETURN NEW;
+END;
+$function$
+;
+
 
 -- New function
 CREATE OR REPLACE FUNCTION jazzhands.upd_x509_certificate()
@@ -8016,6 +8117,37 @@ END;
 $function$
 ;
 
+-- New function
+CREATE OR REPLACE FUNCTION jazzhands.del_x509_certificate()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	crt	x509_signed_certificate%ROWTYPE;
+BEGIN
+	SELECT * INTO crt FROM x509_signed_certificate
+		WHERE x509_signed_certificate_id = OLD.x509_cert_id;
+
+	DELETE FROM x509_signed_certificate
+		WHERE x509_signed_certificate_id = OLD.x509_cert_id;
+
+	IF crt.private_key_id IS NOT NULL THEN
+		DELETE FROM private_key
+		WHERE private_key_id = crt.private_key_id;
+	END IF;
+
+	IF crt.private_key_id IS NOT NULL THEN
+		DELETE FROM certificate_signing_request
+		WHERE certificate_signing_request_id =
+			crt.certificate_signing_request_id;
+	END IF;
+	RETURN OLD;
+END;
+$function$
+;
+
 
 -- New function
 CREATE OR REPLACE FUNCTION jazzhands.ins_x509_certificate()
@@ -8084,7 +8216,6 @@ BEGIN
 			private_key_id,
 			certificate_signing_request_id
 		) VALUES (
-			NEW.x509_cert_id,
 			NEW.friendly_name,
 			NEW.is_active,
 			NEW.is_certificate_authority,
@@ -8098,7 +8229,9 @@ BEGIN
 			NEW.x509_revocation_date,
 			NEW.x509_revocation_reason,
 			NEW.ocsp_uri,
-			NEW.crl_uri
+			NEW.crl_uri,
+			key,
+			csr
 		) RETURNING x509_signed_certificate_id INTO crt;
 		NEW.x509_cert_id := crt;
 	END IF;
@@ -8107,6 +8240,241 @@ BEGIN
 END;
 $function$
 ;
+
+
+-- New function
+CREATE OR REPLACE FUNCTION jazzhands.upd_x509_certificate()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	upq	TEXT[];
+	crt	x509_signed_certificate%ROWTYPE;
+	key private_key.private_key_id%TYPE;
+BEGIN
+	SELECT * INTO crt FROM x509_signed_certificate
+	WHERE x509_signed_certificate_id = OLD.x509_cert_id;
+
+	IF OLD.x509_cert_id != NEW.x509_cert_id THEN
+		RAISE EXCEPTION 'Can not change x509_cert_id' USING ERRCODE = 'invalid_parameter_value';
+	END IF;
+
+	key := crt.private_key_id;
+
+	IF crt.private_key_ID IS NULL AND NEW.private_key IS NOT NULL THEN
+		WITH ins AS (
+			INSERT INTO private_key (
+				private_key_encryption_type,
+				is_active,
+				subject_key_identifier,
+				private_key,
+				passphrase,
+				encryption_key_id
+			) VALUES (
+				'rsa',
+				NEW.is_active,
+				NEW.subject_key_identifier,
+				NEW.private_key,
+				NEW.passphrase,
+				NEW.encryption_key_id
+			) RETURNING *
+		), upd AS (
+			UPDATE x509_signed_certificate
+			SET private_key_id = ins.private_key_id
+			WHERE x509_signed_certificate_id = OLD.x509_cert_id
+			RETURNING *
+		)  SELECT private_key_id INTO key FROM upd;
+	ELSIF crt.private_key_id IS NOT NULL AND NEW.private_key IS NULL THEN
+		UPDATE x509_signed_certificate
+			SET private_key_id = NULL
+			WHERE x509_signed_certificate_id = OLD.x509_cert_id;
+		BEGIN
+			DELETE FROM private_key where private_key_id = crt.private_key_id;
+		EXCEPTION WHEN foreign_key_violation THEN
+			NULL;
+		END;
+	ELSE
+		IF OLD.is_active IS DISTINCT FROM NEW.is_active THEN
+			upq := array_append(upq,
+				'is_active = ' || quote_literal(NEW.is_active)
+			);
+		END IF;
+
+		IF OLD.subject_key_identifier IS DISTINCT FROM NEW.subject_key_identifier THEN
+			upq := array_append(upq,
+				'subject_key_identifier = ' || quote_nullable(NEW.subject_key_identifier)
+			);
+		END IF;
+
+		IF OLD.private_key IS DISTINCT FROM NEW.private_key THEN
+			upq := array_append(upq,
+				'private_key = ' || quote_nullable(NEW.private_key)
+			);
+		END IF;
+
+		IF OLD.passphrase IS DISTINCT FROM NEW.passphrase THEN
+			upq := array_append(upq,
+				'passphrase = ' || quote_nullable(NEW.passphrase)
+			);
+		END IF;
+
+		IF OLD.encryption_key_id IS DISTINCT FROM NEW.encryption_key_id THEN
+			upq := array_append(upq,
+				'encryption_key_id = ' || quote_nullable(NEW.encryption_key_id)
+			);
+		END IF;
+
+		IF array_length(upq, 1) > 0 THEN
+			EXECUTE 'UPDATE private_key SET '
+				|| array_to_string(upq, ', ')
+				|| ' WHERE private_key_id = '
+				|| crt.private_key_id;
+		END IF;
+	END IF;
+
+	upq := NULL;
+	IF crt.certificate_signing_request_id IS NULL AND NEW.certificate_sign_req IS NOT NULL THEN
+		WITH ins AS (
+			INSERT INTO certificate_sign_req (
+				friendly_name,
+				subject,
+				certificate_signing_request,
+				private_key_id
+			) VALUES (
+				NEW.friendly_name,
+				NEW.subject,
+				NEW.certificate_sign_req,
+				key
+			) RETURNING *
+		) UPDATE x509_signed_certificate
+		SET certificate_signing_request_id = ins.certificate_signing_request_id
+		WHERE x509_signed_certificate_id = OLD.x509_cert_id;
+	ELSIF crt.certificate_signing_request_id IS NOT NULL AND
+				NEW.certificate_sign_req IS NULL THEN
+		-- if its removed, we still keep the csr/key link
+		WITH del AS (
+			UPDATE x509_signed_certificate
+			SET certificate_signing_request = NULL
+			WHERE x509_signed_certificate_id = OLD.x509_cert_id
+			RETURNING *
+		) DELETE FROM certificate_signing_request
+		WHERE certificate_signing_request_id =
+			crt.certificate_signing_request_id;
+	ELSE
+		IF OLD.friendly_name IS DISTINCT FROM NEW.friendly_name THEN
+			upq := array_append(upq,
+				'friendly_name = ' || quote_literal(NEW.friendly_name)
+			);
+		END IF;
+
+		IF OLD.subject IS DISTINCT FROM NEW.subject THEN
+			upq := array_append(upq,
+				'subject = ' || quote_literal(NEW.subject)
+			);
+		END IF;
+
+		IF OLD.certificate_sign_req IS DISTINCT FROM
+				NEW.certificate_sign_req THEN
+			upq := array_append(upq,
+				'certificate_signing_request = ' ||
+					quote_literal(NEW.certificate_sign_req)
+			);
+		END IF;
+
+		IF array_length(upq, 1) > 0 THEN
+			EXECUTE 'UPDATE certificate_signing_request SET '
+				|| array_to_string(upq, ', ')
+				|| ' WHERE x509_signed_certificate_id = '
+				|| crt.x509_signed_certificate_id;
+		END IF;
+	END IF;
+
+	upq := NULL;
+	IF OLD.is_active IS DISTINCT FROM NEW.is_active THEN
+		upq := array_append(upq,
+			'is_active = ' || quote_literal(NEW.is_active)
+		);
+	END IF;
+	IF OLD.friendly_name IS DISTINCT FROM NEW.friendly_name THEN
+		upq := array_append(upq,
+			'friendly_name = ' || quote_literal(NEW.friendly_name)
+		);
+	END IF;
+	IF OLD.subject IS DISTINCT FROM NEW.subject THEN
+		upq := array_append(upq,
+			'subject = ' || quote_literal(NEW.subject)
+		);
+	END IF;
+	IF OLD.subject_key_identifier IS DISTINCT FROM NEW.subject_key_identifier THEN
+		upq := array_append(upq,
+			'subject_key_identifier = ' || quote_nullable(NEW.subject_key_identifier)
+		);
+	END IF;
+	IF OLD.is_certificate_authority IS DISTINCT FROM NEW.is_certificate_authority THEN
+		upq := array_append(upq,
+			'is_certificate_authority = ' || quote_nullable(NEW.is_certificate_authority)
+		);
+	END IF;
+	IF OLD.signing_cert_id IS DISTINCT FROM NEW.signing_cert_id THEN
+		upq := array_append(upq,
+			'signing_cert_id = ' || quote_nullable(NEW.signing_cert_id)
+		);
+	END IF;
+	IF OLD.x509_ca_cert_serial_number IS DISTINCT FROM NEW.x509_ca_cert_serial_number THEN
+		upq := array_append(upq,
+			'x509_ca_cert_serial_number = ' || quote_nullable(NEW.x509_ca_cert_serial_number)
+		);
+	END IF;
+	IF OLD.public_key IS DISTINCT FROM NEW.public_key THEN
+		upq := array_append(upq,
+			'public_key = ' || quote_nullable(NEW.public_key)
+		);
+	END IF;
+	IF OLD.valid_from IS DISTINCT FROM NEW.valid_from THEN
+		upq := array_append(upq,
+			'valid_from = ' || quote_nullable(NEW.valid_from)
+		);
+	END IF;
+	IF OLD.valid_to IS DISTINCT FROM NEW.valid_to THEN
+		upq := array_append(upq,
+			'valid_to = ' || quote_nullable(NEW.valid_to)
+		);
+	END IF;
+	IF OLD.x509_revocation_date IS DISTINCT FROM NEW.x509_revocation_date THEN
+		upq := array_append(upq,
+			'x509_revocation_date = ' || quote_nullable(NEW.x509_revocation_date)
+		);
+	END IF;
+	IF OLD.x509_revocation_reason IS DISTINCT FROM NEW.x509_revocation_reason THEN
+		upq := array_append(upq,
+			'x509_revocation_reason = ' || quote_nullable(NEW.x509_revocation_reason)
+		);
+	END IF;
+	IF OLD.ocsp_uri IS DISTINCT FROM NEW.ocsp_uri THEN
+		upq := array_append(upq,
+			'ocsp_uri = ' || quote_nullable(NEW.ocsp_uri)
+		);
+	END IF;
+	IF OLD.crl_uri IS DISTINCT FROM NEW.crl_uri THEN
+		upq := array_append(upq,
+			'crl_uri = ' || quote_nullable(NEW.crl_uri)
+		);
+	END IF;
+
+	IF array_length(upq, 1) > 0 THEN
+		EXECUTE 'UPDATE x509_signed_certificate SET '
+			|| array_to_string(upq, ', ')
+			|| ' WHERE x509_signed_certificate_id = '
+			|| NEW.x509_cert_id;
+	END IF;
+
+	RETURN NEW;
+END;
+$function$
+;
+
 
 
 -- DONE DEALING WITH TABLE x509_certificate
@@ -8406,7 +8774,7 @@ BEGIN
 			USING ERRCODE = 'not_null_violation';
 	END IF;
 
-	IF NEW.netblock_Id is not NULL and 
+	IF NEW.netblock_Id is not NULL and
 			( NEW.dns_value IS NOT NULL OR NEW.dns_value_record_id IS NOT NULL ) THEN
 		RAISE EXCEPTION 'Both dns_value and netblock_id may not be set'
 			USING ERRCODE = 'JH001';
@@ -8422,7 +8790,7 @@ BEGIN
 			USING ERRCODE = 'JH001';
 	END IF;
 
-	-- XXX need to deal with changing a netblock type and breaking dns_record.. 
+	-- XXX need to deal with changing a netblock type and breaking dns_record..
 	IF NEW.netblock_id IS NOT NULL THEN
 		SELECT ip_address, is_single_address
 		  INTO _ip, _sing
@@ -8440,7 +8808,7 @@ BEGIN
 		END IF;
 
 		IF _sing = 'N' AND NEW.dns_type IN ('A','AAAA') THEN
-			RAISE EXCEPTION 'Non-single addresses may not have % records', NEW.dns_type 
+			RAISE EXCEPTION 'Non-single addresses may not have % records', NEW.dns_type
 				USING ERRCODE = 'foreign_key_violation';
 		END IF;
 
@@ -8471,14 +8839,14 @@ BEGIN
 	END IF;
 
 	SELECT
-		device_type_id, component_type_id 
+		device_type_id, component_type_id
 	INTO
 		dtid, dt_ctid
 	FROM
 		device_type
 	WHERE
 		device_type_id = NEW.device_type_id;
-	
+
 	IF NOT FOUND OR dt_ctid IS NULL THEN
 		RAISE EXCEPTION 'No component_type_id set for device type'
 		USING ERRCODE = 'foreign_key_violation';
@@ -8490,7 +8858,7 @@ BEGIN
 		component
 	WHERE
 		component_id = NEW.component_id;
-	
+
 	IF NOT FOUND OR ctid IS DISTINCT FROM dt_ctid THEN
 		RAISE EXCEPTION 'Component type of component_id % (%s) does not match component_type for device_type_id % (%)',
 			NEW.component_id, ctid, dtid, dt_ctid
@@ -8525,6 +8893,37 @@ $function$
 ;
 
 -- New function
+CREATE OR REPLACE FUNCTION jazzhands.del_x509_certificate()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	crt	x509_signed_certificate%ROWTYPE;
+BEGIN
+	SELECT * INTO crt FROM x509_signed_certificate
+		WHERE x509_signed_certificate_id = OLD.x509_cert_id;
+
+	DELETE FROM x509_signed_certificate
+		WHERE x509_signed_certificate_id = OLD.x509_cert_id;
+
+	IF crt.private_key_id IS NOT NULL THEN
+		DELETE FROM private_key
+		WHERE private_key_id = crt.private_key_id;
+	END IF;
+
+	IF crt.private_key_id IS NOT NULL THEN
+		DELETE FROM certificate_signing_request
+		WHERE certificate_signing_request_id =
+			crt.certificate_signing_request_id;
+	END IF;
+	RETURN OLD;
+END;
+$function$
+;
+
+-- New function
 CREATE OR REPLACE FUNCTION jazzhands.dns_record_check_name()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -8535,7 +8934,7 @@ BEGIN
 	IF NEW.DNS_NAME IS NOT NULL THEN
 		-- rfc rfc952
 		IF NEW.DNS_NAME !~ '[-a-zA-Z0-9\._]*' THEN
-			RAISE EXCEPTION 'Invalid DNS NAME %', 
+			RAISE EXCEPTION 'Invalid DNS NAME %',
 				NEW.DNS_NAME
 				USING ERRCODE = 'integrity_constraint_violation';
 		END IF;
@@ -8544,6 +8943,99 @@ BEGIN
 END;
 $function$
 ;
+
+-- New function
+CREATE OR REPLACE FUNCTION jazzhands.ins_x509_certificate()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	key	private_key.private_key_id%TYPE;
+	csr	certificate_signing_request.certificate_signing_request_id%TYPE;
+	crt	x509_signed_certificate.x509_signed_certificate_id%TYPE;
+BEGIN
+	IF NEW.private_key IS NOT NULL THEN
+		INSERT INTO private_key (
+			private_key_encryption_type,
+			is_active,
+			subject_key_identifier,
+			private_key,
+			passphrase,
+			encryption_key_id
+		) VALUES (
+			'rsa',
+			NEW.is_active,
+			NEW.subject_key_identifier,
+			NEW.private_key,
+			NEW.passphrase,
+			NEW.encryption_key_id
+		) RETURNING private_key_id INTO key;
+		NEW.x509_cert_id := key;
+	END IF;
+
+	IF NEW.certificate_sign_req IS NOT NULL THEN
+		INSERT INTO certificate_sign_req (
+			friendly_name,
+			subject,
+			certificate_signing_request,
+			private_key_id
+		) VALUES (
+			NEW.friendly_name,
+			NEW.subject,
+			NEW.certificate_sign_req,
+			key
+		) RETURNING certificate_signing_request_id INTO csr;
+		IF NEW.x509_cert_id IS NULL THEN
+			NEW.x509_cert_id := csr;
+		END IF;
+	END IF;
+
+	IF NEW.public_key IS NOT NULL THEN
+		INSERT INTO x509_signed_certificate (
+			friendly_name,
+			is_active,
+			is_certificate_authority,
+			signing_cert_id,
+			x509_ca_cert_serial_number,
+			public_key,
+			subject,
+			subject_key_identifier,
+			valid_from,
+			valid_to,
+			x509_revocation_date,
+			x509_revocation_reason,
+			ocsp_uri,
+			crl_uri,
+			private_key_id,
+			certificate_signing_request_id
+		) VALUES (
+			NEW.friendly_name,
+			NEW.is_active,
+			NEW.is_certificate_authority,
+			NEW.signing_cert_id,
+			NEW.x509_ca_cert_serial_number,
+			NEW.public_key,
+			NEW.subject,
+			NEW.subject_key_identifier,
+			NEW.valid_from,
+			NEW.valid_to,
+			NEW.x509_revocation_date,
+			NEW.x509_revocation_reason,
+			NEW.ocsp_uri,
+			NEW.crl_uri,
+			key,
+			csr
+		) RETURNING x509_signed_certificate_id INTO crt;
+		NEW.x509_cert_id := crt;
+	END IF;
+
+	RETURN NEW;
+END;
+$function$
+;
+
 -- New function
 CREATE OR REPLACE FUNCTION jazzhands.l2_net_coll_member_enforce_on_type_change()
  RETURNS trigger
@@ -8570,7 +9062,7 @@ BEGIN
 	-- We only need to check this if we are enforcing now where we didn't used
 	-- to need to
 	--
-	IF l2ct.max_num_members IS NOT NULL AND 
+	IF l2ct.max_num_members IS NOT NULL AND
 			l2ct.max_num_members IS DISTINCT FROM old_l2ct.max_num_members THEN
 		select count(*)
 		  into tally
@@ -8633,7 +9125,7 @@ BEGIN
 	-- We only need to check this if we are enforcing now where we didn't used
 	-- to need to
 	--
-	IF l3ct.max_num_members IS NOT NULL AND 
+	IF l3ct.max_num_members IS NOT NULL AND
 			l3ct.max_num_members IS DISTINCT FROM old_l3ct.max_num_members THEN
 		select count(*)
 		  into tally
@@ -8718,7 +9210,7 @@ BEGIN
 			AND		dns_type IN ('A', 'AAAA');
 
 		IF _tal > 0 THEN
-			RAISE EXCEPTION 'Non-single addresses may not have % records', NEW.dns_type 
+			RAISE EXCEPTION 'Non-single addresses may not have % records', NEW.dns_type
 				USING ERRCODE = 'foreign_key_violation';
 		END IF;
 	END IF;
@@ -8739,7 +9231,7 @@ BEGIN
 	IF TG_OP = 'UPDATE' OR TG_OP = 'DELETE' THEN
 		PERFORM	*
 		FROM	property_collection
-				JOIN property_collection_property pcp 
+				JOIN property_collection_property pcp
 					USING (property_collection_id)
 				JOIN property p
 					USING (property_name, property_type)
@@ -8755,7 +9247,7 @@ BEGIN
 	IF TG_OP = 'UPDATE' OR TG_OP = 'INSERT' THEN
 		PERFORM	*
 		FROM	property_collection
-				JOIN property_collection_property pcp 
+				JOIN property_collection_property pcp
 					USING (property_collection_id)
 				JOIN property p
 					USING (property_name, property_type)
@@ -8869,6 +9361,239 @@ $function$
 ;
 
 -- New function
+CREATE OR REPLACE FUNCTION jazzhands.upd_x509_certificate()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	upq	TEXT[];
+	crt	x509_signed_certificate%ROWTYPE;
+	key private_key.private_key_id%TYPE;
+BEGIN
+	SELECT * INTO crt FROM x509_signed_certificate
+	WHERE x509_signed_certificate_id = OLD.x509_cert_id;
+
+	IF OLD.x509_cert_id != NEW.x509_cert_id THEN
+		RAISE EXCEPTION 'Can not change x509_cert_id' USING ERRCODE = 'invalid_parameter_value';
+	END IF;
+
+	key := crt.private_key_id;
+
+	IF crt.private_key_ID IS NULL AND NEW.private_key IS NOT NULL THEN
+		WITH ins AS (
+			INSERT INTO private_key (
+				private_key_encryption_type,
+				is_active,
+				subject_key_identifier,
+				private_key,
+				passphrase,
+				encryption_key_id
+			) VALUES (
+				'rsa',
+				NEW.is_active,
+				NEW.subject_key_identifier,
+				NEW.private_key,
+				NEW.passphrase,
+				NEW.encryption_key_id
+			) RETURNING *
+		), upd AS (
+			UPDATE x509_signed_certificate
+			SET private_key_id = ins.private_key_id
+			WHERE x509_signed_certificate_id = OLD.x509_cert_id
+			RETURNING *
+		)  SELECT private_key_id INTO key FROM upd;
+	ELSIF crt.private_key_id IS NOT NULL AND NEW.private_key IS NULL THEN
+		UPDATE x509_signed_certificate
+			SET private_key_id = NULL
+			WHERE x509_signed_certificate_id = OLD.x509_cert_id;
+		BEGIN
+			DELETE FROM private_key where private_key_id = crt.private_key_id;
+		EXCEPTION WHEN foreign_key_violation THEN
+			NULL;
+		END;
+	ELSE
+		IF OLD.is_active IS DISTINCT FROM NEW.is_active THEN
+			upq := array_append(upq,
+				'is_active = ' || quote_literal(NEW.is_active)
+			);
+		END IF;
+
+		IF OLD.subject_key_identifier IS DISTINCT FROM NEW.subject_key_identifier THEN
+			upq := array_append(upq,
+				'subject_key_identifier = ' || quote_nullable(NEW.subject_key_identifier)
+			);
+		END IF;
+
+		IF OLD.private_key IS DISTINCT FROM NEW.private_key THEN
+			upq := array_append(upq,
+				'private_key = ' || quote_nullable(NEW.private_key)
+			);
+		END IF;
+
+		IF OLD.passphrase IS DISTINCT FROM NEW.passphrase THEN
+			upq := array_append(upq,
+				'passphrase = ' || quote_nullable(NEW.passphrase)
+			);
+		END IF;
+
+		IF OLD.encryption_key_id IS DISTINCT FROM NEW.encryption_key_id THEN
+			upq := array_append(upq,
+				'encryption_key_id = ' || quote_nullable(NEW.encryption_key_id)
+			);
+		END IF;
+
+		IF array_length(upq, 1) > 0 THEN
+			EXECUTE 'UPDATE private_key SET '
+				|| array_to_string(upq, ', ')
+				|| ' WHERE private_key_id = '
+				|| crt.private_key_id;
+		END IF;
+	END IF;
+
+	upq := NULL;
+	IF crt.certificate_signing_request_id IS NULL AND NEW.certificate_sign_req IS NOT NULL THEN
+		WITH ins AS (
+			INSERT INTO certificate_sign_req (
+				friendly_name,
+				subject,
+				certificate_signing_request,
+				private_key_id
+			) VALUES (
+				NEW.friendly_name,
+				NEW.subject,
+				NEW.certificate_sign_req,
+				key
+			) RETURNING *
+		) UPDATE x509_signed_certificate
+		SET certificate_signing_request_id = ins.certificate_signing_request_id
+		WHERE x509_signed_certificate_id = OLD.x509_cert_id;
+	ELSIF crt.certificate_signing_request_id IS NOT NULL AND
+				NEW.certificate_sign_req IS NULL THEN
+		-- if its removed, we still keep the csr/key link
+		WITH del AS (
+			UPDATE x509_signed_certificate
+			SET certificate_signing_request = NULL
+			WHERE x509_signed_certificate_id = OLD.x509_cert_id
+			RETURNING *
+		) DELETE FROM certificate_signing_request
+		WHERE certificate_signing_request_id =
+			crt.certificate_signing_request_id;
+	ELSE
+		IF OLD.friendly_name IS DISTINCT FROM NEW.friendly_name THEN
+			upq := array_append(upq,
+				'friendly_name = ' || quote_literal(NEW.friendly_name)
+			);
+		END IF;
+
+		IF OLD.subject IS DISTINCT FROM NEW.subject THEN
+			upq := array_append(upq,
+				'subject = ' || quote_literal(NEW.subject)
+			);
+		END IF;
+
+		IF OLD.certificate_sign_req IS DISTINCT FROM
+				NEW.certificate_sign_req THEN
+			upq := array_append(upq,
+				'certificate_signing_request = ' ||
+					quote_literal(NEW.certificate_sign_req)
+			);
+		END IF;
+
+		IF array_length(upq, 1) > 0 THEN
+			EXECUTE 'UPDATE certificate_signing_request SET '
+				|| array_to_string(upq, ', ')
+				|| ' WHERE x509_signed_certificate_id = '
+				|| crt.x509_signed_certificate_id;
+		END IF;
+	END IF;
+
+	upq := NULL;
+	IF OLD.is_active IS DISTINCT FROM NEW.is_active THEN
+		upq := array_append(upq,
+			'is_active = ' || quote_literal(NEW.is_active)
+		);
+	END IF;
+	IF OLD.friendly_name IS DISTINCT FROM NEW.friendly_name THEN
+		upq := array_append(upq,
+			'friendly_name = ' || quote_literal(NEW.friendly_name)
+		);
+	END IF;
+	IF OLD.subject IS DISTINCT FROM NEW.subject THEN
+		upq := array_append(upq,
+			'subject = ' || quote_literal(NEW.subject)
+		);
+	END IF;
+	IF OLD.subject_key_identifier IS DISTINCT FROM NEW.subject_key_identifier THEN
+		upq := array_append(upq,
+			'subject_key_identifier = ' || quote_nullable(NEW.subject_key_identifier)
+		);
+	END IF;
+	IF OLD.is_certificate_authority IS DISTINCT FROM NEW.is_certificate_authority THEN
+		upq := array_append(upq,
+			'is_certificate_authority = ' || quote_nullable(NEW.is_certificate_authority)
+		);
+	END IF;
+	IF OLD.signing_cert_id IS DISTINCT FROM NEW.signing_cert_id THEN
+		upq := array_append(upq,
+			'signing_cert_id = ' || quote_nullable(NEW.signing_cert_id)
+		);
+	END IF;
+	IF OLD.x509_ca_cert_serial_number IS DISTINCT FROM NEW.x509_ca_cert_serial_number THEN
+		upq := array_append(upq,
+			'x509_ca_cert_serial_number = ' || quote_nullable(NEW.x509_ca_cert_serial_number)
+		);
+	END IF;
+	IF OLD.public_key IS DISTINCT FROM NEW.public_key THEN
+		upq := array_append(upq,
+			'public_key = ' || quote_nullable(NEW.public_key)
+		);
+	END IF;
+	IF OLD.valid_from IS DISTINCT FROM NEW.valid_from THEN
+		upq := array_append(upq,
+			'valid_from = ' || quote_nullable(NEW.valid_from)
+		);
+	END IF;
+	IF OLD.valid_to IS DISTINCT FROM NEW.valid_to THEN
+		upq := array_append(upq,
+			'valid_to = ' || quote_nullable(NEW.valid_to)
+		);
+	END IF;
+	IF OLD.x509_revocation_date IS DISTINCT FROM NEW.x509_revocation_date THEN
+		upq := array_append(upq,
+			'x509_revocation_date = ' || quote_nullable(NEW.x509_revocation_date)
+		);
+	END IF;
+	IF OLD.x509_revocation_reason IS DISTINCT FROM NEW.x509_revocation_reason THEN
+		upq := array_append(upq,
+			'x509_revocation_reason = ' || quote_nullable(NEW.x509_revocation_reason)
+		);
+	END IF;
+	IF OLD.ocsp_uri IS DISTINCT FROM NEW.ocsp_uri THEN
+		upq := array_append(upq,
+			'ocsp_uri = ' || quote_nullable(NEW.ocsp_uri)
+		);
+	END IF;
+	IF OLD.crl_uri IS DISTINCT FROM NEW.crl_uri THEN
+		upq := array_append(upq,
+			'crl_uri = ' || quote_nullable(NEW.crl_uri)
+		);
+	END IF;
+
+	IF array_length(upq, 1) > 0 THEN
+		EXECUTE 'UPDATE x509_signed_certificate SET '
+			|| array_to_string(upq, ', ')
+			|| ' WHERE x509_signed_certificate_id = '
+			|| NEW.x509_cert_id;
+	END IF;
+
+	RETURN NEW;
+END;
+$function$
+;
+
+-- New function
 CREATE OR REPLACE FUNCTION jazzhands.x509_signed_ski_pvtkey_validate()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -8943,8 +9668,8 @@ BEGIN
     END IF;
     _companyid := company_id;
 
-    SELECT arc.account_realm_id 
-      INTO _account_realm_id 
+    SELECT arc.account_realm_id
+      INTO _account_realm_id
       FROM account_realm_company arc
      WHERE arc.company_id = _companyid;
     IF NOT FOUND THEN
@@ -8952,9 +9677,9 @@ BEGIN
     END IF;
 
     IF login is NULL THEN
-        IF first_name IS NULL or last_name IS NULL THEN 
+        IF first_name IS NULL or last_name IS NULL THEN
             RAISE EXCEPTION 'Must specify login name or first name+last name';
-        ELSE 
+        ELSE
             login := person_manip.pick_login(
                 in_account_realm_id := _account_realm_id,
                 in_first_name := coalesce(preferred_first_name, first_name),
@@ -9007,7 +9732,7 @@ BEGIN
     END IF;
 
     IF physical_address_id IS NOT NULL AND site_code IS NOT NULL THEN
-        INSERT INTO person_location 
+        INSERT INTO person_location
             (person_id, person_location_type, site_code, physical_address_id)
         VALUES
             (person_id, person_location_type, site_code, physical_address_id);
@@ -9155,8 +9880,8 @@ BEGIN
 	IF _company_short_name IS NULL and _isfam = 'Y' THEN
 		_short := lower(regexp_replace(
 				regexp_replace(
-					regexp_replace(_company_name, 
-						E'\\s+(ltd|sarl|limited|pt[ye]|GmbH|ag|ab|inc)', 
+					regexp_replace(_company_name,
+						E'\\s+(ltd|sarl|limited|pt[ye]|GmbH|ag|ab|inc)',
 						'', 'gi'),
 					E'[,\\.\\$#@]', '', 'mg'),
 				E'\\s+', '_', 'gi'));
@@ -9267,7 +9992,7 @@ BEGIN
 
 	SELECT * INTO _d FROM device WHERE device_id = in_Device_id;
 	delete from dns_record where netblock_id in (
-		select netblock_id 
+		select netblock_id
 		from network_interface where device_id = in_Device_id
 	);
 
@@ -9286,7 +10011,7 @@ BEGIN
 --	PERFORM device_utils.purge_power_ports( in_Device_id);
 
 	delete from property where device_collection_id in (
-		SELECT	dc.device_collection_id 
+		SELECT	dc.device_collection_id
 		  FROM	device_collection dc
 				INNER JOIN device_collection_device dcd
 		 			USING (device_collection_id)
@@ -9297,9 +10022,9 @@ BEGIN
 	delete from device_collection_device where device_id = in_Device_id;
 	delete from snmp_commstr where device_id = in_Device_id;
 
-		
+
 	IF _d.rack_location_id IS NOT NULL  THEN
-		UPDATE device SET rack_location_id = NULL 
+		UPDATE device SET rack_location_id = NULL
 		WHERE device_id = in_Device_id;
 
 		-- This should not be permitted based on constraints, but in case
@@ -9310,7 +10035,7 @@ BEGIN
 		 WHERE	rack_location_id = _d.RACK_LOCATION_ID;
 
 		IF tally = 0 THEN
-			DELETE FROM rack_location 
+			DELETE FROM rack_location
 			WHERE rack_location_id = _d.RACK_LOCATION_ID;
 		END IF;
 	END IF;
@@ -9348,7 +10073,7 @@ BEGIN
 
 	--
 	-- If there is no notes or serial number its save to remove
-	-- 
+	--
 	IF tally = 0 AND _d.ASSET_ID is NULL THEN
 		_purgedev := true;
 	END IF;
@@ -9366,7 +10091,7 @@ BEGIN
 		END;
 	END IF;
 
-	UPDATE device SET 
+	UPDATE device SET
 		device_name =NULL,
 		service_environment_id = (
 			select service_environment_id from service_environment
@@ -9401,7 +10126,7 @@ AS $function$
 DECLARE
 	netblock_rec	RECORD;
 BEGIN
-	RETURN QUERY 
+	RETURN QUERY
 		SELECT * into netblock_rec FROM netblock_manip.allocate_netblock(
 		parent_netblock_list := ARRAY[parent_netblock_id],
 		netmask_bits := netmask_bits,
@@ -9452,7 +10177,7 @@ BEGIN
 	END IF;
 
 	IF ip_address IS NOT NULL THEN
-		SELECT 
+		SELECT
 			array_agg(netblock_id)
 		INTO
 			parent_netblock_list
@@ -9470,7 +10195,7 @@ BEGIN
 	-- Lock the parent row, which should keep parallel processes from
 	-- trying to obtain the same address
 
-	FOR parent_rec IN SELECT * FROM jazzhands.netblock WHERE netblock_id = 
+	FOR parent_rec IN SELECT * FROM jazzhands.netblock WHERE netblock_id =
 			ANY(allocate_netblock.parent_netblock_list) ORDER BY netblock_id
 			FOR UPDATE LOOP
 
@@ -9481,15 +10206,15 @@ BEGIN
 
 		IF inet_family IS NULL THEN
 			inet_family := family(parent_rec.ip_address);
-		ELSIF inet_family != family(parent_rec.ip_address) 
+		ELSIF inet_family != family(parent_rec.ip_address)
 				AND ip_address IS NULL THEN
 			RAISE EXCEPTION 'Allocation may not mix IPv4 and IPv6 addresses'
 			USING ERRCODE = 'JH10F';
 		END IF;
 
 		IF address_type = 'loopback' THEN
-			loopback_bits := 
-				CASE WHEN 
+			loopback_bits :=
+				CASE WHEN
 					family(parent_rec.ip_address) = 4 THEN 32 ELSE 128 END;
 
 			IF parent_rec.can_subnet = 'N' THEN
@@ -9642,7 +10367,7 @@ BEGIN
 			allocate_netblock.description,
 			allocate_netblock.netblock_status
 		) RETURNING * INTO netblock_rec;
-		
+
 		RAISE DEBUG 'Allocated netblock_id % for %',
 			netblock_rec.netblock_id,
 			netblock_rec.ip_address;
@@ -9677,18 +10402,18 @@ BEGIN
 	--
 	-- If the network range already exists, then just return it
 	--
-	SELECT 
+	SELECT
 		nr.* INTO netrange
 	FROM
 		jazzhands.network_range nr JOIN
-		jazzhands.netblock startnb ON (nr.start_netblock_id = 
+		jazzhands.netblock startnb ON (nr.start_netblock_id =
 			startnb.netblock_id) JOIN
 		jazzhands.netblock stopnb ON (nr.stop_netblock_id = stopnb.netblock_id)
 	WHERE
 		nr.network_range_type = nrtype AND
 		host(startnb.ip_address) = host(start_ip_address) AND
 		host(stopnb.ip_address) = host(stop_ip_address) AND
-		CASE WHEN pnbid IS NOT NULL THEN 
+		CASE WHEN pnbid IS NOT NULL THEN
 			(pnbid = nr.parent_netblock_id)
 		ELSE
 			true
@@ -9701,11 +10426,11 @@ BEGIN
 	--
 	-- If any other network ranges exist that overlap this, then error
 	--
-	PERFORM 
+	PERFORM
 		*
 	FROM
 		jazzhands.network_range nr JOIN
-		jazzhands.netblock startnb ON 
+		jazzhands.netblock startnb ON
 			(nr.start_netblock_id = startnb.netblock_id) JOIN
 		jazzhands.netblock stopnb ON (nr.stop_netblock_id = stopnb.netblock_id)
 	WHERE
@@ -9724,7 +10449,7 @@ BEGIN
 	END IF;
 
 	IF parent_netblock_id IS NOT NULL THEN
-		SELECT * INTO par_netblock FROM jazzhands.netblock WHERE 
+		SELECT * INTO par_netblock FROM jazzhands.netblock WHERE
 			netblock_id = pnbid;
 		IF NOT FOUND THEN
 			RAISE 'create_network_range: parent_netblock_id % does not exist',
@@ -9732,7 +10457,7 @@ BEGIN
 		END IF;
 	ELSE
 		SELECT * INTO par_netblock FROM jazzhands.netblock WHERE netblock_id = (
-			SELECT 
+			SELECT
 				*
 			FROM
 				netblock_utils.find_best_parent_id(
@@ -9747,7 +10472,7 @@ BEGIN
 		END IF;
 	END IF;
 
-	IF par_netblock.can_subnet != 'N' OR 
+	IF par_netblock.can_subnet != 'N' OR
 			par_netblock.is_single_address != 'N' THEN
 		RAISE 'create_network_range: parent netblock % must not be subnettable or a single address',
 			par_netblock.netblock_id USING ERRCODE = 'check_violation';
@@ -9776,7 +10501,7 @@ BEGIN
 	-- range, unless allow_assigned is set
 	--
 	IF NOT allow_assigned THEN
-		PERFORM 
+		PERFORM
 			*
 		FROM
 			jazzhands.netblock n
@@ -9943,7 +10668,7 @@ BEGIN
 	-- The device type doesn't exist, so attempt to insert it
 	--
 
-	IF NOT FOUND THEN	
+	IF NOT FOUND THEN
 		IF pci_device_name IS NULL OR component_function_list IS NULL THEN
 			RAISE EXCEPTION 'component_id not found and pci_device_name or component_function_list was not passed' USING ERRCODE = 'JH501';
 		END IF;
@@ -9960,14 +10685,14 @@ BEGIN
 			property_type = 'DeviceProvisioning' AND
 			property_name = 'PCIVendorID' AND
 			property_value = pci_vendor_id::text;
-		
+
 		IF NOT FOUND THEN
 			IF pci_vendor_name IS NULL THEN
 				RAISE EXCEPTION 'PCI vendor id mapping not found and pci_vendor_name was not passed' USING ERRCODE = 'JH501';
 			END IF;
 			SELECT company_id INTO comp_id FROM company
 			WHERE company_name = pci_vendor_name;
-		
+
 			IF NOT FOUND THEN
 				SELECT company_manip.add_company(
 					_company_name := pci_vendor_name,
@@ -9999,14 +10724,14 @@ BEGIN
 			property_type = 'DeviceProvisioning' AND
 			property_name = 'PCIVendorID' AND
 			property_value = pci_sub_vendor_id::text;
-		
+
 		IF NOT FOUND THEN
 			IF pci_sub_vendor_name IS NULL THEN
 				RAISE EXCEPTION 'PCI subsystem vendor id mapping not found and pci_sub_vendor_name was not passed' USING ERRCODE = 'JH501';
 			END IF;
 			SELECT company_id INTO sub_comp_id FROM company
 			WHERE company_name = pci_sub_vendor_name;
-		
+
 			IF NOT FOUND THEN
 				SELECT company_manip.add_company(
 					_company_name := pci_sub_vendor_name,
@@ -10033,7 +10758,7 @@ BEGIN
 		-- Fetch the slot type
 		--
 
-		SELECT 
+		SELECT
 			slot_type_id INTO stid
 		FROM
 			slot_type st
@@ -10051,11 +10776,11 @@ BEGIN
 		-- Figure out the best name/description to insert this component with
 		--
 		IF pci_sub_device_name IS NOT NULL AND pci_sub_device_name != 'Device' THEN
-			model_name = concat_ws(' ', 
+			model_name = concat_ws(' ',
 				sub_vendor_name, pci_sub_device_name,
 				'(' || vendor_name, pci_device_name || ')');
 		ELSIF pci_sub_device_name = 'Device' THEN
-			model_name = concat_ws(' ', 
+			model_name = concat_ws(' ',
 				vendor_name, '(' || sub_vendor_name || ')', pci_device_name);
 		ELSE
 			model_name = concat_ws(' ', vendor_name, pci_device_name);
@@ -10067,7 +10792,7 @@ BEGIN
 			asset_permitted,
 			description
 		) VALUES (
-			CASE WHEN 
+			CASE WHEN
 				sub_comp_id IS NULL OR
 				pci_sub_device_name IS NULL OR
 				pci_sub_device_name = 'Device'
@@ -10096,17 +10821,17 @@ BEGIN
 			component_property_type,
 			component_type_id,
 			property_value
-		) VALUES 
+		) VALUES
 			('PCIVendorID', 'PCI', ctid, pci_vendor_id),
 			('PCIDeviceID', 'PCI', ctid, pci_device_id);
-		
+
 		IF (pci_subsystem_id IS NOT NULL) THEN
 			INSERT INTO component_property (
 				component_property_name,
 				component_property_type,
 				component_type_id,
 				property_value
-			) VALUES 
+			) VALUES
 				('PCISubsystemVendorID', 'PCI', ctid, pci_sub_vendor_id),
 				('PCISubsystemID', 'PCI', ctid, pci_subsystem_id);
 		END IF;
@@ -10130,7 +10855,7 @@ BEGIN
 	-- serial number already exists
 	--
 	IF serial_number IS NOT NULL THEN
-		SELECT 
+		SELECT
 			component.* INTO c
 		FROM
 			component JOIN
@@ -10183,7 +10908,7 @@ BEGIN
 	cid := NULL;
 
 	IF sn IS NOT NULL THEN
-		SELECT 
+		SELECT
 			comp.* INTO c
 		FROM
 			component comp JOIN
@@ -10271,6 +10996,100 @@ BEGIN
 		RAISE EXCEPTION 'Must run maintenance in a transaction.';
 	END IF;
 	RETURN true;
+END;
+$function$
+;
+
+-- Changed function
+SELECT schema_support.save_grants_for_replay('schema_support', 'build_audit_table');
+-- Dropped in case type changes.
+DROP FUNCTION IF EXISTS schema_support.build_audit_table ( aud_schema character varying, tbl_schema character varying, table_name character varying, first_time boolean );
+CREATE OR REPLACE FUNCTION schema_support.build_audit_table(aud_schema character varying, tbl_schema character varying, table_name character varying, first_time boolean DEFAULT true)
+ RETURNS void
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+	keys	RECORD;
+	count	INTEGER;
+	name	TEXT;
+BEGIN
+	BEGIN
+	EXECUTE 'CREATE SEQUENCE ' || quote_ident(aud_schema) || '.'
+		|| quote_ident(table_name || '_seq');
+	EXCEPTION WHEN duplicate_table THEN
+		NULL;
+	END;
+
+	EXECUTE 'CREATE TABLE ' || quote_ident(aud_schema) || '.'
+		|| quote_ident(table_name) || ' AS '
+		|| 'SELECT *, NULL::char(3) as "aud#action", now() as "aud#timestamp", '
+		|| 'clock_timestamp() as "aud#realtime", '
+		|| 'txid_current() as "aud#txid", '
+		|| 'NULL::varchar(255) AS "aud#user", NULL::integer AS "aud#seq" '
+		|| 'FROM ' || quote_ident(tbl_schema) || '.' || quote_ident(table_name)
+		|| ' LIMIT 0';
+
+	EXECUTE 'ALTER TABLE ' || quote_ident(aud_schema) || '.'
+		|| quote_ident(table_name)
+		|| $$ ALTER COLUMN "aud#seq" SET NOT NULL, $$
+		|| $$ ALTER COLUMN "aud#seq" SET DEFAULT nextval('$$
+		|| quote_ident(aud_schema) || '.' || quote_ident(table_name || '_seq')
+		|| $$')$$;
+
+	EXECUTE 'ALTER SEQUENCE ' || quote_ident(aud_schema) || '.'
+		|| quote_ident(table_name || '_seq') || ' OWNED BY '
+		|| quote_ident(aud_schema) || '.' || quote_ident(table_name)
+		|| '.' || quote_ident('aud#seq');
+
+
+	EXECUTE 'CREATE INDEX '
+		|| quote_ident( table_name || '_aud#timestamp_idx')
+		|| ' ON ' || quote_ident(aud_schema) || '.'
+		|| quote_ident(table_name) || '("aud#timestamp")';
+
+	EXECUTE 'ALTER TABLE ' || quote_ident(aud_schema) || '.'
+		|| quote_ident( table_name )
+		|| ' ADD PRIMARY KEY ("aud#seq")';
+
+	COUNT := 0;
+	-- one day, I will want to construct the list of columns by hand rather
+	-- than use pg_get_constraintdef.  watch me...
+	FOR keys IN
+		SELECT con.conname, c2.relname as index_name,
+			pg_catalog.pg_get_constraintdef(con.oid, true) as condef,
+				regexp_replace(
+			pg_catalog.pg_get_constraintdef(con.oid, true),
+					'^.*(\([^\)]+\)).*$', '\1') as cols,
+			con.condeferrable,
+			con.condeferred
+		FROM pg_catalog.pg_class c
+			INNER JOIN pg_namespace n
+				ON relnamespace = n.oid
+			INNER JOIN pg_catalog.pg_index i
+				ON c.oid = i.indrelid
+			INNER JOIN pg_catalog.pg_class c2
+				ON i.indexrelid = c2.oid
+			INNER JOIN pg_catalog.pg_constraint con ON
+				(con.conrelid = i.indrelid
+				AND con.conindid = i.indexrelid )
+		WHERE c.relname =  table_name
+		AND	 n.nspname = tbl_schema
+		AND con.contype in ('p', 'u')
+	LOOP
+		name := 'aud_' || quote_ident( table_name || '_' || keys.conname);
+		IF char_length(name) > 63 THEN
+			name := 'aud_' || count || quote_ident( table_name || '_' || keys.conname);
+			COUNT := COUNT + 1;
+		END IF;
+		EXECUTE 'CREATE INDEX ' || name
+			|| ' ON ' || quote_ident(aud_schema) || '.'
+			|| quote_ident(table_name) || keys.cols;
+	END LOOP;
+
+	IF first_time THEN
+		PERFORM schema_support.rebuild_audit_trigger
+			( aud_schema, tbl_schema, table_name );
+	END IF;
 END;
 $function$
 ;
@@ -11812,7 +12631,7 @@ BEGIN
 		PERFORM schema_support.refresh_mv_if_needed(object, 'jazzhands');
 	END IF;
 END;
-$$ 
+$$
 SET search_path=jazzhands
 LANGUAGE plpgsql SECURITY DEFINER;
 
@@ -11827,7 +12646,7 @@ $$
 BEGIN
 	RETURN schema_support.relation_last_changed(view);
 END;
-$$ 
+$$
 SET search_path=jazzhands
 LANGUAGE plpgsql SECURITY DEFINER;
 
@@ -11884,7 +12703,7 @@ WITH conn_props AS (
 	FROM	component_property
 	WHERE	component_property_type = 'tcpsrv-connections'
 	AND		component_property_name = 'tcpsrv_enabled'
-) SELECT	
+) SELECT
 	icc.inter_component_connection_id  AS layer1_connection_id,
 	icc.slot1_id			AS physical_port1_id,
 	icc.slot2_id			AS physical_port2_id,
@@ -11956,7 +12775,7 @@ FROM inter_component_connection icc
 
 create or replace view physical_port
 AS
-SELECT	
+SELECT
 	sl.slot_id			AS physical_port_id,
 	d.device_id,
 	sl.slot_name			AS port_name,
@@ -11975,7 +12794,7 @@ SELECT
 	sl.data_ins_date,
 	sl.data_upd_user,
 	sl.data_upd_date
-  FROM	slot sl 
+  FROM	slot sl
 	INNER JOIN slot_type st USING (slot_type_id)
 	INNER JOIN v_device_slots d USING (slot_id)
 	INNER JOIN component c ON (sl.component_id = c.component_id)
@@ -12033,27 +12852,27 @@ SELECT
 -- assigned to the users in order of their priorities.
 
 CREATE OR REPLACE VIEW v_dev_col_user_prop_expanded AS
-SELECT	
+SELECT
 	property_id,
 	dchd.device_collection_id,
 	a.account_id, a.login, a.account_status,
 	ar.account_realm_id, ar.account_realm_name,
 	a.is_enabled,
 	upo.property_type property_type,
-	upo.property_name property_name, 
-	upo.property_rank property_rank, 
+	upo.property_name property_name,
+	upo.property_rank property_rank,
 	coalesce(Property_Value_Password_Type, Property_Value) AS property_value,
 	CASE WHEN upn.is_multivalue = 'N' THEN 0
 		ELSE 1 END is_multivalue,
 	CASE WHEN pdt.property_data_type = 'boolean' THEN 1 ELSE 0 END is_boolean
 FROM	v_acct_coll_acct_expanded_detail uued
-	INNER JOIN Account_Collection u 
+	INNER JOIN Account_Collection u
 		USING (account_collection_id)
-	INNER JOIN v_property upo ON 
+	INNER JOIN v_property upo ON
 		upo.Account_Collection_id = u.Account_Collection_id
 		AND upo.property_type in (
-			'CCAForceCreation', 'CCARight', 'ConsoleACL', 'RADIUS', 
-			'TokenMgmt', 'UnixPasswdFileValue', 'UserMgmt', 'cca', 
+			'CCAForceCreation', 'CCARight', 'ConsoleACL', 'RADIUS',
+			'TokenMgmt', 'UnixPasswdFileValue', 'UserMgmt', 'cca',
 			'feed-attributes', 'wwwgroup', 'HOTPants')
 	INNER JOIN val_property upn
 		ON upo.property_name = upn.property_name
@@ -12071,17 +12890,17 @@ ORDER BY device_collection_level,
 	ELSE 3 END,
   CASE WHEN uued.assign_method = 'Account_CollectionAssignedToPerson' THEN 0
 	WHEN uued.assign_method = 'Account_CollectionAssignedToDept' THEN 1
-	WHEN uued.assign_method = 
+	WHEN uued.assign_method =
 	'ParentAccount_CollectionOfAccount_CollectionAssignedToPerson' THEN 2
-	WHEN uued.assign_method = 
+	WHEN uued.assign_method =
 	'ParentAccount_CollectionOfAccount_CollectionAssignedToDept' THEN 2
-	WHEN uued.assign_method = 
+	WHEN uued.assign_method =
 	'Account_CollectionAssignedToParentDept' THEN 3
-	WHEN uued.assign_method = 
-	'ParentAccount_CollectionOfAccount_CollectionAssignedToParentDep' 
+	WHEN uued.assign_method =
+	'ParentAccount_CollectionOfAccount_CollectionAssignedToParentDep'
 			THEN 3
         ELSE 6 END,
-  uued.dept_level, uued.acct_coll_level, dchd.device_collection_id, 
+  uued.dept_level, uued.acct_coll_level, dchd.device_collection_id,
   u.Account_Collection_id;
 
 
@@ -12139,7 +12958,7 @@ WITH perdevtomclass AS  (
 	FROM perdevtomclass p
 		INNER JOIN v_device_coll_hier_detail d ON
 			d.device_collection_id = p.mclass_device_collection_id
-) 
+)
 SELECT device_collection_id, account_collection_id,
 	array_agg(setting ORDER BY rn) AS setting
 FROM (
@@ -12147,12 +12966,12 @@ FROM (
 		SELECT device_collection_id, account_collection_id,
 				unnest(ARRAY[property_name, property_value]) AS setting
 		FROM (
-			SELECT  dchd.device_collection_id, 
+			SELECT  dchd.device_collection_id,
 					acpe.account_collection_id,
-					p.property_name, 
-					coalesce(p.property_value, 
+					p.property_name,
+					coalesce(p.property_value,
 						p.property_value_password_type) as property_value,
-					row_number() OVER (partition by 
+					row_number() OVER (partition by
 							dchd.device_collection_id,
 							acpe.account_collection_id,
 							acpe.property_name
@@ -12163,12 +12982,12 @@ FROM (
 				INNER JOIN unix_group ug USING (account_collection_id)
 				INNER JOIN v_property p USING (property_id)
 				INNER JOIN dcmap dchd
-					ON dchd.parent_device_collection_id = 
+					ON dchd.parent_device_collection_id =
 						p.device_collection_id
-			WHERE	p.property_type IN ('UnixPasswdFileValue', 
+			WHERE	p.property_type IN ('UnixPasswdFileValue',
 						'UnixGroupFileProperty',
 						'MclassUnixProp')
-			AND		p.property_name NOT IN 
+			AND		p.property_name NOT IN
 					('UnixLogin','UnixGroup','UnixGroupMemberOverride')
 		) dc_acct_prop_list
 		WHERE ord = 1
@@ -12210,13 +13029,13 @@ SELECT	property_id,
 	property_value,
 	property_rank,
 	is_boolean
-FROM	v_dev_col_user_prop_expanded 
+FROM	v_dev_col_user_prop_expanded
 	INNER JOIN Device_Collection USING (Device_Collection_ID)
 WHERE	is_enabled = 'Y'
 AND	(
 		Device_Collection_Type IN ('HOTPants-app', 'HOTPants')
 	OR
-		Property_Type IN ('RADIUS', 'HOTPants') 
+		Property_Type IN ('RADIUS', 'HOTPants')
 	)
 ;
 
@@ -12304,7 +13123,7 @@ FROM (
 -- properties are set.  Its primary use is by other views.
 --
 -- It includes entries for all mclasses and will also include contrived entries
--- for every -- per-device device collection by mapping it through devices 
+-- for every -- per-device device collection by mapping it through devices
 -- to an mclass.
 -- That is, if there is a ForceHome (or whatever) on an mclass and that user is
 -- added to the per-device collection, the ForceHome will show up on the
@@ -12335,7 +13154,7 @@ WITH perdevtomclass AS  (
 	FROM perdevtomclass p
 		INNER JOIN v_device_coll_hier_detail d ON
 			d.device_collection_id = p.mclass_device_collection_id
-) SELECT device_collection_id, account_id, 
+) SELECT device_collection_id, account_id,
 	array_agg(setting ORDER BY rn) AS setting
 FROM (
 	SELECT *, row_number() over () AS rn FROM (
@@ -12344,10 +13163,10 @@ FROM (
 		FROM (
 			SELECT  dchd.device_collection_id,
 					acae.account_id,
-					p.property_name, 
-					coalesce(p.property_value, 
+					p.property_name,
+					coalesce(p.property_value,
 						p.property_value_password_type) as property_value,
-					row_number() OVER (partition by 
+					row_number() OVER (partition by
 							dchd.device_collection_id,
 							acae.account_id,
 							acpe.property_name
@@ -12355,15 +13174,15 @@ FROM (
 								property_id
 					) AS ord
 			FROM    v_acct_coll_prop_expanded acpe
-				INNER JOIN v_acct_coll_acct_expanded acae 
+				INNER JOIN v_acct_coll_acct_expanded acae
 						USING (account_collection_id)
 				INNER JOIN v_property p USING (property_id)
 				INNER JOIN dcmap dchd
 					ON dchd.parent_device_collection_id = p.device_collection_id
-			WHERE	p.property_type IN ('UnixPasswdFileValue', 
+			WHERE	p.property_type IN ('UnixPasswdFileValue',
 						'UnixGroupFileProperty',
 						'MclassUnixProp')
-			AND		p.property_name NOT IN 
+			AND		p.property_name NOT IN
 					('UnixLogin','UnixGroup','UnixGroupMemberOverride')
 		) dc_acct_prop_list
 		WHERE ord = 1
@@ -12405,8 +13224,8 @@ SELECT DISTINCT
 			dc.device_collection_id = dcr.parent_device_collection_id
                 LEFT JOIN device_collection_device dcd ON
                         dcd.device_collection_id = dcr.device_collection_id
-                LEFT JOIN Device USING (Device_Id) 
-                LEFT JOIN Network_Interface NI USING (Device_ID) 
+                LEFT JOIN Device USING (Device_Id)
+                LEFT JOIN Network_Interface NI USING (Device_ID)
                 LEFT JOIN Netblock NB USING (Netblock_id)
 	WHERE
 		device_collection_type IN ('HOTPants', 'HOTPants-app')
@@ -12505,11 +13324,26 @@ DROP FUNCTION IF EXISTS perform_audit_x509_certificate();
 
 COMMENT ON TABLE device_type IS 'Conceptual device type.  This represents how it is typically referred to rather than a specific model number.  There may be many models (components) that are represented by one device type.';
 
-ALTER TABLE ONLY x509_certificate ALTER COLUMN is_active SET DEFAULT 'Y'::bpchar;
-ALTER TABLE ONLY x509_certificate ALTER COLUMN is_certificate_authority SET DEFAULT 'N'::bpchar;
-CREATE TRIGGER trigger_ins_x509_certificate INSTEAD OF INSERT ON x509_certificate FOR EACH ROW EXECUTE PROCEDURE ins_x509_certificate();
-CREATE TRIGGER trigger_upd_x509_certificate INSTEAD OF UPDATE ON x509_certificate FOR EACH ROW EXECUTE PROCEDURE upd_x509_certificate();
+DROP TRIGGER IF EXISTS trigger_ins_x509_certificate ON x509_certificate;
+CREATE TRIGGER trigger_ins_x509_certificate
+        INSTEAD OF INSERT ON x509_certificate
+        FOR EACH ROW
+        EXECUTE PROCEDURE ins_x509_certificate();
+DROP TRIGGER IF EXISTS trigger_upd_x509_certificate ON x509_certificate;
+CREATE TRIGGER trigger_upd_x509_certificate
+        INSTEAD OF UPDATE ON x509_certificate
+        FOR EACH ROW
+        EXECUTE PROCEDURE upd_x509_certificate();
+CREATE TRIGGER trigger_del_x509_certificate
+        INSTEAD OF DELETE ON x509_certificate
+        FOR EACH ROW EXECUTE
+        PROCEDURE del_x509_certificate();
 
+--- view defaults
+ALTER TABLE ONLY x509_certificate
+        ALTER COLUMN is_active SET DEFAULT 'Y'::bpchar;
+ALTER TABLE ONLY x509_certificate
+        ALTER COLUMN is_certificate_authority SET DEFAULT 'N'::bpchar;
 
 -- END Misc that does not apply to above
 
@@ -12525,4 +13359,3 @@ GRANT select on all tables in schema audit to ro_role;
 GRANT select on all sequences in schema audit to ro_role;
 SELECT schema_support.end_maintenance();
 select timeofday(), now();
-
