@@ -1503,6 +1503,7 @@ DROP FUNCTION perform_audit_val_ip_group_protocol();
 
 COMMENT ON SCHEMA rack_utils IS 'part of jazzhands';
 
+DELETE FROM __regrants WHERE object ~ 'ip_group';
 
 -- Clean Up
 SELECT schema_support.replay_object_recreates();
