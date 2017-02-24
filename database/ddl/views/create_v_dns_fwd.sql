@@ -97,7 +97,7 @@ SELECT * FROM  (
 WHERE  dns_type != 'REVERSE_ZONE_BLOCK_PTR'
 	UNION ALL
 	SELECT
-		dns_record_id,
+		NULL::integer AS dns_record_id,	 -- not editable.
 		NULL::integer AS network_range_id,
 		parent_dns_domain_id AS dns_domain_id,
 		regexp_replace(soa_name, '\.' || pdom.parent_soa_name || '$', '') AS dns_name,
