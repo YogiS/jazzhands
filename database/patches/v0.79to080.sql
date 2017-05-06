@@ -28,6 +28,7 @@ Invoked:
 	--first=mv_unix_passwd_mappings
 	--first=v_property
 	--first=ip_universe
+	--reinsert-dir=i
 */
 
 \set ON_ERROR_STOP
@@ -2628,12 +2629,12 @@ END $function$
 --------------------------------------------------------------------
 -- DEALING WITH TABLE mv_unix_group_mappings
 SELECT schema_support.save_dependent_objects_for_replay('jazzhands', 'mv_unix_group_mappings');
--- DONE DEALING WITH OLD TABLE mv_unix_group_mappings 
+-- DONE DEALING WITH OLD TABLE mv_unix_group_mappings
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH TABLE mv_unix_passwd_mappings
 SELECT schema_support.save_dependent_objects_for_replay('jazzhands', 'mv_unix_passwd_mappings');
--- DONE DEALING WITH OLD TABLE mv_unix_passwd_mappings 
+-- DONE DEALING WITH OLD TABLE mv_unix_passwd_mappings
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH TABLE v_property
@@ -3715,7 +3716,7 @@ ALTER TABLE audit.val_sw_package_format RENAME TO val_sw_package_format_v79;
 
 DROP TABLE IF EXISTS val_sw_package_format_v79;
 DROP TABLE IF EXISTS audit.val_sw_package_format_v79;
--- DONE DEALING WITH OLD TABLE val_sw_package_format 
+-- DONE DEALING WITH OLD TABLE val_sw_package_format
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH TABLE val_symbolic_track_name
@@ -3760,7 +3761,7 @@ ALTER TABLE audit.val_symbolic_track_name RENAME TO val_symbolic_track_name_v79;
 
 DROP TABLE IF EXISTS val_symbolic_track_name_v79;
 DROP TABLE IF EXISTS audit.val_symbolic_track_name_v79;
--- DONE DEALING WITH OLD TABLE val_symbolic_track_name 
+-- DONE DEALING WITH OLD TABLE val_symbolic_track_name
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH TABLE val_upgrade_severity
@@ -3806,7 +3807,7 @@ ALTER TABLE audit.val_upgrade_severity RENAME TO val_upgrade_severity_v79;
 
 DROP TABLE IF EXISTS val_upgrade_severity_v79;
 DROP TABLE IF EXISTS audit.val_upgrade_severity_v79;
--- DONE DEALING WITH OLD TABLE val_upgrade_severity 
+-- DONE DEALING WITH OLD TABLE val_upgrade_severity
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH TABLE val_voe_state
@@ -3851,7 +3852,7 @@ ALTER TABLE audit.val_voe_state RENAME TO val_voe_state_v79;
 
 DROP TABLE IF EXISTS val_voe_state_v79;
 DROP TABLE IF EXISTS audit.val_voe_state_v79;
--- DONE DEALING WITH OLD TABLE val_voe_state 
+-- DONE DEALING WITH OLD TABLE val_voe_state
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH TABLE account
@@ -4494,6 +4495,26 @@ END;
 $function$
 ;
 CREATE TRIGGER trigger_account_enforce_is_enabled BEFORE INSERT OR UPDATE OF account_status, is_enabled ON account FOR EACH ROW EXECUTE PROCEDURE account_enforce_is_enabled();
+
+-- XXX - may need to include trigger function
+-- consider NEW jazzhands.account_status_after_hooks
+CREATE OR REPLACE FUNCTION jazzhands.account_status_after_hooks()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+BEGIN
+	BEGIN
+		PERFORM local_hooks.account_status_after_hooks();
+	EXCEPTION WHEN invalid_schema_name OR undefined_function THEN
+		PERFORM 1;
+	END;
+	RETURN NULL;
+END;
+$function$
+;
+CREATE TRIGGER trigger_account_status_after_hooks AFTER UPDATE OF account_status ON account FOR EACH ROW EXECUTE PROCEDURE account_status_after_hooks();
 
 -- XXX - may need to include trigger function
 -- consider NEW jazzhands.account_validate_login
@@ -7495,6 +7516,7 @@ CREATE TRIGGER trigger_validate_dns_domain_collection_type_change BEFORE UPDATE 
 -- SELECT schema_support.replay_object_recreates();
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'dns_domain_collection');
 SELECT schema_support.build_audit_table_pkak_indexes('audit', 'jazzhands', 'dns_domain_collection');
+SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'dns_domain_collection');
 ALTER SEQUENCE dns_domain_collection_dns_domain_collection_id_seq
 	 OWNED BY dns_domain_collection.dns_domain_collection_id;
 DROP TABLE IF EXISTS dns_domain_collection_v79;
@@ -7524,32 +7546,8 @@ CREATE TABLE dns_domain_ip_universe
 	data_upd_date	timestamp with time zone  NULL
 );
 
--- PRIMARY AND ALTERNATE KEYS
-ALTER TABLE dns_domain_ip_universe ADD CONSTRAINT pk_dns_domain_ip_universe PRIMARY KEY (dns_domain_id, ip_universe_id);
 
--- Table/Column Comments
--- INDEXES
-CREATE INDEX xifdnsdom_ipu_dnsdomid ON dns_domain_ip_universe USING btree (dns_domain_id);
-CREATE INDEX xifdnsdom_ipu_ipu ON dns_domain_ip_universe USING btree (ip_universe_id);
-
--- CHECK CONSTRAINTS
-ALTER TABLE dns_domain_ip_universe ADD CONSTRAINT validation_rule_675_1416260427
-	CHECK ((should_generate = ANY (ARRAY['Y'::bpchar, 'N'::bpchar])) AND ((should_generate)::text = upper((should_generate)::text)));
-
--- FOREIGN KEYS FROM
-
--- FOREIGN KEYS TO
--- consider FK dns_domain_ip_universe and dns_domain
-ALTER TABLE dns_domain_ip_universe
-	ADD CONSTRAINT fk_dnsdom_ipu_dnsdomid
-	FOREIGN KEY (dns_domain_id) REFERENCES dns_domain(dns_domain_id);
--- consider FK dns_domain_ip_universe and ip_universe
-ALTER TABLE dns_domain_ip_universe
-	ADD CONSTRAINT fk_dnsdom_ipu_ipu
-	FOREIGN KEY (ip_universe_id) REFERENCES ip_universe(ip_universe_id);
-
-
----- insert data
+-- BEGIN Manually written insert function
 
 INSERT INTO dns_domain_ip_universe (
 	dns_domain_id,
@@ -7648,8 +7646,8 @@ DROP TABLE IF EXISTS audit.dns_domain_v79;
 
 DO $$
 DECLARE
-	_x	INTEGER;
-	_t	TEXT;
+	_x      INTEGER;
+	_t      TEXT;
 BEGIN
 	SELECT coalesce(max("aud#seq"), 0) + 1 INTO _x FROM audit.dns_domain_ip_universe;
 
@@ -7660,7 +7658,34 @@ BEGIN
 END;
 $$;
 
----- done inserting data
+
+
+-- END Manually written insert function
+SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'dns_domain_ip_universe');
+
+-- PRIMARY AND ALTERNATE KEYS
+ALTER TABLE dns_domain_ip_universe ADD CONSTRAINT pk_dns_domain_ip_universe PRIMARY KEY (dns_domain_id, ip_universe_id);
+
+-- Table/Column Comments
+-- INDEXES
+CREATE INDEX xifdnsdom_ipu_dnsdomid ON dns_domain_ip_universe USING btree (dns_domain_id);
+CREATE INDEX xifdnsdom_ipu_ipu ON dns_domain_ip_universe USING btree (ip_universe_id);
+
+-- CHECK CONSTRAINTS
+ALTER TABLE dns_domain_ip_universe ADD CONSTRAINT validation_rule_675_1416260427
+	CHECK ((should_generate = ANY (ARRAY['Y'::bpchar, 'N'::bpchar])) AND ((should_generate)::text = upper((should_generate)::text)));
+
+-- FOREIGN KEYS FROM
+
+-- FOREIGN KEYS TO
+-- consider FK dns_domain_ip_universe and dns_domain
+ALTER TABLE dns_domain_ip_universe
+	ADD CONSTRAINT fk_dnsdom_ipu_dnsdomid
+	FOREIGN KEY (dns_domain_id) REFERENCES dns_domain(dns_domain_id);
+-- consider FK dns_domain_ip_universe and ip_universe
+ALTER TABLE dns_domain_ip_universe
+	ADD CONSTRAINT fk_dnsdom_ipu_ipu
+	FOREIGN KEY (ip_universe_id) REFERENCES ip_universe(ip_universe_id);
 
 -- TRIGGERS
 -- consider NEW jazzhands.dns_domain_ip_universe_trigger_change
@@ -7684,7 +7709,7 @@ CREATE TRIGGER trigger_dns_domain_ip_universe_trigger_change AFTER INSERT OR UPD
 -- this used to be at the end...
 -- SELECT schema_support.replay_object_recreates();
 SELECT schema_support.rebuild_stamp_trigger('jazzhands', 'dns_domain_ip_universe');
--- SELECT schema_support.build_audit_table_pkak_indexes('audit', 'jazzhands', 'dns_domain_ip_universe');
+SELECT schema_support.build_audit_table_pkak_indexes('audit', 'jazzhands', 'dns_domain_ip_universe');
 SELECT schema_support.rebuild_audit_trigger('audit', 'jazzhands', 'dns_domain_ip_universe');
 -- DONE DEALING WITH TABLE dns_domain_ip_universe
 --------------------------------------------------------------------
@@ -9429,6 +9454,16 @@ BEGIN
 			RAISE EXCEPTION 'network interfaces must refer to single ip addresses of type default address (%,%)', NEW.ip_address, NEW.netblock_id
 				USING errcode = 'foreign_key_violation';
 		END IF;
+		select count(*)
+		INTO _tally
+		FROM network_interface_netblock
+		WHERE netblock_id = NEW.netblock_id;
+
+		IF _tally > 0 THEN
+			RAISE EXCEPTION 'network interfaces must refer to single ip addresses of type default address (%,%)', NEW.ip_address, NEW.netblock_id
+				USING errcode = 'foreign_key_violation';
+		END IF;
+
 	END IF;
 	RETURN NEW;
 END;
@@ -12033,7 +12068,7 @@ ALTER TABLE audit.sw_package_relation RENAME TO sw_package_relation_v79;
 
 DROP TABLE IF EXISTS sw_package_relation_v79;
 DROP TABLE IF EXISTS audit.sw_package_relation_v79;
--- DONE DEALING WITH OLD TABLE sw_package_relation 
+-- DONE DEALING WITH OLD TABLE sw_package_relation
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH TABLE sw_package_release
@@ -12091,7 +12126,7 @@ ALTER TABLE audit.sw_package_release RENAME TO sw_package_release_v79;
 
 DROP TABLE IF EXISTS sw_package_release_v79;
 DROP TABLE IF EXISTS audit.sw_package_release_v79;
--- DONE DEALING WITH OLD TABLE sw_package_release 
+-- DONE DEALING WITH OLD TABLE sw_package_release
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH TABLE sw_package_repository
@@ -12144,7 +12179,7 @@ ALTER TABLE audit.sw_package_repository RENAME TO sw_package_repository_v79;
 
 DROP TABLE IF EXISTS sw_package_repository_v79;
 DROP TABLE IF EXISTS audit.sw_package_repository_v79;
--- DONE DEALING WITH OLD TABLE sw_package_repository 
+-- DONE DEALING WITH OLD TABLE sw_package_repository
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH TABLE token
@@ -12650,7 +12685,7 @@ ALTER TABLE audit.voe RENAME TO voe_v79;
 
 DROP TABLE IF EXISTS voe_v79;
 DROP TABLE IF EXISTS audit.voe_v79;
--- DONE DEALING WITH OLD TABLE voe 
+-- DONE DEALING WITH OLD TABLE voe
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH TABLE voe_relation
@@ -12705,7 +12740,7 @@ ALTER TABLE audit.voe_relation RENAME TO voe_relation_v79;
 
 DROP TABLE IF EXISTS voe_relation_v79;
 DROP TABLE IF EXISTS audit.voe_relation_v79;
--- DONE DEALING WITH OLD TABLE voe_relation 
+-- DONE DEALING WITH OLD TABLE voe_relation
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH TABLE voe_sw_package
@@ -12752,7 +12787,7 @@ ALTER TABLE audit.voe_sw_package RENAME TO voe_sw_package_v79;
 
 DROP TABLE IF EXISTS voe_sw_package_v79;
 DROP TABLE IF EXISTS audit.voe_sw_package_v79;
--- DONE DEALING WITH OLD TABLE voe_sw_package 
+-- DONE DEALING WITH OLD TABLE voe_sw_package
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH TABLE voe_symbolic_track
@@ -12804,7 +12839,7 @@ ALTER TABLE audit.voe_symbolic_track RENAME TO voe_symbolic_track_v79;
 
 DROP TABLE IF EXISTS voe_symbolic_track_v79;
 DROP TABLE IF EXISTS audit.voe_symbolic_track_v79;
--- DONE DEALING WITH OLD TABLE voe_symbolic_track 
+-- DONE DEALING WITH OLD TABLE voe_symbolic_track
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH TABLE v_dns_changes_pending
@@ -13860,6 +13895,45 @@ $function$
 ;
 
 -- Changed function
+SELECT schema_support.save_grants_for_replay('jazzhands', 'netblock_single_address_ni');
+CREATE OR REPLACE FUNCTION jazzhands.netblock_single_address_ni()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+DECLARE
+	_tally	INTEGER;
+BEGIN
+	IF (NEW.is_single_address = 'N' AND OLD.is_single_address = 'Y') OR
+		(NEW.netblock_type != 'default' AND OLD.netblock_type = 'default')
+			THEN
+		select count(*)
+		INTO _tally
+		FROM network_interface
+		WHERE netblock_id = NEW.netblock_id;
+
+		IF _tally > 0 THEN
+			RAISE EXCEPTION 'network interfaces must refer to single ip addresses of type default address (%,%)', NEW.ip_address, NEW.netblock_id
+				USING errcode = 'foreign_key_violation';
+		END IF;
+		select count(*)
+		INTO _tally
+		FROM network_interface_netblock
+		WHERE netblock_id = NEW.netblock_id;
+
+		IF _tally > 0 THEN
+			RAISE EXCEPTION 'network interfaces must refer to single ip addresses of type default address (%,%)', NEW.ip_address, NEW.netblock_id
+				USING errcode = 'foreign_key_violation';
+		END IF;
+
+	END IF;
+	RETURN NEW;
+END;
+$function$
+;
+
+-- Changed function
 SELECT schema_support.save_grants_for_replay('jazzhands', 'validate_property');
 CREATE OR REPLACE FUNCTION jazzhands.validate_property()
  RETURNS trigger
@@ -14678,6 +14752,24 @@ BEGIN
 	END IF;
 
 	RETURN NEW;
+END;
+$function$
+;
+
+-- New function
+CREATE OR REPLACE FUNCTION jazzhands.account_status_after_hooks()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO jazzhands
+AS $function$
+BEGIN
+	BEGIN
+		PERFORM local_hooks.account_status_after_hooks();
+	EXCEPTION WHEN invalid_schema_name OR undefined_function THEN
+		PERFORM 1;
+	END;
+	RETURN NULL;
 END;
 $function$
 ;
@@ -17539,7 +17631,6 @@ CREATE UNIQUE INDEX mv_dev_col_root_leaf_id_idx ON mv_dev_col_root USING btree (
 CREATE INDEX mv_dev_col_root_leaf_type_idx ON mv_dev_col_root USING btree (leaf_type);
 CREATE INDEX mv_dev_col_root_root_id_idx ON mv_dev_col_root USING btree (root_id);
 CREATE INDEX mv_dev_col_root_root_type_idx ON mv_dev_col_root USING btree (root_type);
-
 
 
 -- END Misc that does not apply to above
