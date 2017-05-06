@@ -2628,12 +2628,12 @@ END $function$
 --------------------------------------------------------------------
 -- DEALING WITH TABLE mv_unix_group_mappings
 SELECT schema_support.save_dependent_objects_for_replay('jazzhands', 'mv_unix_group_mappings');
--- DONE DEALING WITH OLD TABLE mv_unix_group_mappings [19328550]
+-- DONE DEALING WITH OLD TABLE mv_unix_group_mappings 
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH TABLE mv_unix_passwd_mappings
 SELECT schema_support.save_dependent_objects_for_replay('jazzhands', 'mv_unix_passwd_mappings');
--- DONE DEALING WITH OLD TABLE mv_unix_passwd_mappings [19328543]
+-- DONE DEALING WITH OLD TABLE mv_unix_passwd_mappings 
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH TABLE v_property
@@ -3715,7 +3715,7 @@ ALTER TABLE audit.val_sw_package_format RENAME TO val_sw_package_format_v79;
 
 DROP TABLE IF EXISTS val_sw_package_format_v79;
 DROP TABLE IF EXISTS audit.val_sw_package_format_v79;
--- DONE DEALING WITH OLD TABLE val_sw_package_format [19320878]
+-- DONE DEALING WITH OLD TABLE val_sw_package_format 
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH TABLE val_symbolic_track_name
@@ -3760,7 +3760,7 @@ ALTER TABLE audit.val_symbolic_track_name RENAME TO val_symbolic_track_name_v79;
 
 DROP TABLE IF EXISTS val_symbolic_track_name_v79;
 DROP TABLE IF EXISTS audit.val_symbolic_track_name_v79;
--- DONE DEALING WITH OLD TABLE val_symbolic_track_name [19320894]
+-- DONE DEALING WITH OLD TABLE val_symbolic_track_name 
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH TABLE val_upgrade_severity
@@ -3806,7 +3806,7 @@ ALTER TABLE audit.val_upgrade_severity RENAME TO val_upgrade_severity_v79;
 
 DROP TABLE IF EXISTS val_upgrade_severity_v79;
 DROP TABLE IF EXISTS audit.val_upgrade_severity_v79;
--- DONE DEALING WITH OLD TABLE val_upgrade_severity [19320928]
+-- DONE DEALING WITH OLD TABLE val_upgrade_severity 
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH TABLE val_voe_state
@@ -3851,7 +3851,7 @@ ALTER TABLE audit.val_voe_state RENAME TO val_voe_state_v79;
 
 DROP TABLE IF EXISTS val_voe_state_v79;
 DROP TABLE IF EXISTS audit.val_voe_state_v79;
--- DONE DEALING WITH OLD TABLE val_voe_state [19320936]
+-- DONE DEALING WITH OLD TABLE val_voe_state 
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH TABLE account
@@ -12033,7 +12033,7 @@ ALTER TABLE audit.sw_package_relation RENAME TO sw_package_relation_v79;
 
 DROP TABLE IF EXISTS sw_package_relation_v79;
 DROP TABLE IF EXISTS audit.sw_package_relation_v79;
--- DONE DEALING WITH OLD TABLE sw_package_relation [19319893]
+-- DONE DEALING WITH OLD TABLE sw_package_relation 
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH TABLE sw_package_release
@@ -12091,7 +12091,7 @@ ALTER TABLE audit.sw_package_release RENAME TO sw_package_release_v79;
 
 DROP TABLE IF EXISTS sw_package_release_v79;
 DROP TABLE IF EXISTS audit.sw_package_release_v79;
--- DONE DEALING WITH OLD TABLE sw_package_release [19319907]
+-- DONE DEALING WITH OLD TABLE sw_package_release 
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH TABLE sw_package_repository
@@ -12144,7 +12144,7 @@ ALTER TABLE audit.sw_package_repository RENAME TO sw_package_repository_v79;
 
 DROP TABLE IF EXISTS sw_package_repository_v79;
 DROP TABLE IF EXISTS audit.sw_package_repository_v79;
--- DONE DEALING WITH OLD TABLE sw_package_repository [19319921]
+-- DONE DEALING WITH OLD TABLE sw_package_repository 
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH TABLE token
@@ -12650,7 +12650,7 @@ ALTER TABLE audit.voe RENAME TO voe_v79;
 
 DROP TABLE IF EXISTS voe_v79;
 DROP TABLE IF EXISTS audit.voe_v79;
--- DONE DEALING WITH OLD TABLE voe [19321010]
+-- DONE DEALING WITH OLD TABLE voe 
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH TABLE voe_relation
@@ -12705,7 +12705,7 @@ ALTER TABLE audit.voe_relation RENAME TO voe_relation_v79;
 
 DROP TABLE IF EXISTS voe_relation_v79;
 DROP TABLE IF EXISTS audit.voe_relation_v79;
--- DONE DEALING WITH OLD TABLE voe_relation [19321024]
+-- DONE DEALING WITH OLD TABLE voe_relation 
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH TABLE voe_sw_package
@@ -12752,7 +12752,7 @@ ALTER TABLE audit.voe_sw_package RENAME TO voe_sw_package_v79;
 
 DROP TABLE IF EXISTS voe_sw_package_v79;
 DROP TABLE IF EXISTS audit.voe_sw_package_v79;
--- DONE DEALING WITH OLD TABLE voe_sw_package [19321040]
+-- DONE DEALING WITH OLD TABLE voe_sw_package 
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH TABLE voe_symbolic_track
@@ -12804,7 +12804,7 @@ ALTER TABLE audit.voe_symbolic_track RENAME TO voe_symbolic_track_v79;
 
 DROP TABLE IF EXISTS voe_symbolic_track_v79;
 DROP TABLE IF EXISTS audit.voe_symbolic_track_v79;
--- DONE DEALING WITH OLD TABLE voe_symbolic_track [19321049]
+-- DONE DEALING WITH OLD TABLE voe_symbolic_track 
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 -- DEALING WITH TABLE v_dns_changes_pending
