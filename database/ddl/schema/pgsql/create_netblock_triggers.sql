@@ -1,6 +1,19 @@
--- Copyright (c) 2012-2027 Matthew Ragan
--- Copyright (c) 2017 Todd Kover
+-- Copyright (c) 2012,2013,2014 Matthew Ragan
+-- All rights reserved.
 --
+-- Licensed under the Apache License, Version 2.0 (the "License");
+-- you may not use this file except in compliance with the License.
+-- You may obtain a copy of the License at
+--
+--       http://www.apache.org/licenses/LICENSE-2.0
+--
+-- Unless required by applicable law or agreed to in writing, software
+-- distributed under the License is distributed on an "AS IS" BASIS,
+-- WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-- See the License for the specific language governing permissions and
+-- limitations under the License.
+
+-- Copyright (c) 2014 Todd Kover
 -- All rights reserved.
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,7 +34,9 @@ DECLARE
 	nbtype				RECORD;
 	v_netblock_id		netblock.netblock_id%TYPE;
 	parent_netblock		RECORD;
+	universes			integer[];
 	netmask_bits		integer;
+	tally				integer;
 BEGIN
 	IF NEW.ip_address IS NULL THEN
 		RAISE EXCEPTION 'Column ip_address may not be null'
@@ -72,38 +87,67 @@ BEGIN
 	END IF;
 
 	/*
-	 * Commented out check for RFC1918 space.  This is probably handled
-	 * well enough by the ip_universe/netblock_type additions, although
-	 * it's possible that netblock_type may need to have an additional
-	 * field added to allow people to be stupid (for example,
-	 * allow_duplicates='Y','N','RFC1918')
+	 * This used to only happen for not-rfc1918 space, but that sort of
+	 * uniqueness enforcement is done through ip universes now.
 	 */
-
-/*
-	IF NOT net_manip.inet_is_private(NEW.ip_address) THEN
-*/
-			PERFORM netblock_id
-			   FROM netblock
-			  WHERE ip_address = NEW.ip_address AND
-					ip_universe_id = NEW.ip_universe_id AND
-					netblock_type = NEW.netblock_type AND
-					is_single_address = NEW.is_single_address;
-			IF (TG_OP = 'INSERT' AND FOUND) THEN
-				RAISE EXCEPTION 'Unique Constraint Violated on IP Address: %',
-					NEW.ip_address
-					USING ERRCODE= 'unique_violation';
-			END IF;
-			IF (TG_OP = 'UPDATE') THEN
-				IF (NEW.ip_address != OLD.ip_address AND FOUND) THEN
-					RAISE EXCEPTION
-						'Unique Constraint Violated on IP Address: %',
-						NEW.ip_address
-						USING ERRCODE = 'unique_violation';
-				END IF;
-			END IF;
-/*
+	PERFORM netblock_id
+	   FROM netblock
+	  WHERE ip_address = NEW.ip_address AND
+			ip_universe_id = NEW.ip_universe_id AND
+			netblock_type = NEW.netblock_type AND
+			is_single_address = NEW.is_single_address;
+	IF (TG_OP = 'INSERT' AND FOUND) THEN
+		RAISE EXCEPTION 'Unique Constraint Violated on IP Address: %',
+			NEW.ip_address
+			USING ERRCODE= 'unique_violation';
 	END IF;
-*/
+	IF (TG_OP = 'UPDATE') THEN
+		IF (NEW.ip_address != OLD.ip_address AND FOUND) THEN
+			RAISE EXCEPTION
+				'Unique Constraint Violated on IP Address: %',
+				NEW.ip_address
+				USING ERRCODE = 'unique_violation';
+		END IF;
+	END IF;
+
+	/*
+	 * for networks, check for uniqueness across ip universe and ip visibility
+	 */
+	IF NEW.is_single_address = 'N' THEN
+		WITH x AS (
+				SELECT	ip_universe_id
+				FROM	ip_universe
+				WHERE	ip_namespace IN (
+							SELECT ip_namespace FROM ip_universe
+							WHERE ip_universe_id = NEW.ip_universe_id
+						)
+				AND		ip_universe_id != NEW.ip_universe_id
+			UNION
+				SELECT	visible_ip_universe_id
+				FROM	ip_universe_visibility
+				WHERE	ip_universe_id = NEW.ip_universe_id
+				AND		ip_universe_id != NEW.ip_universe_id
+			UNION
+				SELECT	ip_universe_id
+				FROM	ip_universe_visibility
+				WHERE	visible_ip_universe_id = NEW.ip_universe_id
+				AND		visible_ip_universe_id != NEW.ip_universe_id
+		) SELECT count(*) INTO tally
+		FROM netblock
+		WHERE ip_address = NEW.ip_address AND
+			netblock_type = NEW.netblock_type AND
+			ip_universe_id IN (select ip_universe_id FROM x) AND
+			is_single_address = 'N' AND
+			netblock_id != NEW.netblock_id
+		;
+
+		IF tally >  0 THEN
+			RAISE EXCEPTION
+				'IP Universe Constraint Violated on IP Address: % Universe: %',
+				NEW.ip_address, NEW.ip_universe_id
+				USING ERRCODE= 'unique_violation';
+		END IF;
+	END IF;
 
 	/*
 	 * Parent validation is performed in the deferred after trigger
@@ -632,16 +676,6 @@ BEGIN
 			RAISE EXCEPTION 'network interfaces must refer to single ip addresses of type default address (%,%)', NEW.ip_address, NEW.netblock_id
 				USING errcode = 'foreign_key_violation';
 		END IF;
-		select count(*)
-		INTO _tally
-		FROM network_interface_netblock
-		WHERE netblock_id = NEW.netblock_id;
-
-		IF _tally > 0 THEN
-			RAISE EXCEPTION 'network interfaces must refer to single ip addresses of type default address (%,%)', NEW.ip_address, NEW.netblock_id
-				USING errcode = 'foreign_key_violation';
-		END IF;
-
 	END IF;
 	RETURN NEW;
 END;

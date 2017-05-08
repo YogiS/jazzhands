@@ -16,7 +16,15 @@
 --
 -- Test netblock triggers
 --
+
+\set ON_ERROR_STOP
+
 \t on
+
+SAVEPOINT netblock_trigger_test;
+
+-- tests this:
+-- \ir ../../ddl/schema/pgsql/create_netblock_triggers.sql
 
 DO $$
 DECLARE
@@ -32,6 +40,9 @@ BEGIN
 --
 -- Clean up just in case
 --
+
+	DELETE FROM val_ip_namespace where ip_namespace IN
+		('JH-universe1', 'JH-universe2');
 
 	DELETE FROM netblock WHERE netblock_type IN
 		('JHTEST-auto', 'JHTEST-auto2', 'JHTEST-manual',
@@ -71,12 +82,15 @@ BEGIN
 -- Set up a couple of test universes
 --
 	RAISE NOTICE 'Creating test universes...';
+	INSERT INTO val_ip_namespace (ip_namespace) VALUES
+		('JH-universe1'),
+		('JH-universe2');
 	INSERT INTO ip_universe (ip_universe_name,ip_namespace)
-	VALUES ('JHTEST-testuniverse', 'default')
+	VALUES ('JHTEST-testuniverse', 'JH-universe1')
 		RETURNING ip_universe_id INTO v_ip_universe_id;
 	a_ip_universe[0] = v_ip_universe_id;
 	INSERT INTO ip_universe (ip_universe_name, ip_namespace)
-	VALUES ('JHTEST-testuniverse2', 'default')
+	VALUES ('JHTEST-testuniverse2', 'JH-universe2')
 		RETURNING ip_universe_id INTO v_ip_universe_id;
 	a_ip_universe[1] = v_ip_universe_id;
 
@@ -962,5 +976,7 @@ BEGIN
 
 END;
 $$ LANGUAGE plpgsql;
+
+ROLLBACK TO netblock_trigger_test;
 
 \t off

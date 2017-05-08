@@ -24,7 +24,7 @@ SAVEPOINT ip_universe_validation_regression;
 
 \ir ../../ddl/schema/pgsql/create_ip_universe_valid_triggers.sql
 
--- 
+--
 -- Trigger tests
 --
 CREATE OR REPLACE FUNCTION ip_universe_valid_regression() RETURNS BOOLEAN AS $$
@@ -56,9 +56,15 @@ BEGIN
 		604800, 300, 'ns.example.com', 'hostmaster.example.com'
 	);
 
-	INSERT INTO ip_universe (ip_universe_name, ip_namespace) VALUES ('jhtest0', 'default')
+	INSERT INTO val_ip_namespace (ip_namespace) VALUES
+		('jhtest0'),
+		('jhtest1');
+
+	INSERT INTO ip_universe (ip_universe_name, ip_namespace)
+		VALUES ('jhtest0', 'jhtest0')
 		RETURNING ip_universe_id INTO _u0;
-	INSERT INTO ip_universe (ip_universe_name, ip_namespace) VALUES ('jhtest1', 'default')
+	INSERT INTO ip_universe (ip_universe_name, ip_namespace)
+		VALUES ('jhtest1', 'jhtest1')
 		RETURNING ip_universe_id INTO _u1;
 
 	INSERT INTO NETBLOCK (ip_address, netblock_type,
@@ -101,7 +107,7 @@ BEGIN
 		EXCEPTION WHEN foreign_key_violation THEN
 			RAISE NOTICE 'It did!';
 		END;
-	
+
 		RAISE EXCEPTION 'worked' USING ERRCODE = 'JH999';
 	EXCEPTION WHEN SQLSTATE 'JH999' THEN
 		RAISE NOTICE '.... it did!';
@@ -133,7 +139,7 @@ BEGIN
 		EXCEPTION WHEN foreign_key_violation THEN
 			RAISE NOTICE 'It did!';
 		END;
-	
+
 		RAISE EXCEPTION 'worked' USING ERRCODE = 'JH999';
 	EXCEPTION WHEN SQLSTATE 'JH999' THEN
 		RAISE NOTICE '.... it did!';
@@ -165,7 +171,7 @@ BEGIN
 		EXCEPTION WHEN foreign_key_violation THEN
 			RAISE NOTICE 'It did!';
 		END;
-	
+
 		RAISE EXCEPTION 'worked' USING ERRCODE = 'JH999';
 	EXCEPTION WHEN SQLSTATE 'JH999' THEN
 		RAISE NOTICE '.... it did!';
@@ -202,7 +208,7 @@ BEGIN
 
 		SET CONSTRAINTS trigger_check_ip_universe_dns_record IMMEDIATE;
 		SET CONSTRAINTS trigger_check_ip_universe_netblock IMMEDIATE;
-	
+
 		RAISE EXCEPTION 'worked' USING ERRCODE = 'JH999';
 	EXCEPTION WHEN SQLSTATE 'JH999' THEN
 		RAISE NOTICE '.... it did!';
