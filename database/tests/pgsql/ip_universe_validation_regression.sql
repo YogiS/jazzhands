@@ -22,6 +22,7 @@
 
 SAVEPOINT ip_universe_validation_regression;
 
+\ir ../../ddl/schema/pgsql/create_netblock_triggers.sql
 \ir ../../ddl/schema/pgsql/create_ip_universe_valid_triggers.sql
 
 --
@@ -35,7 +36,10 @@ DECLARE
 	_ip0id		netblock.netblock_id%TYPE;
 	_nb			netblock%ROWTYPE;
 	_u0			ip_universe.ip_universe_id%TYPE;
+	_u0a			ip_universe.ip_universe_id%TYPE;
 	_u1			ip_universe.ip_universe_id%TYPE;
+	_u1a			ip_universe.ip_universe_id%TYPE;
+	_u2			ip_universe.ip_universe_id%TYPE;
 	_dns		dns_record.dns_record_id%TYPE;
 BEGIN
 	RAISE NOTICE 'ip_universe_valid_regression: Startup';
@@ -58,7 +62,8 @@ BEGIN
 
 	INSERT INTO val_ip_namespace (ip_namespace) VALUES
 		('jhtest0'),
-		('jhtest1');
+		('jhtest1'),
+		('jhtest2');
 
 	INSERT INTO ip_universe (ip_universe_name, ip_namespace)
 		VALUES ('jhtest0', 'jhtest0')
@@ -66,6 +71,17 @@ BEGIN
 	INSERT INTO ip_universe (ip_universe_name, ip_namespace)
 		VALUES ('jhtest1', 'jhtest1')
 		RETURNING ip_universe_id INTO _u1;
+
+	INSERT INTO ip_universe (ip_universe_name, ip_namespace)
+		VALUES ('jhtest0a', 'jhtest0')
+		RETURNING ip_universe_id INTO _u0a;
+	INSERT INTO ip_universe (ip_universe_name, ip_namespace)
+		VALUES ('jhtest1a', 'jhtest1')
+		RETURNING ip_universe_id INTO _u1a;
+
+	INSERT INTO ip_universe (ip_universe_name, ip_namespace)
+		VALUES ('jhtest2', 'jhtest2')
+		RETURNING ip_universe_id INTO _u2;
 
 	INSERT INTO NETBLOCK (ip_address, netblock_type,
 			is_single_address, can_subnet, netblock_status,
@@ -216,6 +232,7 @@ BEGIN
 
 	--
 	-- This belongs in netblock regressions
+	--
 	RAISE NOTICE 'Ensure that changing ip universes switches parentage... ';
 	BEGIN
 		INSERT INTO NETBLOCK (ip_address, netblock_type,
@@ -246,6 +263,181 @@ BEGIN
 	EXCEPTION WHEN SQLSTATE 'JH999' THEN
 		RAISE NOTICE '.... it did!';
 	END;
+
+	--
+	-- Check if can_subnet = 'N' networks can't overlap in namespaces
+	--
+	RAISE NOTICE 'Check if can_subnet=N nets ip_namespace overlap I...';
+	BEGIN
+		INSERT INTO NETBLOCK (ip_address, netblock_type,
+			is_single_address, can_subnet, netblock_status,
+			description, ip_universe_id
+		) VALUES (
+			'172.31.30.128/26', 'default',
+			'N', 'N', 'Allocated',
+			'JHTEST _ip0id', _u0a
+		) RETURNING netblock_id INTO _ip0id;
+
+		RAISE EXCEPTION '... It did!  (bad)';
+	EXCEPTION WHEN unique_violation THEN
+		RAISE NOTICE '.... it did not!';
+	END;
+
+	RAISE NOTICE 'Check if can_subnet=N nets ip_namespace overlap II...';
+	BEGIN
+		INSERT INTO NETBLOCK (ip_address, netblock_type,
+			is_single_address, can_subnet, netblock_status,
+			description, ip_universe_id
+		) VALUES (
+			'172.31.16.0/20', 'default',
+			'N', 'N', 'Allocated',
+			'JHTEST _ip0id', _u0a
+		) RETURNING netblock_id INTO _ip0id;
+		RAISE EXCEPTION '... It did!  (bad)';
+	EXCEPTION WHEN unique_violation THEN
+		RAISE NOTICE '.... it did not!';
+	END;
+
+	--
+	-- Check if can_subnet = 'N' networks can't overlap in visibility
+	--
+	RAISE NOTICE 'Check if can_subnet=N nets ip_visibility overlap I...';
+	BEGIN
+		INSERT INTO ip_universe_visibility (
+			ip_universe_id, visible_ip_universe_id
+		) VALUES (
+			_u0, _u2
+		);
+
+		INSERT INTO NETBLOCK (ip_address, netblock_type,
+			is_single_address, can_subnet, netblock_status,
+			description, ip_universe_id
+		) VALUES (
+			'172.31.30.192/26', 'default',
+			'N', 'N', 'Allocated',
+			'JHTEST _ip0id', _u2
+		) RETURNING netblock_id INTO _ip0id;
+		RAISE EXCEPTION '... It did!  (bad)';
+	EXCEPTION WHEN unique_violation THEN
+		RAISE NOTICE '.... it did not!';
+	END;
+
+	--
+	-- Check if can_subnet = 'N' networks can't overlap in visibility
+	--
+	RAISE NOTICE 'Check if can_subnet=N nets ip_visibility overlap II...';
+	BEGIN
+		INSERT INTO ip_universe_visibility (
+			ip_universe_id, visible_ip_universe_id
+		) VALUES (
+			_u0, _u2
+		);
+
+		INSERT INTO NETBLOCK (ip_address, netblock_type,
+			is_single_address, can_subnet, netblock_status,
+			description, ip_universe_id
+		) VALUES (
+			'172.31.28.0/22', 'default',
+			'N', 'N', 'Allocated',
+			'JHTEST _ip0id', _u2
+		) RETURNING netblock_id INTO _ip0id;
+		RAISE EXCEPTION '... It did!  (bad)';
+	EXCEPTION WHEN unique_violation THEN
+		RAISE NOTICE '.... it did not!';
+	END;
+
+	--
+	-- Check if can_subnet = 'N' networks can't overlap in visibility
+	--
+	RAISE NOTICE 'Check if can_subnet=N nets ip_visibility backwards I...';
+	BEGIN
+		INSERT INTO ip_universe_visibility (
+			ip_universe_id, visible_ip_universe_id
+		) VALUES (
+			_u2, _u0
+		);
+
+		INSERT INTO NETBLOCK (ip_address, netblock_type,
+			is_single_address, can_subnet, netblock_status,
+			description, ip_universe_id
+		) VALUES (
+			'172.31.30.192/26', 'default',
+			'N', 'N', 'Allocated',
+			'JHTEST _ip0id', _u2
+		) RETURNING netblock_id INTO _ip0id;
+		RAISE EXCEPTION '... It did!  (bad)';
+	EXCEPTION WHEN unique_violation THEN
+		RAISE NOTICE '.... it did not!';
+	END;
+
+	--
+	-- Check if can_subnet = 'N' networks can't overlap in visibility
+	--
+	RAISE NOTICE 'Check if can_subnet=N nets ip_visibility backwards II...';
+	BEGIN
+		INSERT INTO ip_universe_visibility (
+			ip_universe_id, visible_ip_universe_id
+		) VALUES (
+			_u2, _u0
+		);
+
+		INSERT INTO NETBLOCK (ip_address, netblock_type,
+			is_single_address, can_subnet, netblock_status,
+			description, ip_universe_id
+		) VALUES (
+			'172.31.28.0/22', 'default',
+			'N', 'N', 'Allocated',
+			'JHTEST _ip0id', _u2
+		) RETURNING netblock_id INTO _ip0id;
+		RAISE EXCEPTION '... It did!  (bad)';
+	EXCEPTION WHEN unique_violation THEN
+		RAISE NOTICE '.... it did not!';
+	END;
+
+	RAISE NOTICE 'Checking if cross ip universes work when it should..';
+	BEGIN
+		INSERT INTO ip_universe_visibility (
+			ip_universe_id, visible_ip_universe_id
+		) VALUES (
+			_u0, _u2
+		);
+
+		INSERT INTO NETBLOCK (ip_address, netblock_type,
+			is_single_address, can_subnet, netblock_status,
+			description, ip_universe_id
+		) VALUES (
+			'172.16.0.0/26', 'default',
+			'N', 'N', 'Allocated',
+			'JHTEST _ip0id', _u2
+		) RETURNING netblock_id INTO _ip0id;
+
+		RAISE EXCEPTION 'worked' USING ERRCODE = 'JH999';
+	EXCEPTION WHEN SQLSTATE 'JH999' THEN
+		RAISE NOTICE '.... it did!';
+	END;
+
+	RAISE NOTICE 'Checking if cross ip universes work when it should..';
+	BEGIN
+		INSERT INTO ip_universe_visibility (
+			ip_universe_id, visible_ip_universe_id
+		) VALUES (
+			_u2, _u0
+		);
+
+		INSERT INTO NETBLOCK (ip_address, netblock_type,
+			is_single_address, can_subnet, netblock_status,
+			description, ip_universe_id
+		) VALUES (
+			'172.16.0.0/26', 'default',
+			'N', 'N', 'Allocated',
+			'JHTEST _ip0id', _u2
+		) RETURNING netblock_id INTO _ip0id;
+
+		RAISE EXCEPTION 'worked' USING ERRCODE = 'JH999';
+	EXCEPTION WHEN SQLSTATE 'JH999' THEN
+		RAISE NOTICE '.... it did!';
+	END;
+
 
 
 	RAISE NOTICE 'ip_universe_valid_regression: DONE';

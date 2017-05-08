@@ -147,6 +147,47 @@ BEGIN
 				NEW.ip_address, NEW.ip_universe_id
 				USING ERRCODE= 'unique_violation';
 		END IF;
+
+		IF NEW.can_subnet = 'N' THEN
+			WITH x AS (
+				SELECT	ip_universe_id
+				FROM	ip_universe
+				WHERE	ip_namespace IN (
+							SELECT ip_namespace FROM ip_universe
+							WHERE ip_universe_id = NEW.ip_universe_id
+						)
+				AND		ip_universe_id != NEW.ip_universe_id
+			UNION
+				SELECT	visible_ip_universe_id
+				FROM	ip_universe_visibility
+				WHERE	ip_universe_id = NEW.ip_universe_id
+				AND		visible_ip_universe_id != NEW.ip_universe_id
+			UNION
+				SELECT	ip_universe_id
+				FROM	ip_universe_visibility
+				WHERE	visible_ip_universe_id = NEW.ip_universe_id
+				AND		ip_universe_id != NEW.ip_universe_id
+			) SELECT count(*) INTO tally
+			FROM netblock
+			WHERE
+				ip_universe_id IN (select ip_universe_id FROM x) AND
+				(
+					ip_address <<= NEW.ip_address OR
+					ip_address >>= NEW.ip_address
+				) AND
+				netblock_type = NEW.netblock_type AND
+				is_single_address = 'N' AND
+				can_subnet = 'N' AND
+				netblock_id != NEW.netblock_id
+			;
+
+			IF tally >  0 THEN
+				RAISE EXCEPTION
+					'Can Subnet = N IP Universe Constraint Violated on IP Address: % Universe: %',
+					NEW.ip_address, NEW.ip_universe_id
+					USING ERRCODE= 'unique_violation';
+			END IF;
+		END IF;
 	END IF;
 
 	/*
