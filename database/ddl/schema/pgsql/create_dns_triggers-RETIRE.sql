@@ -128,13 +128,13 @@ BEGIN
 		soa_class, soa_ttl, soa_serial, soa_refresh,
 		soa_retry,
 		soa_expire, soa_minimum, soa_mname, soa_rname,
-		parent_dns_domain_id, should_generate, last_generated
+		should_generate, last_generated
 	) VALUES (
 		_d, 0,
 		NEW.soa_class, NEW.soa_ttl, NEW.soa_serial, NEW.soa_refresh,
 		NEW.soa_retry,
 		NEW.soa_expire, NEW.soa_minimum, NEW.soa_mname, NEW.soa_rname,
-		NEW.parent_dns_domain_id, NEW.should_generate, last_generated
+		NEW.should_generate, last_generated
 	);
 END;
 $$
