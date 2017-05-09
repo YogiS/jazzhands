@@ -111,7 +111,7 @@ BEGIN
 		INSERT INTO dns_domain (
 			dns_domain_name, dns_domain_type, parent_dns_domain_id
 		) VALUES (
-			NEW.soa_name, NEW.dns_domain_type, NEW,parent_dns_domain_id
+			NEW.soa_name, NEW.dns_domain_type, NEW.parent_dns_domain_id
 		) RETURNING dns_domain_id INTO _d;
 	ELSE
 		INSERT INTO dns_domain (
@@ -119,7 +119,7 @@ BEGIN
 			parent_dns_domain_id
 		) VALUES (
 			NEW.dns_domain_id, NEW.soa_name, NEW.dns_domain_type,
-			NEW,parent_dns_domain_id
+			NEW.parent_dns_domain_id
 		) RETURNING dns_domain_id INTO _d;
 	END IF;
 
