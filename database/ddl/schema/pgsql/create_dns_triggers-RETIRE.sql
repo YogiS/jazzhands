@@ -134,7 +134,7 @@ BEGIN
 		NEW.soa_class, NEW.soa_ttl, NEW.soa_serial, NEW.soa_refresh,
 		NEW.soa_retry,
 		NEW.soa_expire, NEW.soa_minimum, NEW.soa_mname, NEW.soa_rname,
-		NEW.should_generate, last_generated
+		NEW.should_generate, NEW.last_generated
 	);
 END;
 $$
