@@ -136,6 +136,7 @@ BEGIN
 		NEW.soa_expire, NEW.soa_minimum, NEW.soa_mname, NEW.soa_rname,
 		NEW.should_generate, NEW.last_generated
 	);
+	RETURN NEW;
 END;
 $$
 SET search_path=jazzhands
@@ -255,7 +256,7 @@ BEGIN
 		USING
 			NEW.dns_domain_id;
 	END IF;
-
+	RETURN NEW;
 END;
 $$
 SET search_path=jazzhands
